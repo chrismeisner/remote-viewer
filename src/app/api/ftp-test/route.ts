@@ -1,13 +1,13 @@
 import path from "node:path";
 import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
-import { Client } from "basic-ftp";
+import { Client, FileType } from "basic-ftp";
 
 type TestResult = {
   success: boolean;
   message: string;
   cwd?: string;
-  entries?: Array<{ name: string; type: string; size?: number }>;
+  entries?: Array<{ name: string; type: FileType; size?: number }>;
   writeTest?: { success: boolean; message: string };
 };
 
