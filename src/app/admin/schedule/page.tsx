@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { DEFAULT_CHANNEL } from "@/constants/channels";
+import {
+  MEDIA_SOURCE_EVENT,
+  MEDIA_SOURCE_KEY,
+  REMOTE_MEDIA_BASE,
+  type MediaSource,
+} from "@/constants/media";
 import { DailySchedule, ScheduleSlot, validateSchedule } from "@/lib/schedule";
-
-const MEDIA_SOURCE_KEY = "mediaSource";
-type MediaSource = "local" | "remote";
-const REMOTE_MEDIA_BASE = "https://chrismeisner.com/media/";
 
 type MediaFile = {
   relPath: string;
@@ -19,6 +21,14 @@ type MediaFile = {
 };
 
 export default function ScheduleAdminPage() {
+  return (
+    <Suspense fallback={<div className="p-4 text-slate-200">Loading...</div>}>
+      <ScheduleAdminContent />
+    </Suspense>
+  );
+}
+
+function ScheduleAdminContent() {
   const searchParams = useSearchParams();
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [files, setFiles] = useState<MediaFile[]>([]);
@@ -64,6 +74,7 @@ export default function ScheduleAdminPage() {
     setMediaSource(value);
     if (typeof window !== "undefined") {
       localStorage.setItem(MEDIA_SOURCE_KEY, value);
+      window.dispatchEvent(new Event(MEDIA_SOURCE_EVENT));
     }
   };
 
