@@ -52,6 +52,9 @@ function ScheduleAdminContent() {
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [modalSource, setModalSource] = useState<MediaSource>("local");
   const [changingSource, setChangingSource] = useState(false);
+  const [mediaRefreshToken, setMediaRefreshToken] = useState(0);
+  const [forceMediaRefresh, setForceMediaRefresh] = useState(false);
+  const [pushingManifest, setPushingManifest] = useState(false);
 
   // Sync channel from URL if provided
   useEffect(() => {
@@ -61,13 +64,22 @@ function ScheduleAdminContent() {
     }
   }, [searchParams, channel]);
 
-  // Load media source preference from localStorage
+  // Load media source preference from localStorage and stay in sync with other tabs/pages.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
-    if (stored === "remote" || stored === "local") {
-      setMediaSource(stored);
-    }
+    const syncSource = () => {
+      const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
+      if (stored === "remote" || stored === "local") {
+        setMediaSource(stored);
+      }
+    };
+    syncSource();
+    window.addEventListener("storage", syncSource);
+    window.addEventListener(MEDIA_SOURCE_EVENT, syncSource);
+    return () => {
+      window.removeEventListener("storage", syncSource);
+      window.removeEventListener(MEDIA_SOURCE_EVENT, syncSource);
+    };
   }, []);
 
   const handleSourceChange = (value: MediaSource) => {
@@ -81,11 +93,15 @@ function ScheduleAdminContent() {
   const handleSourceSave = () => {
     handleSourceChange(modalSource);
     setChangingSource(true);
+    setMediaRefreshToken((token) => token + 1);
   };
 
   // Load available channels and media list once
   useEffect(() => {
     let cancelled = false;
+    const shouldForceRefresh = forceMediaRefresh;
+    if (forceMediaRefresh) setForceMediaRefresh(false);
+    setFiles([]);
     setLoading(true);
     setMessage(null);
     setError(null);
@@ -103,7 +119,8 @@ function ScheduleAdminContent() {
         if (mediaSource === "remote") {
           try {
             const manifestRes = await fetch(
-              `/api/media-index?base=${encodeURIComponent(REMOTE_MEDIA_BASE)}`,
+              `/api/media-index?base=${encodeURIComponent(REMOTE_MEDIA_BASE)}&t=${Date.now()}`,
+              { cache: "no-store" },
             );
             if (!manifestRes.ok) {
               const text = await manifestRes.text();
@@ -115,7 +132,10 @@ function ScheduleAdminContent() {
             throw new Error("Failed to load remote media index");
           }
         } else {
-          const filesRes = await fetch(`/api/media-files`);
+          const filesRes = await fetch(
+            `/api/media-files${shouldForceRefresh ? "?refresh=1" : ""}&t=${Date.now()}`,
+            { cache: "no-store" },
+          );
           filesJson = await filesRes.json();
         }
 
@@ -142,7 +162,7 @@ function ScheduleAdminContent() {
     return () => {
       cancelled = true;
     };
-  }, [mediaSource]);
+  }, [mediaSource, mediaRefreshToken, forceMediaRefresh]);
 
   // Close modal when source change finishes loading
   useEffect(() => {
@@ -200,6 +220,30 @@ function ScheduleAdminContent() {
     () => sortedFiles.reduce((sum, f) => sum + (f.durationSeconds || 0), 0),
     [sortedFiles],
   );
+
+  const refreshMediaList = (opts?: { force?: boolean }) => {
+    if (opts?.force) setForceMediaRefresh(true);
+    setMediaRefreshToken((token) => token + 1);
+  };
+
+  const pushRemoteManifest = async () => {
+    setPushingManifest(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/media-index/push", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Upload failed");
+      }
+      setMessage(data.message || "Uploaded media-index.json");
+      refreshMediaList({ force: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setPushingManifest(false);
+    }
+  };
 
   const addSlot = () => {
     const defaultFile = sortedFiles[0]?.relPath || "";
@@ -518,13 +562,42 @@ function ScheduleAdminContent() {
             </div>
 
             <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4 shadow-lg shadow-black/30">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-100">
-                  Available media
-                </h3>
-                <span className="text-xs text-slate-400">
-                  {sortedFiles.length} file{sortedFiles.length === 1 ? "" : "s"}
-                </span>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-sm font-semibold text-slate-100">
+                    Available media
+                  </h3>
+                  <span className="text-xs text-slate-400">
+                    {sortedFiles.length} file{sortedFiles.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => refreshMediaList()}
+                    disabled={loading}
+                    className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+                  >
+                    {loading ? "Refreshing…" : "Refresh list"}
+                  </button>
+                  <button
+                    onClick={() => refreshMediaList({ force: true })}
+                    disabled={loading}
+                    className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+                    title="Rescan media folder to pick up new or removed files"
+                  >
+                    {loading ? "Syncing…" : "Sync media"}
+                  </button>
+                  {mediaSource === "remote" && (
+                    <button
+                      onClick={() => void pushRemoteManifest()}
+                      disabled={loading || pushingManifest}
+                      className="rounded-md border border-blue-300/50 bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30 disabled:opacity-50"
+                      title="Rebuild and upload media-index.json to the remote server"
+                    >
+                      {pushingManifest ? "Updating JSON…" : "Update JSON"}
+                    </button>
+                  )}
+                </div>
               </div>
               {sortedFiles.length === 0 ? (
                 <p className="text-sm text-slate-300">
