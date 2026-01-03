@@ -1,8 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_CHANNEL } from "@/constants/channels";
+import {
+  MEDIA_SOURCE_KEY,
+  type MediaSource,
+  REMOTE_MEDIA_BASE,
+} from "@/constants/media";
 
 type NowPlaying = {
   title: string;
@@ -15,9 +19,6 @@ type NowPlaying = {
 };
 
 const POLL_INTERVAL_MS = 30_000;
-const MEDIA_SOURCE_KEY = "mediaSource";
-type MediaSource = "local" | "remote";
-const REMOTE_MEDIA_BASE = "https://chrismeisner.com/media/";
 
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -32,7 +33,9 @@ export default function Home() {
   const lastResolvedAtRef = useRef<number | null>(null);
   const lastRttMsRef = useRef<number>(0);
   const desiredOffsetRef = useRef<number | null>(null);
-  const [mediaSource, setMediaSource] = useState<MediaSource>("local");
+  const [mediaSource, setMediaSource] = useState<MediaSource>(
+    REMOTE_MEDIA_BASE ? "remote" : "local",
+  );
   const [channel, setChannel] = useState(DEFAULT_CHANNEL);
   const [channels, setChannels] = useState<string[]>(["default"]);
   const [loadingChannels, setLoadingChannels] = useState(false);

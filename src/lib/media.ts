@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import ffprobe from "ffprobe-static";
 import { DEFAULT_CHANNEL } from "@/constants/channels";
+import { REMOTE_MEDIA_BASE } from "@/constants/media";
 import {
   DailySchedule,
   ScheduleSlot,
@@ -234,16 +235,20 @@ async function getScheduledNowPlaying(
   if (!schedule) return null;
 
   const files = await listMediaFiles();
-  if (!files.length) return null;
+  const fileEntries =
+    files.length > 0
+      ? await Promise.all(
+          files.map(async (file) => ({
+            ...file,
+            durationSeconds: await getDurationSeconds(file.absPath, file.mtimeMs),
+          })),
+        )
+      : await listRemoteMediaItems();
 
-  const filesWithDuration = await Promise.all(
-    files.map(async (file) => ({
-      ...file,
-      durationSeconds: await getDurationSeconds(file.absPath, file.mtimeMs),
-    })),
-  );
+  if (!fileEntries.length) return null;
+
   const fileMap = new Map(
-    filesWithDuration.map((file) => [normalizeRel(file.relPath), file]),
+    fileEntries.map((file) => [normalizeRel(file.relPath), file]),
   );
 
   const zoned = getLocalNow(now);
@@ -343,6 +348,44 @@ async function walkMediaFiles(
 function isAllowedExtension(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
   return ALLOWED_EXTENSIONS.includes(ext);
+}
+
+type RemoteMediaItem = {
+  relPath: string;
+  durationSeconds: number;
+  format?: string;
+  title?: string;
+};
+
+async function listRemoteMediaItems(): Promise<
+  Array<RemoteMediaItem & { absPath: string; mtimeMs: number }>
+> {
+  const base = process.env.REMOTE_MEDIA_BASE || REMOTE_MEDIA_BASE;
+  if (!base) return [];
+
+  try {
+    const manifestUrl = new URL("media-index.json", base).toString();
+    const res = await fetch(manifestUrl);
+    if (!res.ok) {
+      console.warn("Remote manifest fetch failed", manifestUrl, res.status);
+      return [];
+    }
+    const json = await res.json();
+    const items = Array.isArray(json?.items) ? (json.items as RemoteMediaItem[]) : [];
+    return items
+      .filter((i) => typeof i?.relPath === "string")
+      .map((i) => ({
+        relPath: i.relPath,
+        absPath: i.relPath,
+        durationSeconds: Number(i.durationSeconds) || 0,
+        format: i.format,
+        title: i.title,
+        mtimeMs: Date.now(),
+      }));
+  } catch (error) {
+    console.warn("Remote manifest fetch failed", error);
+    return [];
+  }
 }
 
 async function getDurationSeconds(
