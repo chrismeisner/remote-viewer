@@ -616,8 +616,10 @@ function getLocalNow(now: number) {
 }
 
 function extractDurationSeconds(probeJson: unknown): number | null {
-  const fmt = probeJson?.format;
-  const streams = Array.isArray(probeJson?.streams) ? probeJson.streams : [];
+  if (!probeJson || typeof probeJson !== "object") return null;
+  const obj = probeJson as { format?: { duration?: unknown }; streams?: unknown };
+  const fmt = obj.format;
+  const streams = Array.isArray(obj.streams) ? obj.streams : [];
 
   const fromFormat = Number(fmt?.duration);
   if (Number.isFinite(fromFormat) && fromFormat > 0) {
