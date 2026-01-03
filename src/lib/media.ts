@@ -375,7 +375,7 @@ async function probeDuration(absPath: string): Promise<number> {
     const parsed = JSON.parse(stdout);
     const duration = extractDurationSeconds(parsed);
 
-    if (Number.isFinite(duration) && duration > 0) {
+    if (duration !== null && Number.isFinite(duration) && duration > 0) {
       return duration;
     }
   } catch (error) {
