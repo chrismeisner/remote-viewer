@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createMediaStream, resolveMediaPath } from "@/lib/media";
+import { Readable } from "node:stream";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const stream = createMediaStream(absPath, start, end);
+      const stream = Readable.toWeb(createMediaStream(absPath, start, end));
       return new NextResponse(stream, {
         status: 206,
         headers: {
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const stream = createMediaStream(absPath);
+    const stream = Readable.toWeb(createMediaStream(absPath));
     return new NextResponse(stream, {
       status: 200,
       headers: {
