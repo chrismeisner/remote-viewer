@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getNowPlaying } from "@/lib/media";
+import { getNowPlaying, loadSchedule } from "@/lib/media";
 
 export const runtime = "nodejs";
 
