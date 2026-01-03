@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Remote Viewer
 
-## Getting Started
+A local-only 24h “master schedule” viewer for your personal video files. Drop videos into `MEDIA_ROOT`, define a single-day schedule, and Remote Viewer starts the correct file at the correct offset so it feels like you tuned into a live feed.
 
-First, run the development server:
+## Requirements
+
+- Node.js 20+ (see `.nvmrc` for the tested version).
+- `ffprobe` is bundled via `ffprobe-static`; no system install required.
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Create or point `MEDIA_ROOT` at your library (defaults to `<repo>/media`). All files under this folder are addressable by their relative paths.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Develop
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+MEDIA_ROOT=/path/to/videos npm run dev
+# open http://localhost:3000
+```
 
-## Learn More
+The UI is minimal: view “Now Playing,” and the built-in video element jumps to the correct offset. A lightweight poll (~30s) refreshes when programs roll over.
 
-To learn more about Next.js, take a look at the following resources:
+## Notes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Supported extensions: `.mp4`, `.mkv`, `.mov`, `.avi`, `.m4v`, `.webm`.
+- Schedules are in-memory and rebuilt on access with a short cache; reload after adding/removing files.
+- Path validation prevents escaping `MEDIA_ROOT`; files are streamed via `/api/media` with range support.
+- A schedule is required: store JSON at `data/schedule.json` or use `PUT /api/schedule`. `/api/now-playing` resolves strictly against the schedule (no looping fallback). A simple admin UI is available at `/admin/schedule` for the single-day (24h) editor.

@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #020617;
+  --foreground: #e2e8f0;
 }
 
 @theme inline {
@@ -12,15 +12,76 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: radial-gradient(circle at 20% 20%, #0b1531, #020617 40%),
+    radial-gradient(circle at 80% 0%, #0f172a, transparent 35%),
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+* {
+  box-sizing: border-box;
+}
+
+video {
+  outline: none;
+}
+
+/* Shared CRT wrapper: used by the player and available as a general .crt utility */
+.crt-frame,
+.crt {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: #00ff00;
+  font-family: "Courier New", monospace;
+  text-shadow: 0 0 8px #00ff00;
+  filter: contrast(1.1) saturate(1.1) hue-rotate(-2deg) brightness(0.96)
+    blur(0.4px);
+  border-radius: 18px;
+}
+
+.crt-frame::before,
+.crt::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.08) 0px,
+    rgba(255, 255, 255, 0.08) 1px,
+    rgba(0, 0, 0, 0.24) 2px,
+    rgba(0, 0, 0, 0.24) 3px
+  );
+  background-size: 100% 3px;
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+  animation: crt-scanlines 55s linear infinite;
+}
+
+.crt-frame::after,
+.crt::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 60%,
+    rgba(0, 0, 0, 0.28)
+  );
+}
+
+@keyframes crt-scanlines {
+  from {
+    background-position: 0 0, 0 0;
+  }
+  to {
+    background-position: 0 -10px, 0 -10px;
+  }
 }
