@@ -5,18 +5,18 @@ export const runtime = "nodejs";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { channel: string } },
+  { params }: { params: Promise<{ channel: string }> },
 ) {
-  const channel = params.channel;
+  const { channel } = await params;
   const schedule = await loadSchedule(channel);
   return NextResponse.json({ schedule });
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { channel: string } },
+  { params }: { params: Promise<{ channel: string }> },
 ) {
-  const channel = params.channel;
+  const { channel } = await params;
   try {
     const payload = (await request.json()) as DailySchedule;
     const saved = await saveSchedule(payload, channel);
