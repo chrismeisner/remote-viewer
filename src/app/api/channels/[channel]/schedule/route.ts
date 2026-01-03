@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DailySchedule, loadSchedule, saveSchedule } from "@/lib/media";
+import { loadSchedule, saveSchedule } from "@/lib/media";
+import { DailySchedule } from "@/lib/schedule";
 
 export const runtime = "nodejs";
 
