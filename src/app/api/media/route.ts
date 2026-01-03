@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       }
 
       const stream = Readable.toWeb(createMediaStream(absPath, start, end));
-      return new NextResponse(stream, {
+      return new NextResponse(stream as unknown as ReadableStream, {
         status: 206,
         headers: {
           "Content-Range": `bytes ${start}-${end}/${stat.size}`,
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     }
 
     const stream = Readable.toWeb(createMediaStream(absPath));
-    return new NextResponse(stream, {
+    return new NextResponse(stream as unknown as ReadableStream, {
       status: 200,
       headers: {
         "Content-Length": String(stat.size),
