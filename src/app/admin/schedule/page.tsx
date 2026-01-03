@@ -102,8 +102,13 @@ function ScheduleAdminContent() {
         let filesJson: { items?: MediaFile[] } = {};
         if (mediaSource === "remote") {
           try {
-            const remoteUrl = new URL("media-index.json", REMOTE_MEDIA_BASE).toString();
-            const manifestRes = await fetch(remoteUrl);
+            const manifestRes = await fetch(
+              `/api/media-index?base=${encodeURIComponent(REMOTE_MEDIA_BASE)}`,
+            );
+            if (!manifestRes.ok) {
+              const text = await manifestRes.text();
+              throw new Error(text);
+            }
             filesJson = await manifestRes.json();
           } catch (err) {
             console.warn("Remote manifest fetch failed", err);
