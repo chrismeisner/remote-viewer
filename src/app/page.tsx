@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_CHANNEL } from "@/constants/channels";
 import {
   MEDIA_SOURCE_KEY,
   type MediaSource,
@@ -18,12 +17,14 @@ type NowPlaying = {
   serverTimeMs?: number;
 };
 
-const POLL_INTERVAL_MS = 30_000;
+type ChannelInfo = {
+  id: string;
+  shortName?: string;
+};
 
 export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [muted, setMuted] = useState(true);
@@ -36,10 +37,15 @@ export default function Home() {
   const [mediaSource, setMediaSource] = useState<MediaSource>(
     REMOTE_MEDIA_BASE ? "remote" : "local",
   );
-  const [channel, setChannel] = useState(DEFAULT_CHANNEL);
-  const [channels, setChannels] = useState<string[]>(["default"]);
+  const [channel, setChannel] = useState<string | null>(null);
+  const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const initialChannelSet = useRef(false);
+  
+  // Channel overlay state for CRT-style display
+  const [showChannelOverlay, setShowChannelOverlay] = useState(false);
+  const [overlayChannel, setOverlayChannel] = useState<ChannelInfo | null>(null);
+  const overlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Reset playback context when channel changes to ensure fresh offsets.
   useEffect(() => {
     previousNowPlayingRef.current = null;
@@ -47,6 +53,31 @@ export default function Home() {
     lastResolvedAtRef.current = null;
     lastRttMsRef.current = 0;
   }, [channel]);
+
+  // Show channel overlay when channel changes
+  const triggerChannelOverlay = (channelInfo: ChannelInfo) => {
+    // Clear any existing timeout
+    if (overlayTimeoutRef.current) {
+      clearTimeout(overlayTimeoutRef.current);
+    }
+    
+    setOverlayChannel(channelInfo);
+    setShowChannelOverlay(true);
+    
+    // Hide overlay after 2 seconds
+    overlayTimeoutRef.current = setTimeout(() => {
+      setShowChannelOverlay(false);
+    }, 2000);
+  };
+
+  // Cleanup overlay timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (overlayTimeoutRef.current) {
+        clearTimeout(overlayTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Load media source preference from localStorage
   useEffect(() => {
@@ -73,14 +104,20 @@ export default function Home() {
   };
 
   useEffect(() => {
+    // Don't fetch if no channel is selected
+    if (!channel) {
+      setNowPlaying(null);
+      setError(null);
+      return;
+    }
+
     let cancelled = false;
     const loadNowPlaying = async () => {
       const startedAt = Date.now();
-      setLoading(true);
       setError(null);
       try {
         const res = await fetch(
-          `/api/now-playing?channel=${encodeURIComponent(channel)}`,
+          `/api/now-playing?channel=${encodeURIComponent(channel)}&source=${encodeURIComponent(mediaSource)}`,
         );
         if (!res.ok) {
           const text = await res.text();
@@ -115,18 +152,27 @@ export default function Home() {
           setError(message);
           setNowPlaying(null);
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     };
 
     loadNowPlaying();
-    const interval = setInterval(loadNowPlaying, POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      clearInterval(interval);
     };
-  }, [refreshToken, channel]);
+  }, [refreshToken, channel, mediaSource]);
+
+  // Schedule next fetch when current program ends (replaces 30s polling)
+  useEffect(() => {
+    if (!nowPlaying?.endsAt) return;
+    const msUntilEnd = nowPlaying.endsAt - Date.now();
+    // Add small buffer (500ms) to ensure server has moved to next slot
+    const delay = Math.max(100, msUntilEnd + 500);
+    console.log("[player] scheduling next fetch in", Math.round(delay / 1000), "seconds");
+    const timeout = setTimeout(() => {
+      setRefreshToken((t) => t + 1);
+    }, delay);
+    return () => clearTimeout(timeout);
+  }, [nowPlaying?.endsAt]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -233,8 +279,18 @@ export default function Home() {
     };
   }, []);
 
-  // Keyboard shortcuts: number keys 2-9 jump to matching channel name (if present).
-  // "m" toggles mute, "f" toggles fullscreen.
+  // Helper to switch channel and trigger overlay
+  const switchToChannel = (channelId: string) => {
+    const channelInfo = channels.find(c => c.id === channelId);
+    if (channelInfo) {
+      setChannel(channelId);
+      triggerChannelOverlay(channelInfo);
+      setRefreshToken((token) => token + 1);
+    }
+  };
+
+  // Keyboard shortcuts: number keys 1-9 jump to matching channel name (if present).
+  // "m" toggles mute, "f" toggles fullscreen, "c" toggles CRT.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -255,60 +311,76 @@ export default function Home() {
         return;
       }
 
+      if (key === "c") {
+        event.preventDefault();
+        setCrtEnabled((prev) => !prev);
+        return;
+      }
+
       if (key === "f") {
         event.preventDefault();
         toggleFullscreen();
         return;
       }
 
-      if (!/^[2-9]$/.test(key)) return;
-      if (!channels.includes(key)) return;
-      setChannel(key);
-      setRefreshToken((token) => token + 1);
+      if (!/^[1-9]$/.test(key)) return;
+      const channelIds = channels.map(c => c.id);
+      if (!channelIds.includes(key)) return;
+      switchToChannel(key);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [channels]);
 
-  const handleReload = () => {
-    setRefreshToken((token) => token + 1);
-  };
-
   const resolvedSrc = (np: NowPlaying | null) =>
     np ? withMediaSource(np, mediaSource).src : "";
+
+  // Normalize channels to ChannelInfo format (handles legacy string[] responses)
+  const normalizeChannels = (channels: unknown): ChannelInfo[] => {
+    if (!Array.isArray(channels)) return [];
+    return channels.map((ch) => {
+      if (typeof ch === "string") {
+        return { id: ch };
+      }
+      if (ch && typeof ch === "object" && typeof (ch as ChannelInfo).id === "string") {
+        return ch as ChannelInfo;
+      }
+      return null;
+    }).filter(Boolean) as ChannelInfo[];
+  };
 
   useEffect(() => {
     let cancelled = false;
     const loadChannels = async () => {
       setLoadingChannels(true);
       try {
-        const res = await fetch("/api/channels");
+        const res = await fetch(
+          `/api/channels?source=${encodeURIComponent(mediaSource)}`,
+        );
         if (!res.ok) throw new Error("Failed to load channels");
         const data = await res.json();
-        const names =
-          Array.isArray(data.channels) && data.channels.length > 0
-            ? data.channels
-            : [DEFAULT_CHANNEL];
+        const channelList = normalizeChannels(data.channels);
         if (!cancelled) {
-          setChannels(names);
-          if (!initialChannelSet.current && names.length > 0) {
-            setChannel(names[0]);
-            setRefreshToken((token) => token + 1);
-            initialChannelSet.current = true;
-          } else if (!names.includes(channel)) {
-            const next = names.includes(DEFAULT_CHANNEL) ? DEFAULT_CHANNEL : names[0];
-            setChannel(next);
-            setRefreshToken((token) => token + 1);
+          setChannels(channelList);
+          // Auto-select first channel if none selected or current channel no longer exists
+          const channelIds = channelList.map(c => c.id);
+          if (channelList.length > 0) {
+            if (!channel || !channelIds.includes(channel)) {
+              const firstChannel = channelList[0];
+              setChannel(firstChannel.id);
+              triggerChannelOverlay(firstChannel);
+              setRefreshToken((token) => token + 1);
+            }
+          } else {
+            // No channels available
+            setChannel(null);
           }
         }
       } catch (err) {
         console.warn("Channel list error", err);
         if (!cancelled) {
-          setChannels([DEFAULT_CHANNEL]);
-          if (channel !== DEFAULT_CHANNEL) {
-            setChannel(DEFAULT_CHANNEL);
-            setRefreshToken((token) => token + 1);
-          }
+          setChannels([]);
+          setChannel(null);
         }
       } finally {
         if (!cancelled) setLoadingChannels(false);
@@ -319,7 +391,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mediaSource]);
 
   const toggleFullscreen = async () => {
     const video = videoRef.current;
@@ -353,25 +425,30 @@ export default function Home() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/60 px-4 py-3 text-xs text-slate-300 shadow-lg shadow-black/30">
           <div className="flex items-center gap-2">
             <label className="text-slate-400">Channel</label>
-            <select
-              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-slate-100"
-              value={channel}
-              onChange={(e) => {
-                const next = e.target.value;
-                setChannel(next);
-                setRefreshToken((token) => token + 1);
-              }}
-              disabled={loadingChannels}
-            >
-              {channels.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
+            {channels.length === 0 ? (
+              <span className="text-slate-500 italic">No channels available</span>
+            ) : (
+              <select
+                className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-slate-100"
+                value={channel ?? ""}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (next) {
+                    switchToChannel(next);
+                  }
+                }}
+                disabled={loadingChannels}
+              >
+                {channels.map((ch) => (
+                  <option key={ch.id} value={ch.id}>
+                    {ch.id}{ch.shortName ? ` - ${ch.shortName}` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <span className="hidden sm:inline text-slate-400">
-            Point your media folder to the library you want to serve
+            Source: {mediaSource === "remote" ? "Remote CDN" : "Local files"}
           </span>
         </div>
 
@@ -384,45 +461,26 @@ export default function Home() {
               <h2 className="text-xl font-semibold text-slate-50">
                 {nowPlaying?.title || "Waiting for schedule"}
               </h2>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-slate-200">
-                  Channel: {channel}
-                </span>
-              </div>
+              {channel && (
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-slate-200">
+                    Channel: {channel}
+                  </span>
+                </div>
+              )}
               {nowPlaying?.relPath && (
                 <p className="text-sm text-slate-400">{nowPlaying.relPath}</p>
               )}
             </div>
-            <div className="flex items-center gap-3">
-              {nowPlaying && (
-                <div className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-200">
-                  {formatTimeRemaining()} left
-                </div>
-              )}
-              <button
-                onClick={handleReload}
-                className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
-                disabled={loading}
-              >
-                {loading ? "Loading…" : "Reload"}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center gap-3 text-xs text-slate-300">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-white/30 bg-black/40"
-                checked={crtEnabled}
-                onChange={(e) => setCrtEnabled(e.target.checked)}
-              />
-              CRT filter
-            </label>
+            {nowPlaying && (
+              <div className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-200">
+                {formatTimeRemaining()} left
+              </div>
+            )}
           </div>
 
           <div
-            className={`relative mt-3 overflow-hidden rounded-lg border border-white/10 bg-black ${crtEnabled ? "crt-frame" : ""}`}
+            className={`relative mt-4 overflow-hidden rounded-lg border border-white/10 bg-black ${crtEnabled ? "crt-frame" : ""}`}
           >
             <video
               ref={videoRef}
@@ -431,33 +489,48 @@ export default function Home() {
               playsInline
               className="relative z-[1] aspect-video w-full bg-black"
             />
-            <div className="absolute right-3 top-3 hidden flex-row gap-2 sm:flex">
-              <button
-                onClick={() => setMuted((m) => !m)}
-                className="rounded-full border border-white/20 bg-black/50 px-3 py-1 text-xs font-semibold text-slate-50 shadow-sm transition hover:border-white/40 hover:bg-black/70"
-              >
-                Sound: {muted ? "Off" : "On"}
-              </button>
-              <button
-                onClick={toggleFullscreen}
-                className="rounded-full border border-white/20 bg-black/50 px-3 py-1 text-xs font-semibold text-slate-50 shadow-sm transition hover:border-white/40 hover:bg-black/70"
-              >
-                {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-              </button>
+            
+            {/* CRT-style channel overlay */}
+            <div
+              className={`absolute top-4 left-4 z-10 transition-opacity duration-500 ${
+                showChannelOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
+              }`}
+            >
+              <div className="channel-overlay font-mono">
+                <span className="channel-number">{overlayChannel?.id || ""}</span>
+                {overlayChannel?.shortName && (
+                  <span className="channel-name">{overlayChannel.shortName}</span>
+                )}
+              </div>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden">
+
+          <div className="mt-3 flex flex-row justify-center gap-2">
+            <button
+              onClick={() => setCrtEnabled((c) => !c)}
+              className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
+                crtEnabled
+                  ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+                  : "border-white/15 bg-white/5 text-slate-100 hover:border-white/30 hover:bg-white/10"
+              }`}
+            >
+              CRT {crtEnabled ? "On" : "Off"}
+            </button>
             <button
               onClick={() => setMuted((m) => !m)}
-              className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
+              className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
+                muted
+                  ? "border-white/15 bg-white/5 text-slate-100 hover:border-white/30 hover:bg-white/10"
+                  : "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+              }`}
             >
-              {muted ? "Unmute" : "Mute"}
+              {muted ? "Muted" : "Sound On"}
             </button>
             <button
               onClick={toggleFullscreen}
-              className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
+              className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
             >
-              {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              {isFullscreen ? "Exit" : "Fullscreen"}
             </button>
           </div>
 
@@ -468,7 +541,9 @@ export default function Home() {
           )}
           {!error && !nowPlaying && (
             <p className="mt-3 text-sm text-slate-400">
-              Add a slot in Schedule Admin to begin playback.
+              {channels.length === 0
+                ? "No channels configured. Create a channel in the admin panel to begin."
+                : "Add a slot in Schedule Admin to begin playback."}
             </p>
           )}
         </div>
@@ -478,7 +553,7 @@ export default function Home() {
           <ul className="mt-2 space-y-1 text-slate-300">
             <li>A single 24h schedule maps times to media files from your library.</li>
             <li>Arriving mid-slot jumps you into the correct offset.</li>
-            <li>Reload or wait ~30s to catch rollovers.</li>
+            <li>Transitions happen automatically when programs end.</li>
           </ul>
         </div>
       </main>

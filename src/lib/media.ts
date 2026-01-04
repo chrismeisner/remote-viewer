@@ -4,12 +4,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import ffprobe from "ffprobe-static";
-import { DEFAULT_CHANNEL } from "@/constants/channels";
-import { REMOTE_MEDIA_BASE } from "@/constants/media";
+import { REMOTE_MEDIA_BASE, type MediaSource } from "@/constants/media";
 import {
+  ChannelSchedule,
   DailySchedule,
+  Schedule,
   ScheduleSlot,
   parseTimeToSeconds,
+  validateChannelSchedule,
   validateSchedule,
 } from "@/lib/schedule";
 
@@ -17,7 +19,7 @@ const execFileAsync = promisify(execFile);
 
 // Hard-coded to the local project's media folder (./media relative to cwd).
 const MEDIA_ROOT = path.resolve(path.join(process.cwd(), "media"));
-const SCHEDULE_DIR = path.join(process.cwd(), "data", "schedules");
+const SCHEDULE_FILE = path.join(process.cwd(), "data", "schedule.json");
 
 const ALLOWED_EXTENSIONS = [
   ".mp4",
@@ -61,10 +63,12 @@ const scheduleCache = new Map<
   { scannedAt: number; items: ScheduledItem[] }
 >();
 const durationCache = new Map<string, { durationSeconds: number; mtimeMs: number }>();
-const scheduleFileCache = new Map<
-  string,
-  { mtimeMs: number | null; schedule: DailySchedule | null; path: string | null }
->();
+
+// Cache for the full schedule file
+let localScheduleCache: {
+  mtimeMs: number | null;
+  schedule: Schedule | null;
+} = { mtimeMs: null, schedule: null };
 
 export function getMediaRoot(): string {
   return MEDIA_ROOT;
@@ -77,8 +81,9 @@ export function buildMediaUrl(relPath: string): string {
 export async function getNowPlaying(
   now: number = Date.now(),
   channel?: string,
+  source: MediaSource = "local",
 ): Promise<NowPlaying> {
-  const scheduled = await getScheduledNowPlaying(now, channel);
+  const scheduled = await getScheduledNowPlaying(now, channel, source);
   if (scheduled) return scheduled;
   throw new Error("Schedule has no playable media for now");
 }
@@ -103,147 +108,200 @@ export async function resolveMediaPath(relPath: string): Promise<string> {
   return absPath;
 }
 
+// Load the full schedule file
+export async function loadFullSchedule(
+  source: MediaSource = "local",
+): Promise<Schedule> {
+  if (source === "remote") {
+    return loadRemoteFullSchedule();
+  }
+  return loadLocalFullSchedule();
+}
+
+async function loadLocalFullSchedule(): Promise<Schedule> {
+  try {
+    const stat = await fs.stat(SCHEDULE_FILE);
+    if (localScheduleCache.mtimeMs === stat.mtimeMs && localScheduleCache.schedule) {
+      return localScheduleCache.schedule;
+    }
+
+    const raw = await fs.readFile(SCHEDULE_FILE, "utf8");
+    const parsed = JSON.parse(raw) as Schedule;
+    validateSchedule(parsed);
+    localScheduleCache = { mtimeMs: stat.mtimeMs, schedule: parsed };
+    return parsed;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err?.code === "ENOENT") {
+      // Return empty schedule if file doesn't exist
+      return { channels: {} };
+    }
+    throw error;
+  }
+}
+
+async function loadRemoteFullSchedule(): Promise<Schedule> {
+  const base = process.env.REMOTE_MEDIA_BASE || REMOTE_MEDIA_BASE;
+  if (!base) return { channels: {} };
+
+  try {
+    const scheduleUrl = new URL("schedule.json", base).toString();
+    const res = await fetch(scheduleUrl, { cache: "no-store" });
+    if (!res.ok) {
+      console.warn("Remote schedule.json not found", res.status);
+      return { channels: {} };
+    }
+    const parsed = (await res.json()) as Schedule;
+    validateSchedule(parsed);
+    return parsed;
+  } catch (error) {
+    console.warn("Failed to fetch remote schedule", error);
+    return { channels: {} };
+  }
+}
+
+// Save the full schedule file
+export async function saveFullSchedule(schedule: Schedule): Promise<Schedule> {
+  validateSchedule(schedule);
+  await fs.mkdir(path.dirname(SCHEDULE_FILE), { recursive: true });
+  await fs.writeFile(SCHEDULE_FILE, JSON.stringify(schedule, null, 2), {
+    encoding: "utf8",
+  });
+  localScheduleCache = { mtimeMs: null, schedule };
+  return schedule;
+}
+
+// Save a channel's schedule (updates the full schedule file)
 export async function saveSchedule(
   schedule: DailySchedule,
   channel?: string,
 ): Promise<DailySchedule> {
   const channelId = normalizeChannelId(channel);
-  validateSchedule(schedule);
-  const targetPath = getPrimarySchedulePath(channelId);
+  validateChannelSchedule(schedule, channelId);
 
-  await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  await fs.writeFile(targetPath, JSON.stringify(schedule, null, 2), {
-    encoding: "utf8",
-  });
+  // Load existing schedule
+  const fullSchedule = await loadLocalFullSchedule();
 
-  scheduleFileCache.set(channelId, { mtimeMs: null, schedule, path: targetPath });
+  // Update the channel's schedule
+  fullSchedule.channels[channelId] = { slots: schedule.slots };
+
+  // Save back
+  await saveFullSchedule(fullSchedule);
+
   return schedule;
 }
 
-export async function loadSchedule(channel?: string): Promise<DailySchedule | null> {
+export async function loadSchedule(
+  channel?: string,
+  source: MediaSource = "local",
+): Promise<DailySchedule | null> {
   const channelId = normalizeChannelId(channel);
-  const cached = scheduleFileCache.get(channelId);
-
-  if (cached?.path) {
-    try {
-      const stat = await fs.stat(cached.path);
-      if (cached.mtimeMs === stat.mtimeMs) {
-        return cached.schedule;
-      }
-    } catch {
-      // fall through to normal resolution
-    }
+  const fullSchedule = await loadFullSchedule(source);
+  const channelSchedule = fullSchedule.channels[channelId];
+  
+  if (!channelSchedule) {
+    return null;
   }
-
-  const candidates = getScheduleFileCandidates(channelId);
-
-  for (const candidate of candidates) {
-    try {
-      const stat = await fs.stat(candidate);
-      const raw = await fs.readFile(candidate, "utf8");
-      const parsed = JSON.parse(raw) as DailySchedule;
-      validateSchedule(parsed);
-      scheduleFileCache.set(channelId, {
-        mtimeMs: stat.mtimeMs,
-        schedule: parsed,
-        path: candidate,
-      });
-      return parsed;
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err?.code === "ENOENT") {
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  scheduleFileCache.set(channelId, { mtimeMs: null, schedule: null, path: null });
-  return null;
+  
+  return { slots: channelSchedule.slots };
 }
 
-export async function listChannels(): Promise<string[]> {
-  const channels = new Set<string>([DEFAULT_CHANNEL]);
+export type ChannelInfo = {
+  id: string;
+  shortName?: string;
+};
 
-  // Ensure the baked-in default is present if any schedule file exists for it or legacy default.
-  const defaultPaths = getScheduleFileCandidates(DEFAULT_CHANNEL);
-  for (const p of defaultPaths) {
-    if (await existsSafe(p)) {
-      channels.add(DEFAULT_CHANNEL);
-    }
-  }
-
-  if (await existsSafe(SCHEDULE_DIR)) {
-    const entries = await fs.readdir(SCHEDULE_DIR, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== ".json") {
-        continue;
-      }
-      const name = path.basename(entry.name, ".json");
-      const normalized = normalizeChannelId(name);
-      if (normalized === "default") continue; // hide legacy default channel
-      channels.add(normalized);
-    }
-  }
-
-  return Array.from(channels).sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: "base" }),
+export async function listChannels(source: MediaSource = "local"): Promise<ChannelInfo[]> {
+  const fullSchedule = await loadFullSchedule(source);
+  const channels: ChannelInfo[] = Object.entries(fullSchedule.channels).map(
+    ([id, schedule]) => ({
+      id,
+      shortName: schedule.shortName,
+    }),
+  );
+  return channels.sort((a, b) =>
+    a.id.localeCompare(b.id, undefined, { sensitivity: "base" }),
   );
 }
 
 export async function createChannel(
   channel?: string,
-): Promise<{ channel: string; schedule: DailySchedule }> {
+  shortName?: string,
+): Promise<{ channel: string; schedule: DailySchedule; shortName?: string }> {
   const id = normalizeChannelId(channel);
-  const targetPath = getPrimarySchedulePath(id);
 
   // If it already exists, return the current schedule (or empty).
   const existing = await loadSchedule(id);
   if (existing) {
-    return { channel: id, schedule: existing };
+    const fullSchedule = await loadLocalFullSchedule();
+    const existingShortName = fullSchedule.channels[id]?.shortName;
+    return { channel: id, schedule: existing, shortName: existingShortName };
   }
 
-  const empty: DailySchedule = { slots: [] };
-  await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  await fs.writeFile(targetPath, JSON.stringify(empty, null, 2), { encoding: "utf8" });
-  scheduleFileCache.set(id, { mtimeMs: null, schedule: empty, path: targetPath });
-  return { channel: id, schedule: empty };
+  // Load full schedule and add new channel
+  const fullSchedule = await loadLocalFullSchedule();
+  const empty: ChannelSchedule = { slots: [], shortName: shortName?.trim() || undefined };
+  fullSchedule.channels[id] = empty;
+  await saveFullSchedule(fullSchedule);
+
+  return { channel: id, schedule: { slots: [] }, shortName: shortName?.trim() || undefined };
 }
 
 export async function deleteChannel(channel?: string): Promise<void> {
   const id = normalizeChannelId(channel);
-  if (id === "default") {
-    throw new Error("Cannot delete default channel");
+  if (!id) {
+    throw new Error("Channel ID is required");
   }
-  const targetPath = getPrimarySchedulePath(id);
-  try {
-    await fs.unlink(targetPath);
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err?.code !== "ENOENT") {
-      throw error;
-    }
+
+  // Load full schedule and remove channel
+  const fullSchedule = await loadLocalFullSchedule();
+  if (fullSchedule.channels[id]) {
+    delete fullSchedule.channels[id];
+    await saveFullSchedule(fullSchedule);
   }
-  scheduleFileCache.delete(id);
+}
+
+export async function updateChannel(
+  channel: string,
+  updates: { shortName?: string },
+): Promise<ChannelInfo> {
+  const id = normalizeChannelId(channel);
+  if (!id) {
+    throw new Error("Channel ID is required");
+  }
+
+  const fullSchedule = await loadLocalFullSchedule();
+  if (!fullSchedule.channels[id]) {
+    throw new Error(`Channel "${id}" not found`);
+  }
+
+  // Update shortName (allow setting to empty string to remove it)
+  if (updates.shortName !== undefined) {
+    const trimmed = updates.shortName.trim();
+    fullSchedule.channels[id].shortName = trimmed || undefined;
+  }
+
+  await saveFullSchedule(fullSchedule);
+
+  return {
+    id,
+    shortName: fullSchedule.channels[id].shortName,
+  };
 }
 
 async function getScheduledNowPlaying(
   now: number,
   channel?: string,
+  source: MediaSource = "local",
 ): Promise<NowPlaying | null> {
-  const schedule = await loadSchedule(channel);
+  const schedule = await loadSchedule(channel, source);
   if (!schedule) return null;
 
-  const files = await listMediaFiles();
+  // For remote source, always use remote media items; for local, use local files
   const fileEntries =
-    files.length > 0
-      ? await Promise.all(
-          files.map(async (file) => ({
-            ...file,
-            durationSeconds: await getDurationSeconds(file.absPath, file.mtimeMs),
-          })),
-        )
-      : await listRemoteMediaItems();
+    source === "remote"
+      ? await listRemoteMediaItems()
+      : await getLocalMediaEntries();
 
   if (!fileEntries.length) return null;
 
@@ -271,6 +329,17 @@ async function getScheduledNowPlaying(
   }
 
   return null;
+}
+
+async function getLocalMediaEntries() {
+  const files = await listMediaFiles();
+  if (files.length === 0) return [];
+  return Promise.all(
+    files.map(async (file) => ({
+      ...file,
+      durationSeconds: await getDurationSeconds(file.absPath, file.mtimeMs),
+    })),
+  );
 }
 
 export async function getScheduleItems(options?: { refresh?: boolean }): Promise<ScheduledItem[]> {
@@ -625,26 +694,13 @@ function normalizeRel(rel: string): string {
 }
 
 function normalizeChannelId(channel?: string): string {
-  const base = (channel ?? DEFAULT_CHANNEL).trim() || DEFAULT_CHANNEL;
+  if (!channel) return "";
+  const base = channel.trim();
+  if (!base) return "";
   const safe = base.replace(/[^a-zA-Z0-9_-]/g, "-");
-  return safe || DEFAULT_CHANNEL;
+  return safe;
 }
 
-function getScheduleFileCandidates(channel: string): string[] {
-  const id = normalizeChannelId(channel);
-  if (id === DEFAULT_CHANNEL) {
-    return [path.join(SCHEDULE_DIR, `${DEFAULT_CHANNEL}.json`)];
-  }
-  return [path.join(SCHEDULE_DIR, `${id}.json`)];
-}
-
-function getPrimarySchedulePath(channel: string): string {
-  const id = normalizeChannelId(channel);
-  if (id === DEFAULT_CHANNEL) {
-    return path.join(SCHEDULE_DIR, `${DEFAULT_CHANNEL}.json`);
-  }
-  return path.join(SCHEDULE_DIR, `${id}.json`);
-}
 
 function getLocalNow(now: number) {
   const d = new Date(now);

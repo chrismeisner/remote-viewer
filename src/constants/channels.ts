@@ -1,2 +1,2 @@
-export const DEFAULT_CHANNEL = "2";
+// No default channel required - sources can have 0 or more channels
 

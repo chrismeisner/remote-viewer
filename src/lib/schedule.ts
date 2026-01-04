@@ -5,6 +5,18 @@ export type ScheduleSlot = {
   title?: string;
 };
 
+export type ChannelSchedule = {
+  slots: ScheduleSlot[];
+  shortName?: string;
+};
+
+// Single schedule.json containing all channels
+export type Schedule = {
+  channels: Record<string, ChannelSchedule>;
+  version?: number;
+};
+
+// Legacy type for backward compatibility during migration
 export type DailySchedule = {
   slots: ScheduleSlot[];
   version?: number;
@@ -22,9 +34,10 @@ export function parseTimeToSeconds(value: string | undefined): number | null {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
-export function validateSchedule(schedule: DailySchedule) {
+export function validateChannelSchedule(schedule: ChannelSchedule, channelId?: string) {
+  const prefix = channelId ? `Channel ${channelId}: ` : "";
   if (!schedule || !Array.isArray(schedule.slots)) {
-    throw new Error("Schedule requires slots");
+    throw new Error(`${prefix}Schedule requires slots`);
   }
 
   let previous = -1;
@@ -32,21 +45,36 @@ export function validateSchedule(schedule: DailySchedule) {
     const startSeconds = parseTimeToSeconds(slot.start);
     const endSeconds = parseTimeToSeconds(slot.end);
     if (startSeconds === null) {
-      throw new Error(`Invalid start time: ${slot.start}`);
+      throw new Error(`${prefix}Invalid start time: ${slot.start}`);
     }
     if (endSeconds === null) {
-      throw new Error(`Invalid end time: ${slot.end}`);
+      throw new Error(`${prefix}Invalid end time: ${slot.end}`);
     }
     if (endSeconds <= startSeconds) {
-      throw new Error(`End time must be after start time (${slot.start} -> ${slot.end})`);
+      throw new Error(`${prefix}End time must be after start time (${slot.start} -> ${slot.end})`);
     }
     if (startSeconds <= previous) {
-      throw new Error("Start times must be ascending");
+      throw new Error(`${prefix}Start times must be ascending`);
     }
     previous = startSeconds;
     if (!slot.file) {
-      throw new Error(`Missing file path at ${slot.start}`);
+      throw new Error(`${prefix}Missing file path at ${slot.start}`);
     }
   }
+}
+
+export function validateSchedule(schedule: Schedule) {
+  if (!schedule || typeof schedule.channels !== "object") {
+    throw new Error("Schedule requires channels object");
+  }
+
+  for (const [channelId, channelSchedule] of Object.entries(schedule.channels)) {
+    validateChannelSchedule(channelSchedule, channelId);
+  }
+}
+
+// Legacy validation for backward compatibility
+export function validateDailySchedule(schedule: DailySchedule) {
+  validateChannelSchedule(schedule);
 }
 

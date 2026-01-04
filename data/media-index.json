@@ -1,0 +1,405 @@
+{
+  "generatedAt": "2026-01-04T03:34:00.680Z",
+  "items": [
+    {
+      "relPath": "A Clockwork Orange (1971) 40th Anniv (1080p BluRay x265 10bit Tigole).aac.mp4",
+      "durationSeconds": 8197,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "A Clockwork Orange (1971) 40th Anniv (1080p BluRay x265 10bit Tigole).aac"
+    },
+    {
+      "relPath": "Caddyshack.1980.1080p.BRrip.x264.YIFY.mp4",
+      "durationSeconds": 5881,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Caddyshack.1980.1080p.BRrip.x264.YIFY"
+    },
+    {
+      "relPath": "Empire.Records.1995.1080p.BluRay.x264.YIFY.mp4",
+      "durationSeconds": 5406,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Empire.Records.1995.1080p.BluRay.x264.YIFY"
+    },
+    {
+      "relPath": "EuroTrip 2004 UNRATED 1080p BluRay HEVC x265 5.1 BONE.aac.mp4",
+      "durationSeconds": 5511,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "EuroTrip 2004 UNRATED 1080p BluRay HEVC x265 5.1 BONE.aac"
+    },
+    {
+      "relPath": "Eyes.Wide.Shut.1999.1080p.BluRay.x264.YIFY.mp4",
+      "durationSeconds": 9542,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Eyes.Wide.Shut.1999.1080p.BluRay.x264.YIFY"
+    },
+    {
+      "relPath": "Happiness[1998]DVDRIP[Eng].aac.mp4",
+      "durationSeconds": 8395,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Happiness[1998]DVDRIP[Eng].aac"
+    },
+    {
+      "relPath": "Jay.and.Silent.Bob.Strike.Back.2001.1080p.BrRip.x264.BOKUTOX.YIFY.mp4",
+      "durationSeconds": 6307,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Jay.and.Silent.Bob.Strike.Back.2001.1080p.BrRip.x264.BOKUTOX.YIFY"
+    },
+    {
+      "relPath": "Machete.Kills.2013.1080p.BluRay.x264.YIFY.mp4",
+      "durationSeconds": 6482,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Machete.Kills.2013.1080p.BluRay.x264.YIFY"
+    },
+    {
+      "relPath": "Making Nightcrawler.mkv",
+      "durationSeconds": 316,
+      "format": "mkv",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "Making Nightcrawler"
+    },
+    {
+      "relPath": "Mallrats.1995.1080p.BluRay.x264.YIFY.mp4",
+      "durationSeconds": 7324,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Mallrats.1995.1080p.BluRay.x264.YIFY"
+    },
+    {
+      "relPath": "Mission.Impossible.1996.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.aac.mp4",
+      "durationSeconds": 6611,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Mission.Impossible.1996.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.aac"
+    },
+    {
+      "relPath": "Mission.Impossible.1996.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.mkv",
+      "durationSeconds": 6611,
+      "format": "mkv",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "Mission.Impossible.1996.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265"
+    },
+    {
+      "relPath": "Nightcrawler (2014) (1080p BluRay x265 afm72).mkv",
+      "durationSeconds": 7055,
+      "format": "mkv",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "Nightcrawler (2014) (1080p BluRay x265 afm72)"
+    },
+    {
+      "relPath": "Persistence of  Vision Bonus Disk (disk 2).mp4",
+      "durationSeconds": 5445,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Persistence of  Vision Bonus Disk (disk 2)"
+    },
+    {
+      "relPath": "Persistence of Vision.mp4",
+      "durationSeconds": 4966,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Persistence of Vision"
+    },
+    {
+      "relPath": "Road Trip 2000 Unrated BluRay 1080p HEVC x265 5.1 BONE.aac.mp4",
+      "durationSeconds": 5653,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Road Trip 2000 Unrated BluRay 1080p HEVC x265 5.1 BONE.aac"
+    },
+    {
+      "relPath": "Road Trip 2000 Unrated BluRay 1080p HEVC x265 5.1 BONE.mkv",
+      "durationSeconds": 5653,
+      "format": "mkv",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "Road Trip 2000 Unrated BluRay 1080p HEVC x265 5.1 BONE"
+    },
+    {
+      "relPath": "Saving.Silverman.2001.720p.BluRay.999MB.HQ.x265.10bit-GalaxyRG.mkv",
+      "durationSeconds": 5781,
+      "format": "mkv",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "Saving.Silverman.2001.720p.BluRay.999MB.HQ.x265.10bit-GalaxyRG"
+    },
+    {
+      "relPath": "Sin.City.2005.EXTENDED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.aac.mp4",
+      "durationSeconds": 8505,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Sin.City.2005.EXTENDED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.aac"
+    },
+    {
+      "relPath": "Sin.City.2005.EXTENDED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.mkv",
+      "durationSeconds": 8505,
+      "format": "mkv",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "Sin.City.2005.EXTENDED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265"
+    },
+    {
+      "relPath": "The Last Temptation Of Christ 1988 BDRip 1080p x264 AC3 English Latino URBiN4HD Eng Spa Subs.mkv",
+      "durationSeconds": 9790,
+      "format": "mkv",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "The Last Temptation Of Christ 1988 BDRip 1080p x264 AC3 English Latino URBiN4HD Eng Spa Subs"
+    },
+    {
+      "relPath": "The Simpsons S02E01 Bart Gets an F.mp4",
+      "durationSeconds": 1390,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E01 Bart Gets an F"
+    },
+    {
+      "relPath": "The Simpsons S02E02 Simpson and Delilah.mp4",
+      "durationSeconds": 1390,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E02 Simpson and Delilah"
+    },
+    {
+      "relPath": "The Simpsons S02E03 Treehouse of Horror.mp4",
+      "durationSeconds": 1396,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E03 Treehouse of Horror"
+    },
+    {
+      "relPath": "The Simpsons S02E04 Two Cars in Every Garage and Three Eyes on Every Fish.mp4",
+      "durationSeconds": 1395,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E04 Two Cars in Every Garage and Three Eyes on Every Fish"
+    },
+    {
+      "relPath": "The Simpsons S02E05 Dancin' Homer.mp4",
+      "durationSeconds": 1394,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E05 Dancin' Homer"
+    },
+    {
+      "relPath": "The Simpsons S02E06 Dead Putting Society.mp4",
+      "durationSeconds": 1392,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E06 Dead Putting Society"
+    },
+    {
+      "relPath": "The Simpsons S02E07 Bart vs. Thanksgiving.mp4",
+      "durationSeconds": 1392,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E07 Bart vs. Thanksgiving"
+    },
+    {
+      "relPath": "The Simpsons S02E08 Bart the Daredevil.mp4",
+      "durationSeconds": 1371,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E08 Bart the Daredevil"
+    },
+    {
+      "relPath": "The Simpsons S02E09 Itchy & Scratchy & Marge.mp4",
+      "durationSeconds": 1393,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E09 Itchy & Scratchy & Marge"
+    },
+    {
+      "relPath": "The Simpsons S02E10 Bart Gets Hit by a Car.mp4",
+      "durationSeconds": 1396,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E10 Bart Gets Hit by a Car"
+    },
+    {
+      "relPath": "The Simpsons S02E11 One Fish, Two Fish, Blowfish, Blue Fish.mp4",
+      "durationSeconds": 1393,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E11 One Fish, Two Fish, Blowfish, Blue Fish"
+    },
+    {
+      "relPath": "The Simpsons S02E12 The Way We Was.mp4",
+      "durationSeconds": 1389,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E12 The Way We Was"
+    },
+    {
+      "relPath": "The Simpsons S02E13 Homer vs. Lisa and the Eighth Commandment.mp4",
+      "durationSeconds": 1389,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E13 Homer vs. Lisa and the Eighth Commandment"
+    },
+    {
+      "relPath": "The Simpsons S02E14 Principal Charming.mp4",
+      "durationSeconds": 1394,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E14 Principal Charming"
+    },
+    {
+      "relPath": "The Simpsons S02E15 Oh Brother, Where Art Thou.mp4",
+      "durationSeconds": 1390,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E15 Oh Brother, Where Art Thou"
+    },
+    {
+      "relPath": "The Simpsons S02E16 Bart's Dog Gets an F.mp4",
+      "durationSeconds": 1397,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E16 Bart's Dog Gets an F"
+    },
+    {
+      "relPath": "The Simpsons S02E17 Old Money.mp4",
+      "durationSeconds": 1379,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E17 Old Money"
+    },
+    {
+      "relPath": "The Simpsons S02E18 Brush With Greatness.mp4",
+      "durationSeconds": 1380,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E18 Brush With Greatness"
+    },
+    {
+      "relPath": "The Simpsons S02E19 Lisa's Substitute.mp4",
+      "durationSeconds": 1379,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E19 Lisa's Substitute"
+    },
+    {
+      "relPath": "The Simpsons S02E20 The War of the Simpsons.mp4",
+      "durationSeconds": 1380,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E20 The War of the Simpsons"
+    },
+    {
+      "relPath": "The Simpsons S02E21 Three Men and a Comic Book.mp4",
+      "durationSeconds": 1379,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E21 Three Men and a Comic Book"
+    },
+    {
+      "relPath": "The Simpsons S02E22 Blood Feud.mp4",
+      "durationSeconds": 1381,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The Simpsons S02E22 Blood Feud"
+    },
+    {
+      "relPath": "The Time Machine 2002 BDRip 1080p x264 DTS-HighCode.mkv",
+      "durationSeconds": 5773,
+      "format": "mkv",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "The Time Machine 2002 BDRip 1080p x264 DTS-HighCode"
+    },
+    {
+      "relPath": "The.Beatles.Anthology.S01E01.1080p.HEVC.x265-MeGusta.mkv",
+      "durationSeconds": 3755,
+      "format": "mkv",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "The.Beatles.Anthology.S01E01.1080p.HEVC.x265-MeGusta"
+    },
+    {
+      "relPath": "The.Beatles.Anthology.S01E04.1080p.WEB.h264-GRACE.aac.mp4",
+      "durationSeconds": 3210,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The.Beatles.Anthology.S01E04.1080p.WEB.h264-GRACE.aac"
+    },
+    {
+      "relPath": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE.aac.mp4",
+      "durationSeconds": 3269,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE.aac"
+    },
+    {
+      "relPath": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE.mkv",
+      "durationSeconds": 3269,
+      "format": "mkv",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE"
+    },
+    {
+      "relPath": "The.Holy.Mountain.1973.REMASTERED.1080p.BluRay.H264.AAC-LAMA.mp4",
+      "durationSeconds": 6816,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The.Holy.Mountain.1973.REMASTERED.1080p.BluRay.H264.AAC-LAMA"
+    },
+    {
+      "relPath": "The.Matrix.1999.1080p.BrRip.x264.YIFY.mp4",
+      "durationSeconds": 8178,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "The.Matrix.1999.1080p.BrRip.x264.YIFY"
+    }
+  ]
+}

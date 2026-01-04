@@ -1,15 +1,14 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { DEFAULT_CHANNEL } from "@/constants/channels";
 import {
   MEDIA_SOURCE_EVENT,
   MEDIA_SOURCE_KEY,
   REMOTE_MEDIA_BASE,
   type MediaSource,
 } from "@/constants/media";
-import { DailySchedule, ScheduleSlot, validateSchedule } from "@/lib/schedule";
+import { DailySchedule, ScheduleSlot, validateDailySchedule } from "@/lib/schedule";
 
 type MediaFile = {
   relPath: string;
@@ -18,6 +17,11 @@ type MediaFile = {
   format: string;
   supported: boolean;
   supportedViaCompanion: boolean;
+};
+
+type ChannelInfo = {
+  id: string;
+  shortName?: string;
 };
 
 export default function ScheduleAdminPage() {
@@ -33,7 +37,6 @@ function ScheduleAdminContent() {
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSlotModal, setShowSlotModal] = useState(false);
@@ -42,19 +45,19 @@ function ScheduleAdminContent() {
   const [modalFile, setModalFile] = useState<string>("");
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const [copiedCommand, setCopiedCommand] = useState(false);
-  const [channel, setChannel] = useState(
-    () => searchParams.get("channel") ?? DEFAULT_CHANNEL,
+  const [channel, setChannel] = useState<string | null>(
+    () => searchParams.get("channel") || null,
   );
-  const [channels, setChannels] = useState<string[]>([DEFAULT_CHANNEL]);
-  const [newChannelName, setNewChannelName] = useState("");
+  const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [mediaSource, setMediaSource] = useState<MediaSource>("local");
-  const [showSourceModal, setShowSourceModal] = useState(false);
-  const [modalSource, setModalSource] = useState<MediaSource>("local");
-  const [changingSource, setChangingSource] = useState(false);
   const [mediaRefreshToken, setMediaRefreshToken] = useState(0);
   const [forceMediaRefresh, setForceMediaRefresh] = useState(false);
   const [pushingManifest, setPushingManifest] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "pending" | "saving" | "saved">("idle");
+  const pendingSlotsRef = useRef<ScheduleSlot[] | null>(null);
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedSlotsRef = useRef<string>("");
 
   // Sync channel from URL if provided
   useEffect(() => {
@@ -82,20 +85,6 @@ function ScheduleAdminContent() {
     };
   }, []);
 
-  const handleSourceChange = (value: MediaSource) => {
-    setMediaSource(value);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(MEDIA_SOURCE_KEY, value);
-      window.dispatchEvent(new Event(MEDIA_SOURCE_EVENT));
-    }
-  };
-
-  const handleSourceSave = () => {
-    handleSourceChange(modalSource);
-    setChangingSource(true);
-    setMediaRefreshToken((token) => token + 1);
-  };
-
   // Load available channels and media list once
   useEffect(() => {
     let cancelled = false;
@@ -108,12 +97,20 @@ function ScheduleAdminContent() {
 
     const load = async () => {
       try {
-        const channelsRes = await fetch(`/api/channels`);
+        const channelsRes = await fetch(
+          `/api/channels?source=${encodeURIComponent(mediaSource)}`,
+        );
         const channelsJson = await channelsRes.json();
-        const channelNames =
-          Array.isArray(channelsJson.channels) && channelsJson.channels.length > 0
-            ? channelsJson.channels
-            : ["default"];
+        // Normalize channels to ChannelInfo objects (handles legacy string[] responses)
+        const channelList: ChannelInfo[] = Array.isArray(channelsJson.channels)
+          ? channelsJson.channels.map((ch: unknown) => {
+              if (typeof ch === "string") return { id: ch };
+              if (ch && typeof ch === "object" && typeof (ch as ChannelInfo).id === "string") {
+                return ch as ChannelInfo;
+              }
+              return null;
+            }).filter(Boolean) as ChannelInfo[]
+          : [];
 
         let filesJson: { items?: MediaFile[] } = {};
         if (mediaSource === "remote") {
@@ -133,7 +130,7 @@ function ScheduleAdminContent() {
           }
         } else {
           const filesRes = await fetch(
-            `/api/media-files${shouldForceRefresh ? "?refresh=1" : ""}&t=${Date.now()}`,
+            `/api/media-files?${shouldForceRefresh ? "refresh=1&" : ""}t=${Date.now()}`,
             { cache: "no-store" },
           );
           filesJson = await filesRes.json();
@@ -141,12 +138,15 @@ function ScheduleAdminContent() {
 
         if (!cancelled) {
           setFiles(filesJson.items || []);
-          setChannels(channelNames);
-          if (!channelNames.includes(channel)) {
-            const fallback = channelNames.includes(DEFAULT_CHANNEL)
-              ? DEFAULT_CHANNEL
-              : channelNames[0];
-            setChannel(fallback);
+          setChannels(channelList);
+          // Auto-select first channel if none selected or current channel no longer exists
+          const channelIds = channelList.map(c => c.id);
+          if (channelList.length > 0) {
+            if (!channel || !channelIds.includes(channel)) {
+              setChannel(channelList[0].id);
+            }
+          } else {
+            setChannel(null);
           }
         }
       } catch {
@@ -164,16 +164,15 @@ function ScheduleAdminContent() {
     };
   }, [mediaSource, mediaRefreshToken, forceMediaRefresh]);
 
-  // Close modal when source change finishes loading
-  useEffect(() => {
-    if (changingSource && !loading) {
-      setChangingSource(false);
-      setShowSourceModal(false);
-    }
-  }, [changingSource, loading]);
-
   // Reload schedule when channel changes
   useEffect(() => {
+    // Don't load if no channel is selected
+    if (!channel) {
+      setSlots([]);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setMessage(null);
@@ -181,7 +180,9 @@ function ScheduleAdminContent() {
 
     const loadSchedule = async () => {
       try {
-        const res = await fetch(`/api/schedule?channel=${encodeURIComponent(channel)}`);
+        const res = await fetch(
+          `/api/schedule?channel=${encodeURIComponent(channel)}&source=${encodeURIComponent(mediaSource)}`,
+        );
         const schedJson = await res.json();
         if (!cancelled) {
           const savedSlots = schedJson?.schedule?.slots ?? [];
@@ -200,7 +201,7 @@ function ScheduleAdminContent() {
     return () => {
       cancelled = true;
     };
-  }, [channel]);
+  }, [channel, mediaSource]);
 
   const sortedFiles = useMemo(
     () =>
@@ -265,10 +266,9 @@ function ScheduleAdminContent() {
     setSlots((prev) => prev.map((s, i) => (i === index ? slot : s)));
   };
 
-  const persistSchedule = async (slotsToPersist: ScheduleSlot[]) => {
-    setSaving(true);
-    setMessage(null);
-    setError(null);
+  // Core save function - always saves to local, then pushes to remote if needed
+  const doSave = useCallback(async (slotsToPersist: ScheduleSlot[]) => {
+    if (!channel) return false;
 
     const normalized = [...slotsToPersist].sort(
       (a, b) => timeToSeconds(a.start) - timeToSeconds(b.start),
@@ -276,14 +276,13 @@ function ScheduleAdminContent() {
 
     const body: DailySchedule = { slots: normalized };
     try {
-      validateSchedule(body);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid schedule");
-      setSaving(false);
-      return;
+      validateDailySchedule(body);
+    } catch {
+      return false;
     }
 
     try {
+      // Always save to local first
       const res = await fetch(
         `/api/schedule?channel=${encodeURIComponent(channel)}`,
         {
@@ -292,25 +291,75 @@ function ScheduleAdminContent() {
           body: JSON.stringify(body),
         },
       );
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt);
+      if (!res.ok) return false;
+      lastSavedSlotsRef.current = JSON.stringify(normalized);
+
+      // If remote source is active, push schedule to remote
+      if (mediaSource === "remote") {
+        try {
+          await fetch("/api/schedule/push", { method: "POST" });
+        } catch {
+          // Ignore push errors - local save succeeded
+        }
       }
 
-      setMessage(
-        `Saved schedule for channel "${channel}" at ${new Date().toLocaleTimeString()}`,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save schedule");
-    } finally {
-      setSaving(false);
+      return true;
+    } catch {
+      return false;
     }
-  };
+  }, [channel, mediaSource]);
+
+  // Auto-save effect with debouncing
+  useEffect(() => {
+    if (!channel) return;
+    if (loading) return;
+
+    const currentSlots = JSON.stringify(slots);
+    
+    // Skip if no changes since last save
+    if (currentSlots === lastSavedSlotsRef.current) {
+      setAutoSaveStatus("idle");
+      return;
+    }
+
+    // Mark as pending
+    setAutoSaveStatus("pending");
+
+    // Clear existing timeout
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Debounce save by 800ms
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      setAutoSaveStatus("saving");
+      void doSave(slots).then((success) => {
+        if (success) {
+          setAutoSaveStatus("saved");
+          // Reset to idle after showing "saved" briefly
+          setTimeout(() => setAutoSaveStatus("idle"), 1500);
+        } else {
+          setAutoSaveStatus("idle");
+        }
+      });
+    }, 800);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [slots, channel, mediaSource, loading, doSave]);
+
+  // Update lastSavedSlotsRef when schedule is loaded
+  useEffect(() => {
+    if (!loading && slots.length >= 0) {
+      lastSavedSlotsRef.current = JSON.stringify(slots);
+    }
+  }, [loading]);
 
   const removeSlot = (index: number) => {
-    const nextSlots = slots.filter((_, i) => i !== index);
-    setSlots(nextSlots);
-    void persistSchedule(nextSlots);
+    setSlots((prev) => prev.filter((_, i) => i !== index));
   };
 
   const scheduleNext = (slot: ScheduleSlot) => {
@@ -332,129 +381,61 @@ function ScheduleAdminContent() {
             Schedule Admin
           </p>
           <p className="text-sm text-slate-400">
-            Single-day (24h, UTC) schedule per channel. Saves directly to local JSON; no external
-            sync or Airtable.
+            Single-day (24h, UTC) schedule per channel. Changes auto-save{mediaSource === "remote" ? " and push to remote" : " to local JSON"}.
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Add slots, then hit Save schedule. Media is read from your MEDIA_ROOT on this machine.
+            Add or edit slots — changes save automatically{mediaSource === "remote" ? " and sync to CDN via FTP" : ""}.
           </p>
         </div>
       </div>
-      {showSourceModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-          onClick={() => setShowSourceModal(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-xl border border-white/15 bg-slate-900 p-5 shadow-2xl shadow-black/60"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-100">Select media source</h4>
-              <button
-                onClick={() => setShowSourceModal(false)}
-                className="rounded-md bg-white/10 px-2 py-1 text-xs text-slate-100 hover:bg-white/20"
-              >
-                Close
-              </button>
-            </div>
-            <div className="mt-4 space-y-2 text-sm text-slate-200">
-              <label className="block">
-                Source
-                <select
-                  value={modalSource}
-                  onChange={(e) => setModalSource(e.target.value as MediaSource)}
-                  className="mt-1 w-full rounded-md bg-slate-900 border border-white/15 px-2 py-2 text-sm"
-                >
-                  <option value="local">Local</option>
-                  <option value="remote">Remote ({REMOTE_MEDIA_BASE})</option>
-                </select>
-              </label>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => setShowSourceModal(false)}
-                className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSourceSave}
-                disabled={changingSource}
-                className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
-              >
-                {changingSource ? "Changing…" : "Save & reload"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-slate-300">Media source</span>
-            <span className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-slate-100">
-              {mediaSource === "remote" ? `Remote (${REMOTE_MEDIA_BASE})` : "Local"}
-            </span>
-            <button
-              onClick={() => {
-                setModalSource(mediaSource);
-                setShowSourceModal(true);
-              }}
-              className="rounded-md border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100 transition hover:border-white/40 hover:bg-white/15"
-            >
-              Change source
-            </button>
-          </div>
           <div className="flex items-center gap-2 text-sm">
             <label className="text-slate-300">Channel</label>
             <select
-              value={channel}
-              onChange={(e) => setChannel(e.target.value)}
-              disabled={loadingChannels}
+              value={channel ?? ""}
+              onChange={(e) => setChannel(e.target.value || null)}
+              disabled={loadingChannels || channels.length === 0}
               className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-slate-100"
             >
+              {channels.length === 0 && (
+                <option value="">No channels</option>
+              )}
               {channels.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+                <option key={c.id} value={c.id}>
+                  {c.id}{c.shortName ? ` - ${c.shortName}` : ""}
                 </option>
               ))}
             </select>
-            <input
-              value={newChannelName}
-              onChange={(e) => setNewChannelName(e.target.value)}
-              placeholder="New channel name"
-              className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-sm text-slate-100 placeholder:text-slate-500"
-            />
-            <button
-              onClick={() => {
-                const trimmed = newChannelName.trim();
-                if (!trimmed) return;
-                setChannel(trimmed);
-                setNewChannelName("");
-                setSlots([]);
-                setMessage(
-                  `Switched to channel "${trimmed}". Add schedule items and save.`,
-                );
-              }}
-              className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-sm font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
-            >
-              Switch/Create
-            </button>
           </div>
           <button
             onClick={addSlot}
             className="rounded-md border border-white/15 bg-white/10 px-3 py-1 text-sm font-semibold text-slate-50 transition hover:border-white/30 hover:bg-white/15"
-            disabled={loading || saving}
+            disabled={loading || autoSaveStatus === "saving"}
           >
             + Add schedule item
           </button>
-          <button
-            onClick={() => void persistSchedule(slots)}
-            className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-3 py-1 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
-            disabled={loading || saving || slots.length === 0}
+          <span
+            className={`text-xs px-2 py-1 rounded-full transition-opacity ${
+              autoSaveStatus === "saving"
+                ? "bg-blue-500/20 text-blue-200"
+                : autoSaveStatus === "saved"
+                  ? "bg-emerald-500/20 text-emerald-200"
+                  : autoSaveStatus === "pending"
+                    ? "bg-amber-500/20 text-amber-200"
+                    : "opacity-0"
+            }`}
           >
-            {saving ? "Saving…" : "Save schedule"}
-          </button>
+            {autoSaveStatus === "saving"
+              ? mediaSource === "remote" ? "Saving & pushing…" : "Saving…"
+              : autoSaveStatus === "saved"
+                ? mediaSource === "remote" ? "Saved & pushed" : "Saved"
+                : autoSaveStatus === "pending"
+                  ? "Unsaved changes"
+                  : ""}
+          </span>
+          {mediaSource === "remote" && (
+            <span className="text-xs text-blue-300">Changes auto-sync to remote</span>
+          )}
         </div>
 
         {loading ? (
@@ -772,7 +753,6 @@ function ScheduleAdminContent() {
                       (a, b) => timeToSeconds(a.start) - timeToSeconds(b.start),
                     );
                     setSlots(nextSlots);
-                    await persistSchedule(nextSlots);
                     setShowSlotModal(false);
                   })();
                 }}
