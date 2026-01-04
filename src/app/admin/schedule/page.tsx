@@ -26,7 +26,7 @@ type ChannelInfo = {
 
 export default function ScheduleAdminPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-slate-200">Loading...</div>}>
+    <Suspense fallback={<div className="p-4 text-neutral-200">Loading...</div>}>
       <ScheduleAdminContent />
     </Suspense>
   );
@@ -211,6 +211,12 @@ function ScheduleAdminContent() {
     [files],
   );
 
+  // Only supported files for schedule dropdowns
+  const supportedFiles = useMemo(
+    () => sortedFiles.filter((f) => f.supported || f.supportedViaCompanion),
+    [sortedFiles],
+  );
+
   const fileByRel = useMemo(() => {
     const map = new Map<string, MediaFile>();
     for (const f of sortedFiles) map.set(f.relPath, f);
@@ -247,14 +253,14 @@ function ScheduleAdminContent() {
   };
 
   const addSlot = () => {
-    const defaultFile = sortedFiles[0]?.relPath || "";
+    const defaultFile = supportedFiles[0]?.relPath || "";
     const nextStart =
       slots.length > 0
         ? incrementTime(slots[slots.length - 1].start, 60)
         : "00:00:00";
     setModalFile(defaultFile);
     setModalStart(nextStart);
-    setModalEnd(computeEndTime(nextStart, defaultFile, sortedFiles));
+    setModalEnd(computeEndTime(nextStart, defaultFile, supportedFiles));
     setShowSlotModal(true);
   };
 
@@ -364,38 +370,39 @@ function ScheduleAdminContent() {
 
   const scheduleNext = (slot: ScheduleSlot) => {
     const nextStart = incrementTime(slot.end, 1);
-    const file = sortedFiles.find((f) => f.relPath === slot.file)
+    // Use the previous file if it's supported, otherwise default to first supported file
+    const file = supportedFiles.find((f) => f.relPath === slot.file)
       ? slot.file
-      : sortedFiles[0]?.relPath || "";
+      : supportedFiles[0]?.relPath || "";
     setModalFile(file);
     setModalStart(nextStart);
-    setModalEnd(computeEndTime(nextStart, file, sortedFiles));
+    setModalEnd(computeEndTime(nextStart, file, supportedFiles));
     setShowSlotModal(true);
   };
 
   return (
-    <div className="flex flex-col gap-6 text-slate-100">
+    <div className="flex flex-col gap-6 text-neutral-100">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-300">
+          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">
             Schedule Admin
           </p>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-neutral-400">
             Single-day (24h, UTC) schedule per channel. Changes auto-save{mediaSource === "remote" ? " and push to remote" : " to local JSON"}.
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-neutral-500">
             Add or edit slots — changes save automatically{mediaSource === "remote" ? " and sync to CDN via FTP" : ""}.
           </p>
         </div>
       </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 text-sm">
-            <label className="text-slate-300">Channel</label>
+            <label className="text-neutral-300">Channel</label>
             <select
               value={channel ?? ""}
               onChange={(e) => setChannel(e.target.value || null)}
               disabled={loadingChannels || channels.length === 0}
-              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-slate-100"
+              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-neutral-100"
             >
               {channels.length === 0 && (
                 <option value="">No channels</option>
@@ -409,7 +416,7 @@ function ScheduleAdminContent() {
           </div>
           <button
             onClick={addSlot}
-            className="rounded-md border border-white/15 bg-white/10 px-3 py-1 text-sm font-semibold text-slate-50 transition hover:border-white/30 hover:bg-white/15"
+            className="rounded-md border border-white/15 bg-white/10 px-3 py-1 text-sm font-semibold text-neutral-50 transition hover:border-white/30 hover:bg-white/15"
             disabled={loading || autoSaveStatus === "saving"}
           >
             + Add schedule item
@@ -439,18 +446,18 @@ function ScheduleAdminContent() {
         </div>
 
         {loading ? (
-          <p className="text-sm text-slate-300">Loading…</p>
+          <p className="text-sm text-neutral-300">Loading…</p>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4 shadow-lg shadow-black/30">
+            <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
               {slots.length === 0 ? (
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-neutral-300">
                   No schedule items yet. Add the first item to build a 24h schedule.
                 </p>
               ) : (
-                <div className="overflow-hidden rounded-lg border border-white/10 bg-slate-950/50">
+                <div className="overflow-hidden rounded-lg border border-white/10 bg-neutral-950/50">
                   <table className="min-w-full text-sm">
-                    <thead className="bg-white/5 text-slate-200">
+                    <thead className="bg-white/5 text-neutral-200">
                       <tr>
                         <th className="px-3 py-2 text-left font-semibold">Start</th>
                         <th className="px-3 py-2 text-left font-semibold">End</th>
@@ -473,12 +480,12 @@ function ScheduleAdminContent() {
                         .map(({ slot, idx }) => {
                           const duration = fileByRel.get(slot.file)?.durationSeconds || 0;
                           return (
-                            <tr key={idx} className="bg-slate-950/60 text-slate-100">
+                            <tr key={idx} className="bg-neutral-950/60 text-neutral-100">
                               <td className="px-3 py-2">
                                 <input
                                   type="time"
                                   step="1"
-                                  className="w-24 rounded-md bg-slate-900 border border-white/10 px-2 py-1 text-sm"
+                                  className="w-24 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
                                   value={slot.start}
                                   onChange={(e) =>
                                     updateSlot(idx, { ...slot, start: e.target.value })
@@ -489,7 +496,7 @@ function ScheduleAdminContent() {
                                 <input
                                   type="time"
                                   step="1"
-                                  className="w-24 rounded-md bg-slate-900 border border-white/10 px-2 py-1 text-sm"
+                                  className="w-24 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
                                   value={slot.end}
                                   onChange={(e) =>
                                     updateSlot(idx, { ...slot, end: e.target.value })
@@ -498,30 +505,40 @@ function ScheduleAdminContent() {
                               </td>
                               <td className="px-3 py-2">
                                 <select
-                                  className="w-full rounded-md bg-slate-900 border border-white/10 px-2 py-1 text-sm"
+                                  className={`w-full rounded-md bg-neutral-900 border px-2 py-1 text-sm ${
+                                    !fileByRel.get(slot.file)?.supported && !fileByRel.get(slot.file)?.supportedViaCompanion
+                                      ? "border-amber-500/50"
+                                      : "border-white/10"
+                                  }`}
                                   value={slot.file}
                                   onChange={(e) =>
                                     updateSlot(idx, { ...slot, file: e.target.value })
                                   }
                                 >
-                                  {sortedFiles.map((file) => (
+                                  {/* Show current file if it's unsupported (so it doesn't disappear from dropdown) */}
+                                  {slot.file && !supportedFiles.some(f => f.relPath === slot.file) && fileByRel.get(slot.file) && (
+                                    <option key={slot.file} value={slot.file} className="text-amber-300">
+                                      ⚠️ {slot.file} ({formatDuration(fileByRel.get(slot.file)?.durationSeconds || 0)}) - UNSUPPORTED
+                                    </option>
+                                  )}
+                                  {supportedFiles.map((file) => (
                                     <option key={file.relPath} value={file.relPath}>
                                       {file.relPath} ({formatDuration(file.durationSeconds)})
                                     </option>
                                   ))}
-                                  {sortedFiles.length === 0 && (
-                                    <option value="">No files in library</option>
+                                  {supportedFiles.length === 0 && (
+                                    <option value="">No supported files in library</option>
                                   )}
                                 </select>
                               </td>
-                              <td className="px-3 py-2 text-right text-slate-300">
+                              <td className="px-3 py-2 text-right text-neutral-300">
                                 {duration ? formatDuration(duration) : "—"}
                               </td>
                               <td className="px-3 py-2 text-right">
                                 <div className="flex justify-end gap-2">
                                   <button
                                     onClick={() => scheduleNext(slot)}
-                                    className="rounded-md border border-white/20 bg-white/10 px-2 py-1 text-xs font-semibold text-slate-100 transition hover:border-white/40 hover:bg-white/15"
+                                    className="rounded-md border border-white/20 bg-white/10 px-2 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/40 hover:bg-white/15"
                                   >
                                     Schedule next
                                   </button>
@@ -542,13 +559,13 @@ function ScheduleAdminContent() {
               )}
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4 shadow-lg shadow-black/30">
+            <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-semibold text-slate-100">
+                  <h3 className="text-sm font-semibold text-neutral-100">
                     Available media
                   </h3>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-neutral-400">
                     {sortedFiles.length} file{sortedFiles.length === 1 ? "" : "s"}
                   </span>
                 </div>
@@ -556,14 +573,14 @@ function ScheduleAdminContent() {
                   <button
                     onClick={() => refreshMediaList()}
                     disabled={loading}
-                    className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+                    className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
                   >
                     {loading ? "Refreshing…" : "Refresh list"}
                   </button>
                   <button
                     onClick={() => refreshMediaList({ force: true })}
                     disabled={loading}
-                    className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+                    className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
                     title="Rescan media folder to pick up new or removed files"
                   >
                     {loading ? "Syncing…" : "Sync media"}
@@ -581,13 +598,13 @@ function ScheduleAdminContent() {
                 </div>
               </div>
               {sortedFiles.length === 0 ? (
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-neutral-300">
                   No media found in your library. Add files to your media folder.
                 </p>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-white/5">
                   <table className="min-w-full text-sm text-left">
-                    <thead className="bg-white/5 text-slate-200">
+                    <thead className="bg-white/5 text-neutral-200">
                       <tr>
                         <th className="px-3 py-2 font-semibold">File</th>
                         <th className="px-3 py-2 font-semibold w-24 text-left">
@@ -601,7 +618,7 @@ function ScheduleAdminContent() {
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/5 bg-slate-950/40 text-slate-100">
+                    <tbody className="divide-y divide-white/5 bg-neutral-950/40 text-neutral-100">
                       {sortedFiles.map((file) => (
                         <tr key={file.relPath}>
                           <td className="px-3 py-2">
@@ -613,7 +630,7 @@ function ScheduleAdminContent() {
                               {file.relPath}
                             </button>
                           </td>
-                          <td className="px-3 py-2 text-left text-slate-200 uppercase">
+                          <td className="px-3 py-2 text-left text-neutral-200 uppercase">
                             {file.format || "—"}
                           </td>
                           <td className="px-3 py-2 text-left">
@@ -631,7 +648,7 @@ function ScheduleAdminContent() {
                                 : "No"}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-right text-slate-200">
+                          <td className="px-3 py-2 text-right text-neutral-200">
                             {formatDuration(file.durationSeconds)}
                           </td>
                         </tr>
@@ -652,42 +669,42 @@ function ScheduleAdminContent() {
           onClick={() => setShowSlotModal(false)}
         >
           <div
-            className="w-full max-w-md rounded-xl border border-white/15 bg-slate-900 p-5 shadow-2xl shadow-black/60"
+            className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900 p-5 shadow-2xl shadow-black/60"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-100">
+              <h4 className="text-sm font-semibold text-neutral-100">
                 Add schedule item
               </h4>
               <button
                 onClick={() => setShowSlotModal(false)}
-                className="rounded-md bg-white/10 px-2 py-1 text-xs text-slate-100 hover:bg-white/20"
+                className="rounded-md bg-white/10 px-2 py-1 text-xs text-neutral-100 hover:bg-white/20"
               >
                 Close
               </button>
             </div>
 
-            <div className="mt-4 space-y-3 text-sm text-slate-200">
+            <div className="mt-4 space-y-3 text-sm text-neutral-200">
               <label className="block">
                 Media
                 <select
-                  className="mt-1 w-full rounded-md bg-slate-900 border border-white/10 px-2 py-2 text-sm"
+                  className="mt-1 w-full rounded-md bg-neutral-900 border border-white/10 px-2 py-2 text-sm"
                   value={modalFile}
                   onChange={(e) => setModalFile(e.target.value)}
                 >
-                  {sortedFiles.map((file) => (
+                  {supportedFiles.map((file) => (
                     <option key={file.relPath} value={file.relPath}>
                       {file.relPath} ({formatDuration(file.durationSeconds)})
                     </option>
                   ))}
-                  {sortedFiles.length === 0 && (
-                    <option value="">No files in library</option>
+                  {supportedFiles.length === 0 && (
+                    <option value="">No supported files in library</option>
                   )}
                 </select>
               </label>
 
               <div className="flex items-center gap-3">
-                <label className="text-xs text-slate-300">
+                <label className="text-xs text-neutral-300">
                   Start time
                   <input
                     type="time"
@@ -696,30 +713,35 @@ function ScheduleAdminContent() {
                     onChange={(e) => {
                       setModalStart(e.target.value);
                       setModalEnd(
-                        computeEndTime(e.target.value, modalFile, sortedFiles),
+                        computeEndTime(e.target.value, modalFile, supportedFiles),
                       );
                     }}
-                    className="ml-2 rounded-md bg-slate-900 border border-white/10 px-2 py-1 text-sm"
+                    className="ml-2 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
                   />
                 </label>
-                <label className="text-xs text-slate-300">
+                <label className="text-xs text-neutral-300">
                   End time
                   <input
                     type="time"
                     step="1"
                     value={modalEnd}
                     onChange={(e) => setModalEnd(e.target.value)}
-                    className="ml-2 rounded-md bg-slate-900 border border-white/10 px-2 py-1 text-sm"
+                    className="ml-2 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
                   />
                 </label>
-                <div className="text-xs text-slate-300">
+                <div className="text-xs text-neutral-300">
                   Suggested end
-                  <div className="mt-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-slate-100">
-                    {computeEndTime(modalStart, modalFile, sortedFiles)}
+                  <div className="mt-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-neutral-100">
+                    {computeEndTime(modalStart, modalFile, supportedFiles)}
                   </div>
                 </div>
               </div>
 
+              {supportedFiles.length === 0 && sortedFiles.length > 0 && (
+                <p className="text-xs text-amber-300">
+                  No browser-supported media files. Convert unsupported files to MP4/AAC first.
+                </p>
+              )}
               {sortedFiles.length === 0 && (
                 <p className="text-xs text-amber-300">
                   Add media to your library before creating a schedule item.
@@ -730,7 +752,7 @@ function ScheduleAdminContent() {
             <div className="mt-4 flex justify-end gap-2">
               <button
                 onClick={() => setShowSlotModal(false)}
-                className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
               >
                 Cancel
               </button>
@@ -772,26 +794,26 @@ function ScheduleAdminContent() {
           onClick={() => setSelectedFile(null)}
         >
           <div
-            className="w-full max-w-lg rounded-xl border border-white/15 bg-slate-900 p-5 shadow-2xl shadow-black/60"
+            className="w-full max-w-lg rounded-xl border border-white/15 bg-neutral-900 p-5 shadow-2xl shadow-black/60"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-100">Media details</h4>
+              <h4 className="text-sm font-semibold text-neutral-100">Media details</h4>
               <button
                 onClick={() => setSelectedFile(null)}
-                className="rounded-md bg-white/10 px-2 py-1 text-xs text-slate-100 hover:bg-white/20"
+                className="rounded-md bg-white/10 px-2 py-1 text-xs text-neutral-100 hover:bg-white/20"
               >
                 Close
               </button>
             </div>
 
-            <div className="mt-4 space-y-2 text-sm text-slate-100">
+            <div className="mt-4 space-y-2 text-sm text-neutral-100">
               <div>
-                <p className="text-xs uppercase text-slate-400">File</p>
+                <p className="text-xs uppercase text-neutral-400">File</p>
                 <p className="font-mono break-all">{selectedFile.relPath}</p>
               </div>
               <div className="flex flex-wrap gap-3 text-xs">
-                <span className="rounded-full bg-white/10 px-3 py-1 text-slate-100">
+                <span className="rounded-full bg-white/10 px-3 py-1 text-neutral-100">
                   Format: {selectedFile.format || "—"}
                 </span>
                 <span
@@ -807,14 +829,14 @@ function ScheduleAdminContent() {
                       : "Supported"
                     : "Not supported"}
                 </span>
-                <span className="rounded-full bg-white/10 px-3 py-1 text-slate-100">
+                <span className="rounded-full bg-white/10 px-3 py-1 text-neutral-100">
                   Duration: {formatDuration(selectedFile.durationSeconds)}
                 </span>
               </div>
 
               {selectedFile.supported || selectedFile.supportedViaCompanion ? (
                 <div className="mt-3 space-y-2">
-                  <p className="text-xs text-slate-300">Quick preview (muted):</p>
+                  <p className="text-xs text-neutral-300">Quick preview (muted):</p>
                   <video
                     key={selectedFile.relPath}
                     controls
@@ -837,8 +859,8 @@ function ScheduleAdminContent() {
 
               {shouldShowConvert(selectedFile) && (
                 <div className="mt-3 space-y-2">
-                  <p className="text-xs text-slate-300">
-                    Copy an ffmpeg command to make a browser-friendly MP4 (AAC audio).
+                  <p className="text-xs text-neutral-300">
+                    {getConversionDescription(selectedFile)}
                   </p>
                   <div className="flex items-center gap-2">
                     <button
@@ -847,9 +869,13 @@ function ScheduleAdminContent() {
                     >
                       {copiedCommand ? "Copied!" : "Copy conversion command"}
                     </button>
-                    <code className="hidden sm:block rounded-md bg-black/40 px-3 py-2 text-xs text-slate-100">
-                      ffmpeg -i "media/…" -c:v copy -c:a aac …
-                    </code>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      needsFullReencode(selectedFile)
+                        ? "bg-amber-500/20 text-amber-200"
+                        : "bg-blue-500/20 text-blue-200"
+                    }`}>
+                      {needsFullReencode(selectedFile) ? "Full re-encode" : "Remux + audio"}
+                    </span>
                   </div>
                 </div>
               )}
@@ -889,8 +915,102 @@ function formatDuration(seconds: number): string {
 }
 
 function shouldShowConvert(file: MediaFile): boolean {
+  // Don't show if there's a companion browser-friendly file
   if (file.supportedViaCompanion) return false;
-  return file.format === "mkv" || !file.supported;
+  
+  // Show conversion option if file is marked as not supported
+  if (!file.supported) return true;
+  
+  // For MKV files that ARE supported, still offer conversion option
+  // since remuxing to MP4 improves compatibility (Safari, older browsers)
+  const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
+  if (ext === "mkv") return true;
+  
+  return false;
+}
+
+function needsFullReencode(file: MediaFile): boolean {
+  const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
+  const filename = file.relPath.toLowerCase();
+  
+  // Legacy formats that always need full re-encode
+  const fullReencodeExtensions = ["avi", "wmv", "asf", "flv", "mpeg", "mpg", "vob", "ogv", "ogg", "3gp", "3g2"];
+  
+  // Check if file has H.264 indicator (these play in browsers)
+  const isH264 = filename.includes("x264") || 
+                 filename.includes("h264") || 
+                 filename.includes("h.264") ||
+                 filename.includes("avc");
+  
+  // AVI with H.264 only needs remux, not full re-encode
+  if (ext === "avi" && isH264) return false;
+  
+  // Other legacy extensions need full re-encode
+  if (fullReencodeExtensions.includes(ext)) return true;
+  
+  // x265/HEVC content needs re-encoding for browser compatibility
+  const isHevc = file.format?.toLowerCase()?.includes("hevc") || 
+                 file.format?.toLowerCase()?.includes("x265") ||
+                 filename.includes("x265") ||
+                 filename.includes("hevc") ||
+                 filename.includes("h265") ||
+                 filename.includes("h.265");
+  
+  return isHevc;
+}
+
+function getConversionDescription(file: MediaFile): string {
+  const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
+  const filename = file.relPath.toLowerCase();
+  
+  // Check if file indicates H.264 codec
+  const isH264 = filename.includes("x264") || 
+                 filename.includes("h264") || 
+                 filename.includes("h.264") ||
+                 filename.includes("avc");
+  
+  switch (ext) {
+    case "avi":
+      if (isH264) {
+        return "AVI with H.264 - will remux to MP4 with AAC audio.";
+      }
+      return "AVI files (XviD/DivX) need full re-encoding to H.264 for browser playback.";
+    case "wmv":
+    case "asf":
+      return "Windows Media files need full re-encoding to H.264.";
+    case "flv":
+      return "Flash Video needs full re-encoding to H.264.";
+    case "mov":
+      if (needsFullReencode(file)) {
+        return "QuickTime with HEVC needs re-encoding to H.264.";
+      }
+      return "QuickTime file - will remux with AAC audio.";
+    case "mkv":
+      if (needsFullReencode(file)) {
+        return "MKV with HEVC/x265 needs re-encoding to H.264 for browser support.";
+      }
+      return "MKV will be remuxed to MP4 with AAC audio (video stream copied). Most browsers support this natively.";
+    case "mpeg":
+    case "mpg":
+    case "vob":
+      return "MPEG/DVD format needs full re-encoding to H.264.";
+    case "webm":
+      return "WebM is browser-supported. Converting to MP4 for broader compatibility.";
+    case "ogv":
+    case "ogg":
+      return "Ogg/Theora needs full re-encoding to H.264.";
+    case "3gp":
+    case "3g2":
+      return "Mobile format needs re-encoding to H.264.";
+    case "mp4":
+    case "m4v":
+      if (needsFullReencode(file)) {
+        return "MP4 with HEVC/x265 needs re-encoding to H.264 for browser support.";
+      }
+      return "MP4 will be remuxed with AAC audio (if audio isn't already AAC).";
+    default:
+      return "Will attempt to remux to MP4 with AAC audio. If playback fails, try full re-encode.";
+  }
 }
 
 function copyConvertCommand(
@@ -913,7 +1033,94 @@ function buildConvertCommand(file: MediaFile): string {
   const escapedIn = escapeDoubleQuotes(file.relPath);
   const base = file.relPath.replace(/\.[^/.]+$/, "");
   const escapedOut = escapeDoubleQuotes(`${base}.aac.mp4`);
-  return `ffmpeg -i "media/${escapedIn}" -c:v copy -c:a aac -b:a 192k -movflags +faststart "media/${escapedOut}"`;
+  const inputPath = `"media/${escapedIn}"`;
+  const outputPath = `"media/${escapedOut}"`;
+
+  // Get file extension (lowercase)
+  const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
+  
+  // Determine the appropriate ffmpeg command based on file type
+  switch (ext) {
+    case "avi":
+      // Check if AVI has H.264 (rare but possible) - can remux
+      if (file.relPath.toLowerCase().includes("x264") || 
+          file.relPath.toLowerCase().includes("h264") ||
+          file.relPath.toLowerCase().includes("h.264")) {
+        return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      }
+      // AVI files typically use legacy codecs (XviD, DivX) that need full re-encoding
+      // Use H.264 with CRF 18 for high quality, medium preset for good speed/quality balance
+      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    case "wmv":
+    case "asf":
+      // Windows Media files need full re-encoding
+      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    case "flv":
+      // Flash Video - older format, needs re-encoding
+      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    case "mov":
+      // QuickTime - may use ProRes or other codecs, try copy first with audio re-encode
+      // If this fails, user can try the avi command manually
+      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    case "mkv":
+      // MKV containers - check if format indicates x265/HEVC (less browser support)
+      // For HEVC content, re-encode to H.264; otherwise just copy video and re-encode audio
+      if (file.format?.toLowerCase()?.includes("hevc") || 
+          file.format?.toLowerCase()?.includes("x265") ||
+          file.relPath.toLowerCase().includes("x265") ||
+          file.relPath.toLowerCase().includes("hevc")) {
+        return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      }
+      // For x264/h264 MKV files, just remux to MP4 with AAC audio
+      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    case "mpeg":
+    case "mpg":
+    case "vob":
+      // DVD/MPEG formats - need re-encoding
+      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    case "ts":
+    case "m2ts":
+    case "mts":
+      // Transport stream formats - often H.264 but may have compatibility issues
+      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    case "webm":
+      // WebM with VP8/VP9 - re-encode to H.264 for broader compatibility
+      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    case "ogv":
+    case "ogg":
+      // Ogg/Theora - needs re-encoding
+      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    case "3gp":
+    case "3g2":
+      // Mobile formats - may need re-encoding depending on codec
+      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    case "mp4":
+    case "m4v":
+      // MP4 container - likely just needs audio re-encoding to AAC
+      // Check for x265/HEVC which has limited browser support
+      if (file.format?.toLowerCase()?.includes("hevc") || 
+          file.format?.toLowerCase()?.includes("x265") ||
+          file.relPath.toLowerCase().includes("x265") ||
+          file.relPath.toLowerCase().includes("hevc")) {
+        return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      }
+      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+    
+    default:
+      // Unknown format - try video copy with audio re-encode as safest option
+      // If it fails, user can try full re-encode
+      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+  }
 }
 
 function escapeDoubleQuotes(value: string): string {

@@ -509,15 +509,71 @@ function formatFromPath(relPath: string): string {
 }
 
 function isProbablyBrowserSupported(relPath: string): boolean {
-  // Rough heuristic: containers and codecs commonly supported natively in browsers.
-  // We only know the container here, so we err on the side of "no" for MKV/AVI.
+  // Determine browser support based on container and inferred codec.
+  // Modern browsers (Chrome, Firefox, Edge) support:
+  //   - H.264/AVC video + AAC/MP3 audio in MP4, M4V, MOV, MKV containers
+  //   - VP8/VP9 video + Vorbis/Opus audio in WebM container
+  //   - Safari has limited MKV support, but Chrome/Firefox handle it well
+  //
+  // NOT supported:
+  //   - HEVC/H.265 (limited Safari-only support, requires hardware)
+  //   - AVI with legacy codecs (XviD, DivX, MPEG-4 Part 2)
+  //   - WMV/ASF, FLV, and other legacy formats
+  
   const ext = path.extname(relPath).toLowerCase();
+  const filename = relPath.toLowerCase();
+  
+  // Check if filename suggests HEVC/x265 codec (limited browser support)
+  const isHevc = filename.includes("x265") || 
+                 filename.includes("hevc") || 
+                 filename.includes("h265") ||
+                 filename.includes("h.265");
+  
+  // Check if filename suggests H.264/x264 codec (excellent browser support)
+  const isH264 = filename.includes("x264") || 
+                 filename.includes("h264") || 
+                 filename.includes("h.264") ||
+                 filename.includes("avc");
+  
   switch (ext) {
     case ".mp4":
     case ".m4v":
+      // MP4/M4V with H.264 = great support
+      // MP4 with HEVC = limited (Safari only with hardware)
+      return !isHevc;
+    
     case ".webm":
-    case ".mov":
+      // WebM is well-supported (VP8/VP9 + Vorbis/Opus)
       return true;
+    
+    case ".mov":
+      // QuickTime MOV with H.264 works well
+      // MOV with HEVC/ProRes = limited
+      return !isHevc;
+    
+    case ".mkv":
+      // MKV is widely supported in Chrome/Firefox/Edge when containing H.264
+      // MKV with HEVC = limited support
+      // If we can't tell the codec, assume H.264 (most common) = likely works
+      if (isHevc) return false;
+      // If explicitly H.264, definitely works
+      if (isH264) return true;
+      // MKV without codec hints - most are H.264 and will play in Chrome/Firefox
+      // Mark as supported since the player handles errors gracefully
+      return true;
+    
+    case ".avi":
+      // AVI files typically use legacy codecs (XviD, DivX, MPEG-4 Part 2)
+      // These are NOT supported by browsers
+      // Only rare AVI files with H.264 would work
+      return isH264;
+    
+    case ".wmv":
+    case ".asf":
+    case ".flv":
+      // Legacy formats - not supported
+      return false;
+    
     default:
       return false;
   }

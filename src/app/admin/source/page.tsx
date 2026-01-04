@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   MEDIA_SOURCE_EVENT,
   MEDIA_SOURCE_KEY,
@@ -124,22 +124,22 @@ function MediaDetailModal({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 shadow-2xl shadow-black/60"
+        className="relative w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-neutral-900 shadow-2xl shadow-black/60"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 bg-slate-800/50 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-white/10 bg-neutral-800/50 px-5 py-4">
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-semibold text-slate-50 truncate" title={fileName}>
+            <h2 className="text-lg font-semibold text-neutral-50 truncate" title={fileName}>
               {fileName}
             </h2>
-            <p className="text-xs text-slate-400 truncate font-mono" title={item.relPath}>
+            <p className="text-xs text-neutral-400 truncate font-mono" title={item.relPath}>
               {item.relPath}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="ml-4 flex-shrink-0 rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-slate-100 transition"
+            className="ml-4 flex-shrink-0 rounded-lg p-2 text-neutral-400 hover:bg-white/10 hover:text-neutral-100 transition"
             aria-label="Close modal"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -153,8 +153,8 @@ function MediaDetailModal({
           {isLoading && !error && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3">
-                <div className="w-10 h-10 border-3 border-slate-600 border-t-emerald-400 rounded-full animate-spin" />
-                <p className="text-sm text-slate-400">Loading video...</p>
+                <div className="w-10 h-10 border-3 border-neutral-600 border-t-emerald-400 rounded-full animate-spin" />
+                <p className="text-sm text-neutral-400">Loading video...</p>
               </div>
             </div>
           )}
@@ -167,7 +167,7 @@ function MediaDetailModal({
                   </svg>
                 </div>
                 <p className="text-sm text-amber-200 mb-2">Unable to preview</p>
-                <p className="text-xs text-slate-400 max-w-xs">{error}</p>
+                <p className="text-xs text-neutral-400 max-w-xs">{error}</p>
               </div>
             </div>
           )}
@@ -187,10 +187,10 @@ function MediaDetailModal({
 
         {/* Video Controls */}
         {!error && (
-          <div className="border-t border-white/10 bg-slate-800/70 px-4 py-3">
+          <div className="border-t border-white/10 bg-neutral-800/70 px-4 py-3">
             {/* Progress bar */}
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-xs text-slate-400 w-14 text-right font-mono">
+              <span className="text-xs text-neutral-400 w-14 text-right font-mono">
                 {formatTime(currentTime)}
               </span>
               <input
@@ -199,9 +199,9 @@ function MediaDetailModal({
                 max={duration || 100}
                 value={currentTime}
                 onChange={handleSeek}
-                className="flex-1 h-1.5 rounded-full appearance-none bg-slate-700 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-emerald-500/30"
+                className="flex-1 h-1.5 rounded-full appearance-none bg-neutral-700 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-emerald-500/30"
               />
-              <span className="text-xs text-slate-400 w-14 font-mono">
+              <span className="text-xs text-neutral-400 w-14 font-mono">
                 {formatTime(duration)}
               </span>
             </div>
@@ -211,7 +211,7 @@ function MediaDetailModal({
               <div className="flex items-center gap-2">
                 <button
                   onClick={togglePlay}
-                  className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 transition shadow-lg shadow-emerald-500/30"
+                  className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-neutral-900 transition shadow-lg shadow-emerald-500/30"
                   disabled={isLoading}
                 >
                   {isPlaying ? (
@@ -230,7 +230,7 @@ function MediaDetailModal({
               <div className="flex items-center gap-2">
                 <button
                   onClick={toggleMute}
-                  className="p-2 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/10 transition"
+                  className="p-2 rounded-lg text-neutral-400 hover:text-neutral-100 hover:bg-white/10 transition"
                 >
                   {isMuted || volume === 0 ? (
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -250,7 +250,7 @@ function MediaDetailModal({
                   step={0.05}
                   value={isMuted ? 0 : volume}
                   onChange={handleVolumeChange}
-                  className="w-20 h-1 rounded-full appearance-none bg-slate-700 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-slate-300"
+                  className="w-20 h-1 rounded-full appearance-none bg-neutral-700 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-neutral-300"
                 />
               </div>
             </div>
@@ -258,23 +258,23 @@ function MediaDetailModal({
         )}
 
         {/* Media Details */}
-        <div className="border-t border-white/10 bg-slate-800/30 px-5 py-4">
-          <h3 className="text-xs uppercase tracking-widest text-slate-500 mb-3">Media Details</h3>
+        <div className="border-t border-white/10 bg-neutral-800/30 px-5 py-4">
+          <h3 className="text-xs uppercase tracking-widest text-neutral-500 mb-3">Media Details</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <p className="text-xs text-slate-500 mb-1">Format</p>
-              <p className="text-sm font-medium text-slate-200 uppercase">
+              <p className="text-xs text-neutral-500 mb-1">Format</p>
+              <p className="text-sm font-medium text-neutral-200 uppercase">
                 {item.format || "Unknown"}
               </p>
             </div>
             <div>
-              <p className="text-xs text-slate-500 mb-1">Duration</p>
-              <p className="text-sm font-medium text-slate-200">
+              <p className="text-xs text-neutral-500 mb-1">Duration</p>
+              <p className="text-sm font-medium text-neutral-200">
                 {item.durationSeconds ? formatTime(item.durationSeconds) : "—"}
               </p>
             </div>
             <div>
-              <p className="text-xs text-slate-500 mb-1">Playback</p>
+              <p className="text-xs text-neutral-500 mb-1">Playback</p>
               <span
                 className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
                   item.supported
@@ -290,7 +290,7 @@ function MediaDetailModal({
               </span>
             </div>
             <div>
-              <p className="text-xs text-slate-500 mb-1">Source</p>
+              <p className="text-xs text-neutral-500 mb-1">Source</p>
               <span
                 className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
                   mediaSource === "remote"
@@ -304,8 +304,8 @@ function MediaDetailModal({
           </div>
           {item.title && (
             <div className="mt-4 pt-3 border-t border-white/5">
-              <p className="text-xs text-slate-500 mb-1">Title</p>
-              <p className="text-sm text-slate-200">{item.title}</p>
+              <p className="text-xs text-neutral-500 mb-1">Title</p>
+              <p className="text-sm text-neutral-200">{item.title}</p>
             </div>
           )}
         </div>
@@ -342,6 +342,10 @@ export default function SourceAdminPage() {
   const [pushingFile, setPushingFile] = useState<string | null>(null);
   const [scanningRemote, setScanningRemote] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
+  const [formatFilter, setFormatFilter] = useState<string>("all");
+  const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported">(
+    "all",
+  );
 
   // Load and sync media source preference
   useEffect(() => {
@@ -577,6 +581,27 @@ export default function SourceAdminPage() {
     }
   }, [mediaSource, mediaRefreshToken]);
 
+  const availableFormats = useMemo(() => {
+    const formats = new Set<string>();
+    files.forEach((file) => {
+      if (file.format) {
+        formats.add(file.format.toUpperCase());
+      }
+    });
+    return Array.from(formats).sort();
+  }, [files]);
+
+  const filteredFiles = useMemo(() => {
+    return files.filter((file) => {
+      if (formatFilter !== "all" && (file.format || "").toUpperCase() !== formatFilter) {
+        return false;
+      }
+      if (supportedFilter === "supported" && !file.supported) return false;
+      if (supportedFilter === "unsupported" && file.supported) return false;
+      return true;
+    });
+  }, [files, formatFilter, supportedFilter]);
+
   // Push a single file to remote
   const pushSingleFile = async (file: string) => {
     setPushingFile(file);
@@ -613,24 +638,24 @@ export default function SourceAdminPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 text-slate-100">
+    <div className="flex flex-col gap-6 text-neutral-100">
       <div className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold text-slate-50">Media Source</h1>
-        <p className="text-sm text-slate-400">
+        <h1 className="text-xl font-semibold text-neutral-50">Media Source</h1>
+        <p className="text-sm text-neutral-400">
           Switch between local files and remote CDN. Each source has its own media catalog and schedules.
         </p>
       </div>
 
       {/* Source Selection */}
-      <div className="rounded-xl border border-white/10 bg-slate-900/60 p-5 shadow-lg shadow-black/30">
+      <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Active Source</p>
-            <p className="text-lg font-semibold text-slate-50">
+            <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Active Source</p>
+            <p className="text-lg font-semibold text-neutral-50">
               {mediaSource === "remote" ? "Remote" : "Local"}
             </p>
             {mediaSource === "remote" && (
-              <p className="text-xs text-slate-400 font-mono">{REMOTE_MEDIA_BASE}</p>
+              <p className="text-xs text-neutral-400 font-mono">{REMOTE_MEDIA_BASE}</p>
             )}
           </div>
           <div
@@ -655,8 +680,8 @@ export default function SourceAdminPage() {
               className="h-4 w-4 mt-0.5"
             />
             <div>
-              <p className="font-semibold text-slate-100">Local</p>
-              <p className="text-xs text-slate-400">
+              <p className="font-semibold text-neutral-100">Local</p>
+              <p className="text-xs text-neutral-400">
                 Media from <code className="bg-white/10 px-1 rounded">./media</code>, config from{" "}
                 <code className="bg-white/10 px-1 rounded">data/</code>
               </p>
@@ -672,8 +697,8 @@ export default function SourceAdminPage() {
               className="h-4 w-4 mt-0.5"
             />
             <div>
-              <p className="font-semibold text-slate-100">Remote</p>
-              <p className="text-xs text-slate-400">
+              <p className="font-semibold text-neutral-100">Remote</p>
+              <p className="text-xs text-neutral-400">
                 Media + schedules from <code className="bg-white/10 px-1 rounded">{REMOTE_MEDIA_BASE}</code>
               </p>
             </div>
@@ -691,7 +716,7 @@ export default function SourceAdminPage() {
           {pendingSource !== mediaSource && (
             <button
               onClick={() => setPendingSource(mediaSource)}
-              className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
+              className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
             >
               Cancel
             </button>
@@ -700,19 +725,19 @@ export default function SourceAdminPage() {
       </div>
 
       {/* Push to Remote */}
-      <div className="rounded-xl border border-white/10 bg-slate-900/60 p-5 shadow-lg shadow-black/30">
-        <h2 className="text-sm font-semibold text-slate-100 mb-1">Push to Remote</h2>
-        <p className="text-xs text-slate-400 mb-4">
+      <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+        <h2 className="text-sm font-semibold text-neutral-100 mb-1">Push to Remote</h2>
+        <p className="text-xs text-neutral-400 mb-4">
           Upload local data to your remote CDN via FTP. This syncs your local schedules and media catalog to the remote source.
         </p>
 
         <div className="rounded-lg border border-white/10 bg-white/5 p-3 mb-4">
-          <p className="text-xs text-slate-400 mb-2">3 JSON files per media source:</p>
-          <div className="font-mono text-xs text-slate-300 space-y-1">
-            <p>├── media-index.json <span className="text-slate-500">← media file index</span></p>
-            <p>├── channels.json <span className="text-slate-500">← channel list</span></p>
-            <p>├── schedule.json <span className="text-slate-500">← all channel schedules</span></p>
-            <p>└── *.mp4, *.mkv, ... <span className="text-slate-500">← media files</span></p>
+          <p className="text-xs text-neutral-400 mb-2">3 JSON files per media source:</p>
+          <div className="font-mono text-xs text-neutral-300 space-y-1">
+            <p>├── media-index.json <span className="text-neutral-500">← media file index</span></p>
+            <p>├── channels.json <span className="text-neutral-500">← channel list</span></p>
+            <p>├── schedule.json <span className="text-neutral-500">← all channel schedules</span></p>
+            <p>└── *.mp4, *.mkv, ... <span className="text-neutral-500">← media files</span></p>
           </div>
         </div>
 
@@ -739,10 +764,10 @@ export default function SourceAdminPage() {
 
       {/* Remote Status Check */}
       {mediaSource === "remote" && (
-        <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4 shadow-lg shadow-black/30">
+        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-3">
-              <h3 className="text-sm font-semibold text-slate-100">Remote File Status</h3>
+              <h3 className="text-sm font-semibold text-neutral-100">Remote File Status</h3>
               <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-blue-500/20 text-blue-200">
                 CDN
               </span>
@@ -750,21 +775,21 @@ export default function SourceAdminPage() {
             <button
               onClick={() => void checkRemoteFiles()}
               disabled={checkingRemote}
-              className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+              className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
             >
               {checkingRemote ? "Checking…" : "Refresh Status"}
             </button>
           </div>
-          <p className="mb-3 text-xs text-slate-400">
+          <p className="mb-3 text-xs text-neutral-400">
             Checking required JSON files at <code className="bg-white/10 px-1 rounded">{REMOTE_MEDIA_BASE}</code>
           </p>
           
           {remoteStatuses.length === 0 && !checkingRemote ? (
-            <p className="text-sm text-slate-400">Click &quot;Refresh Status&quot; to check remote files.</p>
+            <p className="text-sm text-neutral-400">Click &quot;Refresh Status&quot; to check remote files.</p>
           ) : (
             <div className="overflow-hidden rounded-lg border border-white/5">
               <table className="min-w-full text-sm text-left">
-                <thead className="bg-white/5 text-slate-200">
+                <thead className="bg-white/5 text-neutral-200">
                   <tr>
                     <th className="px-3 py-2 font-semibold">File</th>
                     <th className="px-3 py-2 font-semibold w-32 text-center">Status</th>
@@ -772,7 +797,7 @@ export default function SourceAdminPage() {
                     <th className="px-3 py-2 font-semibold w-24 text-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5 bg-slate-950/40 text-slate-100">
+                <tbody className="divide-y divide-white/5 bg-neutral-950/40 text-neutral-100">
                   {remoteStatuses.map((item) => (
                     <tr key={item.file}>
                       <td className="px-3 py-2">
@@ -793,12 +818,12 @@ export default function SourceAdminPage() {
                               : item.status === "missing"
                               ? "bg-red-500/20 text-red-100"
                               : item.status === "checking"
-                              ? "bg-slate-500/20 text-slate-300"
+                              ? "bg-neutral-500/20 text-neutral-300"
                               : "bg-amber-500/20 text-amber-100"
                           }`}
                         >
                           {item.status === "checking" && (
-                            <span className="inline-block w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                            <span className="inline-block w-3 h-3 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
                           )}
                           {item.status === "found" && "✓ Found"}
                           {item.status === "missing" && "✕ Missing"}
@@ -806,7 +831,7 @@ export default function SourceAdminPage() {
                           {item.status === "error" && "⚠ Error"}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-slate-400 text-xs">
+                      <td className="px-3 py-2 text-neutral-400 text-xs">
                         {item.status === "found" && item.mediaCount !== undefined && (
                           <span>{item.mediaCount} media file{item.mediaCount === 1 ? "" : "s"}</span>
                         )}
@@ -837,14 +862,14 @@ export default function SourceAdminPage() {
                           <button
                             onClick={() => void pushSingleFile(item.file)}
                             disabled={pushingFile !== null}
-                            className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-slate-300 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+                            className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-neutral-300 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
                             title="Update this file on remote"
                           >
                             {pushingFile === item.file ? "Pushing…" : "Update"}
                           </button>
                         )}
                         {item.status === "checking" && (
-                          <span className="text-xs text-slate-500">—</span>
+                          <span className="text-xs text-neutral-500">—</span>
                         )}
                       </td>
                     </tr>
@@ -871,10 +896,10 @@ export default function SourceAdminPage() {
       )}
 
       {/* Media List (both local and remote) */}
-      <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4 shadow-lg shadow-black/30">
+      <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
-            <h3 className="text-sm font-semibold text-slate-100">
+            <h3 className="text-sm font-semibold text-neutral-100">
               {mediaSource === "remote" ? "Remote Media" : "Local Media"}
             </h3>
             <span
@@ -886,15 +911,18 @@ export default function SourceAdminPage() {
             >
               {mediaSource === "remote" ? "CDN" : "Local"}
             </span>
-            <span className="text-xs text-slate-400">
-              {files.length} file{files.length === 1 ? "" : "s"}
+            <span className="text-xs text-neutral-400">
+              {filteredFiles.length} file{filteredFiles.length === 1 ? "" : "s"} showing
+              {filteredFiles.length !== files.length
+                ? ` (of ${files.length} total)`
+                : ""}
             </span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => refreshMediaList()}
               disabled={loadingMedia}
-              className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+              className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
             >
               {loadingMedia ? "Loading…" : "Refresh"}
             </button>
@@ -920,7 +948,36 @@ export default function SourceAdminPage() {
             )}
           </div>
         </div>
-        <div className="mb-3 text-xs text-slate-400">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-neutral-400">Format</label>
+            <select
+              value={formatFilter}
+              onChange={(e) => setFormatFilter(e.target.value)}
+              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-emerald-300 focus:bg-white/10"
+            >
+              <option value="all">All</option>
+              {availableFormats.map((fmt) => (
+                <option key={fmt} value={fmt}>
+                  {fmt}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-neutral-400">Supported</label>
+            <select
+              value={supportedFilter}
+              onChange={(e) => setSupportedFilter(e.target.value as typeof supportedFilter)}
+              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-emerald-300 focus:bg-white/10"
+            >
+              <option value="all">All</option>
+              <option value="supported">Supported</option>
+              <option value="unsupported">Unsupported</option>
+            </select>
+          </div>
+        </div>
+        <div className="mb-3 text-xs text-neutral-400">
           {mediaSource === "local" ? (
             <>
               <p>Source: <code className="bg-white/10 px-1 rounded">./media</code> folder</p>
@@ -934,17 +991,21 @@ export default function SourceAdminPage() {
           )}
         </div>
         {loadingMedia ? (
-          <p className="text-sm text-slate-300">Loading media…</p>
+          <p className="text-sm text-neutral-300">Loading media…</p>
         ) : files.length === 0 ? (
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-neutral-300">
             {mediaSource === "remote"
               ? "No media found on remote. Check that media-index.json exists."
               : "No media found. Add files to ./media and click \"Rescan & Save\"."}
           </p>
+        ) : filteredFiles.length === 0 ? (
+          <p className="text-sm text-neutral-300">
+            No media match the selected filters.
+          </p>
         ) : (
           <div className="overflow-hidden rounded-lg border border-white/5">
             <table className="min-w-full text-sm text-left">
-              <thead className="bg-white/5 text-slate-200">
+              <thead className="bg-white/5 text-neutral-200">
                 <tr>
                   <th className="px-3 py-2 font-semibold">File</th>
                   <th className="px-3 py-2 font-semibold w-24 text-left">Format</th>
@@ -952,8 +1013,8 @@ export default function SourceAdminPage() {
                   <th className="px-3 py-2 font-semibold w-28 text-right">Duration</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5 bg-slate-950/40 text-slate-100">
-                {files.map((file) => (
+              <tbody className="divide-y divide-white/5 bg-neutral-950/40 text-neutral-100">
+                {filteredFiles.map((file) => (
                   <tr key={file.relPath} className="hover:bg-white/5 transition-colors">
                     <td className="px-3 py-2">
                       <button
@@ -963,7 +1024,7 @@ export default function SourceAdminPage() {
                         {file.relPath}
                       </button>
                     </td>
-                    <td className="px-3 py-2 text-left text-slate-200 uppercase">
+                    <td className="px-3 py-2 text-left text-neutral-200 uppercase">
                       {file.format || "—"}
                     </td>
                     <td className="px-3 py-2 text-left">
@@ -981,7 +1042,7 @@ export default function SourceAdminPage() {
                           : "No"}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-right text-slate-200">
+                    <td className="px-3 py-2 text-right text-neutral-200">
                       {formatDuration(file.durationSeconds || 0)}
                     </td>
                   </tr>

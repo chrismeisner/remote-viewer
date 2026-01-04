@@ -7,16 +7,17 @@ const navLinks = [
   { href: "/admin/schedule", label: "Schedule" },
   { href: "/admin/channels", label: "Channels" },
   { href: "/admin/ftp-test", label: "FTP Test" },
+  { href: "/admin/styling", label: "Styling" },
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex">
-      <aside className="w-64 border-r border-white/10 bg-slate-900/70 backdrop-blur">
+    <div className="min-h-screen bg-black text-neutral-100 flex">
+      <aside className="w-64 border-r border-white/10 bg-neutral-900/70 backdrop-blur">
         <div className="px-5 py-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Admin</p>
-          <h1 className="text-lg font-semibold text-slate-50">Control Panel</h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Admin</p>
+          <h1 className="text-lg font-semibold text-neutral-50">Control Panel</h1>
+          <p className="text-xs text-neutral-500 mt-1">
             Manage channels and schedules
           </p>
         </div>
@@ -25,7 +26,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10 hover:text-white"
+              className="rounded-lg px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:bg-white/10 hover:text-white"
             >
               {link.label}
             </Link>

@@ -20,24 +20,24 @@ export default function TimeAdminPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100">
       <div className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-8">
         <header className="flex items-baseline justify-between gap-3">
           <div>
-            <p className="text-sm uppercase tracking-[0.2em] text-slate-300">
+            <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">
               Time Admin
             </p>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-neutral-400">
               Live clock and current site time zone (server local time)
             </p>
           </div>
-          <div className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+          <div className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-neutral-200">
             Time zone: <span className="font-mono">{timeZone}</span>
           </div>
         </header>
 
-        <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-6 shadow-xl shadow-black/30">
-          <div className="text-sm text-slate-300">{dateString}</div>
+        <div className="rounded-2xl border border-white/10 bg-neutral-900/70 p-6 shadow-xl shadow-black/30">
+          <div className="text-sm text-neutral-300">{dateString}</div>
           <div className="mt-2 text-5xl font-semibold tracking-tight text-white sm:text-6xl">
             {timeString}
           </div>

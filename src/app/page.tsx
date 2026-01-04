@@ -7,6 +7,10 @@ import {
   REMOTE_MEDIA_BASE,
 } from "@/constants/media";
 
+const MUTED_PREF_KEY = "player-muted-default";
+const CRT_PREF_KEY = "player-crt-default";
+const REMOTE_PREF_KEY = "player-remote-default";
+
 type NowPlaying = {
   title: string;
   relPath: string;
@@ -29,7 +33,7 @@ export default function Home() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [muted, setMuted] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [crtEnabled, setCrtEnabled] = useState(false);
+  const [crtEnabled, setCrtEnabled] = useState(true);
   const previousNowPlayingRef = useRef<NowPlaying | null>(null);
   const lastResolvedAtRef = useRef<number | null>(null);
   const lastRttMsRef = useRef<number>(0);
@@ -41,6 +45,10 @@ export default function Home() {
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const initialChannelSet = useRef(false);
+  const [showChannelInfo, setShowChannelInfo] = useState(false);
+  const [showHeader, setShowHeader] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(true);
   
   // Channel overlay state for CRT-style display
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
@@ -79,6 +87,18 @@ export default function Home() {
     };
   }, []);
 
+  // Allow hiding the global header on the home page (toggled via "h" key)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const classList = document.body.classList;
+    if (!showHeader) {
+      classList.add("header-hidden");
+    } else {
+      classList.remove("header-hidden");
+    }
+    return () => classList.remove("header-hidden");
+  }, [showHeader]);
+
   // Load media source preference from localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -87,6 +107,61 @@ export default function Home() {
       setMediaSource(stored);
     }
   }, []);
+
+  // Load muted preference from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(MUTED_PREF_KEY);
+    if (stored === "true" || stored === "false") {
+      setMuted(stored === "true");
+    } else {
+      // Default to muted on first load
+      localStorage.setItem(MUTED_PREF_KEY, "true");
+      setMuted(true);
+    }
+  }, []);
+
+  // Persist muted preference when it changes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(MUTED_PREF_KEY, muted ? "true" : "false");
+  }, [muted]);
+
+  // Load CRT preference from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(CRT_PREF_KEY);
+    if (stored === "true" || stored === "false") {
+      setCrtEnabled(stored === "true");
+    } else {
+      localStorage.setItem(CRT_PREF_KEY, "true");
+      setCrtEnabled(true);
+    }
+  }, []);
+
+  // Persist CRT preference
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(CRT_PREF_KEY, crtEnabled ? "true" : "false");
+  }, [crtEnabled]);
+
+  // Load remote/controls preference from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(REMOTE_PREF_KEY);
+    if (stored === "true" || stored === "false") {
+      setShowControls(stored === "true");
+    } else {
+      localStorage.setItem(REMOTE_PREF_KEY, "true");
+      setShowControls(true);
+    }
+  }, []);
+
+  // Persist remote/controls preference
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(REMOTE_PREF_KEY, showControls ? "true" : "false");
+  }, [showControls]);
 
   // Re-apply media source mapping when source changes
   useEffect(() => {
@@ -271,11 +346,38 @@ export default function Home() {
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      const active = Boolean(document.fullscreenElement);
+      setIsFullscreen(active);
+      if (active) {
+        // Focus video so arrow keys work while fullscreen (especially mobile Safari).
+        videoRef.current?.focus();
+      }
     };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+
+    // iOS Safari fires video-specific fullscreen events instead of the standard API.
+    const video = videoRef.current as (HTMLVideoElement & {
+      webkitEnterFullscreen?: () => void;
+      webkitExitFullscreen?: () => void;
+      webkitDisplayingFullscreen?: boolean;
+    }) | null;
+    const handleWebkitBegin = () => setIsFullscreen(true);
+    const handleWebkitEnd = () => setIsFullscreen(false);
+    if (video) {
+      // @ts-expect-error iOS-specific events
+      video.addEventListener("webkitbeginfullscreen", handleWebkitBegin);
+      // @ts-expect-error iOS-specific events
+      video.addEventListener("webkitendfullscreen", handleWebkitEnd);
+    }
+
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      if (video) {
+        // @ts-expect-error iOS-specific events
+        video.removeEventListener("webkitbeginfullscreen", handleWebkitBegin);
+        // @ts-expect-error iOS-specific events
+        video.removeEventListener("webkitendfullscreen", handleWebkitEnd);
+      }
     };
   }, []);
 
@@ -287,6 +389,29 @@ export default function Home() {
       triggerChannelOverlay(channelInfo);
       setRefreshToken((token) => token + 1);
     }
+  };
+
+  const channelUp = () => {
+    if (channels.length === 0) return;
+    if (!channel) {
+      switchToChannel(channels[0].id);
+      return;
+    }
+    const idx = channels.findIndex((c) => c.id === channel);
+    const next = idx === -1 || idx === channels.length - 1 ? channels[0] : channels[idx + 1];
+    switchToChannel(next.id);
+  };
+
+  const channelDown = () => {
+    if (channels.length === 0) return;
+    if (!channel) {
+      switchToChannel(channels[0].id);
+      return;
+    }
+    const idx = channels.findIndex((c) => c.id === channel);
+    const prev =
+      idx <= 0 ? channels[channels.length - 1] : channels[Math.max(0, idx - 1)];
+    switchToChannel(prev.id);
   };
 
   // Keyboard shortcuts: number keys 1-9 jump to matching channel name (if present).
@@ -323,6 +448,43 @@ export default function Home() {
         return;
       }
 
+      if (key === "i") {
+        event.preventDefault();
+        setShowChannelInfo((prev) => !prev);
+        return;
+      }
+
+      if (key === "h") {
+        event.preventDefault();
+        setShowHeader((prev) => !prev);
+        return;
+      }
+
+      if (key === "r") {
+        event.preventDefault();
+        setShowControls((prev) => !prev);
+        return;
+      }
+
+      if (key === "escape") {
+        event.preventDefault();
+        if (showWelcome) setShowWelcome(false);
+        if (showChannelInfo) setShowChannelInfo(false);
+        return;
+      }
+
+      if (key === "arrowup") {
+        event.preventDefault();
+        channelUp();
+        return;
+      }
+
+      if (key === "arrowdown") {
+        event.preventDefault();
+        channelDown();
+        return;
+      }
+
       if (!/^[1-9]$/.test(key)) return;
       const channelIds = channels.map(c => c.id);
       if (!channelIds.includes(key)) return;
@@ -330,7 +492,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [channels]);
+  }, [channels, channel]);
 
   const resolvedSrc = (np: NowPlaying | null) =>
     np ? withMediaSource(np, mediaSource).src : "";
@@ -396,14 +558,33 @@ export default function Home() {
   const toggleFullscreen = async () => {
     const video = videoRef.current;
     if (!video) return;
+    const videoWithWebkit = video as HTMLVideoElement & {
+      webkitEnterFullscreen?: () => Promise<void> | void;
+      webkitExitFullscreen?: () => Promise<void> | void;
+      webkitDisplayingFullscreen?: boolean;
+    };
     try {
-      if (document.fullscreenElement) {
+      const isDocFullscreen = Boolean(document.fullscreenElement);
+      const isWebkitFullscreen = Boolean(videoWithWebkit.webkitDisplayingFullscreen);
+
+      if (isDocFullscreen) {
         await document.exitFullscreen();
-      } else if (video.requestFullscreen) {
+        return;
+      }
+      if (isWebkitFullscreen && videoWithWebkit.webkitExitFullscreen) {
+        await videoWithWebkit.webkitExitFullscreen();
+        return;
+      }
+
+      if (video.requestFullscreen) {
         await video.requestFullscreen();
-      } else {
-        // @ts-expect-error vendor-prefixed fallback for WebKit
-        await video.webkitRequestFullscreen?.();
+        video.focus();
+        return;
+      }
+      if (videoWithWebkit.webkitEnterFullscreen) {
+        await videoWithWebkit.webkitEnterFullscreen();
+        video.focus();
+        return;
       }
     } catch (err) {
       console.warn("Fullscreen toggle failed", err);
@@ -419,125 +600,259 @@ export default function Home() {
     return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const nowPlayingLabel = nowPlaying?.title || nowPlaying?.relPath || "Waiting for schedule";
+  const overlayChannelId = overlayChannel?.id
+    ? overlayChannel.id.toString().padStart(2, "0")
+    : "";
+  const closeWelcome = () => setShowWelcome(false);
+  const closeChannelInfo = () => setShowChannelInfo(false);
+  const isChromeless = !showHeader && !showControls;
+  const mainClass = isChromeless
+    ? "mx-auto w-full max-w-none px-0 pb-0 pt-0 space-y-4"
+    : showControls
+      ? "mx-auto max-w-7xl px-6 pb-2 pt-0 space-y-4"
+      : "mx-auto max-w-7xl px-6 pb-8 pt-0 space-y-4";
+  const playerShellClass = isChromeless ? "max-w-none" : showControls ? "max-w-5xl" : "max-w-6xl";
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <main className="mx-auto max-w-5xl px-6 py-8 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/60 px-4 py-3 text-xs text-slate-300 shadow-lg shadow-black/30">
-          <div className="flex items-center gap-2">
-            <label className="text-slate-400">Channel</label>
-            {channels.length === 0 ? (
-              <span className="text-slate-500 italic">No channels available</span>
-            ) : (
-              <select
-                className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-slate-100"
-                value={channel ?? ""}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  if (next) {
-                    switchToChannel(next);
-                  }
-                }}
-                disabled={loadingChannels}
-              >
-                {channels.map((ch) => (
-                  <option key={ch.id} value={ch.id}>
-                    {ch.id}{ch.shortName ? ` - ${ch.shortName}` : ""}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          <span className="hidden sm:inline text-slate-400">
-            Source: {mediaSource === "remote" ? "Remote CDN" : "Local files"}
-          </span>
-        </div>
-
-        <div className="rounded-xl border border-white/10 bg-slate-900/60 p-5 shadow-lg shadow-black/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-semibold text-slate-50">
-                {nowPlaying?.relPath || nowPlaying?.title || "Waiting for schedule"}
-              </p>
-            </div>
-          </div>
-
+    <div className="min-h-screen bg-black text-neutral-100">
+      <main className={mainClass}>
+        <div className="space-y-4">
           <div
-            className={`relative mt-4 overflow-hidden rounded-lg border border-white/10 bg-black ${crtEnabled ? "crt-frame" : ""}`}
+            className={`mx-auto w-full ${playerShellClass} space-y-3 transition-all duration-300`}
           >
-            {/* Blue screen fallback when channel is selected but nothing is playing */}
-            {channel && !nowPlaying && (
-              <div 
-                className="aspect-video w-full"
-                style={{ backgroundColor: "#0000FF" }}
-              />
-            )}
-            
-            {/* Video element - hidden when showing blue screen */}
-            <video
-              ref={videoRef}
-              key={`${channel}-${resolvedSrc(nowPlaying) || "none"}`}
-              autoPlay
-              playsInline
-              className={`relative z-[1] aspect-video w-full bg-black ${
-                channel && !nowPlaying ? "hidden" : ""
-              }`}
-            />
-            
-            {/* CRT-style channel overlay */}
             <div
-              className={`absolute top-4 left-4 z-10 transition-opacity duration-500 ${
-                showChannelOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
-              }`}
+              className={`relative overflow-hidden rounded-lg border border-white/10 bg-black ${crtEnabled ? "crt-frame" : ""}`}
             >
-              <div className="channel-overlay font-mono">
-                <span className="channel-number">{overlayChannel?.id || ""}</span>
-                {overlayChannel?.shortName && (
-                  <span className="channel-name">{overlayChannel.shortName}</span>
-                )}
+              {/* Blue screen fallback when channel is selected but nothing is playing */}
+              {channel && !nowPlaying && (
+                <div
+                  className="aspect-video w-full"
+                  style={{ backgroundColor: "#0000FF" }}
+                />
+              )}
+
+              {/* Video element - hidden when showing blue screen */}
+              <video
+                ref={videoRef}
+                key={`${channel}-${resolvedSrc(nowPlaying) || "none"}`}
+                autoPlay
+                playsInline
+                tabIndex={0}
+                className={`relative z-[1] aspect-video w-full bg-black ${
+                  channel && !nowPlaying ? "hidden" : ""
+                }`}
+              />
+
+              {/* CRT-style channel overlay */}
+              <div
+                className={`absolute top-4 left-4 z-10 transition-opacity duration-500 ${
+                  showChannelOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
+                }`}
+              >
+                <div className="channel-overlay font-mono">
+                  <span className="channel-number">{overlayChannelId}</span>
+                  {overlayChannel?.shortName && (
+                    <span className="channel-name">{overlayChannel.shortName}</span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="mt-3 flex flex-row justify-center gap-2">
-            <button
-              onClick={() => setCrtEnabled((c) => !c)}
-              className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
-                crtEnabled
-                  ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
-                  : "border-white/15 bg-white/5 text-slate-100 hover:border-white/30 hover:bg-white/10"
-              }`}
-            >
-              CRT {crtEnabled ? "On" : "Off"}
-            </button>
-            <button
-              onClick={() => setMuted((m) => !m)}
-              aria-pressed={muted}
-              className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
-                muted
-                  ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
-                  : "border-white/15 bg-white/5 text-slate-100 hover:border-white/30 hover:bg-white/10"
-              }`}
-            >
-              Muted {muted ? "On" : "Off"}
-            </button>
-            <button
-              onClick={toggleFullscreen}
-              className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-white/30 hover:bg-white/10"
-            >
-              {isFullscreen ? "Exit" : "Fullscreen"}
-            </button>
+            {showControls && (
+              <div
+                className={`flex flex-row justify-center gap-2 ${
+                  isFullscreen ? "hidden" : ""
+                }`}
+              >
+                <button
+                  onClick={() => setCrtEnabled((c) => !c)}
+                  className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
+                    crtEnabled
+                      ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+                      : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
+                  }`}
+                >
+                  CRT
+                </button>
+                <button
+                  onClick={() => setMuted((m) => !m)}
+                  aria-pressed={muted}
+                  className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
+                    muted
+                      ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+                      : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
+                  }`}
+                >
+                  {muted ? "Muted" : "Mute"}
+                </button>
+                <button
+                  onClick={toggleFullscreen}
+                  className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                >
+                  {isFullscreen ? "Exit" : "Fullscreen"}
+                </button>
+                <button
+                  onClick={channelUp}
+                  className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                  disabled={channels.length === 0}
+                >
+                  Channel Up
+                </button>
+                <button
+                  onClick={channelDown}
+                  className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                  disabled={channels.length === 0}
+                >
+                  Channel Down
+                </button>
+              </div>
+            )}
           </div>
 
           {!nowPlaying && (
-            <p className="mt-3 text-sm text-slate-400">
+            <p className="text-sm text-neutral-400">
               {channels.length === 0
                 ? "No channels configured. Create a channel in the admin panel to begin."
                 : "No scheduled content. Add programs in the Schedule Admin."}
             </p>
           )}
         </div>
-
       </main>
+
+      {showChannelInfo && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-4"
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return;
+            closeChannelInfo();
+          }}
+        >
+          <div className="w-full max-w-lg rounded-xl border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur">
+            <h2 className="text-xl font-semibold text-neutral-50">Channel info</h2>
+            <p className="mt-2 text-sm text-neutral-300">
+              Select a channel and view current source and title.
+            </p>
+            <div className="mt-4 space-y-3 text-sm text-neutral-200">
+              <div className="flex items-center gap-3">
+                <label className="text-neutral-400">Channel</label>
+                {channels.length === 0 ? (
+                  <span className="text-neutral-500 italic">No channels available</span>
+                ) : (
+                  <select
+                    className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-neutral-100"
+                    value={channel ?? ""}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (next) {
+                        switchToChannel(next);
+                      }
+                    }}
+                    disabled={loadingChannels}
+                  >
+                    {channels.map((ch) => (
+                      <option key={ch.id} value={ch.id}>
+                        {ch.id}{ch.shortName ? ` - ${ch.shortName}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-neutral-400">Source:</span>
+                <span className="font-semibold text-neutral-100">
+                  {mediaSource === "remote" ? "Remote CDN" : "Local files"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-neutral-400">Now playing:</span>
+                <span className="font-semibold text-neutral-100 truncate max-w-xs sm:max-w-sm">
+                  {nowPlayingLabel}
+                </span>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={closeChannelInfo}
+                className="rounded-md border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/40 hover:bg-white/15"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWelcome && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return;
+            closeWelcome();
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur">
+            <h2 className="text-xl font-semibold text-neutral-50">Welcome to Remote Viewer</h2>
+            <p className="mt-2 text-sm text-neutral-300">
+              Quick controls to get you started:
+            </p>
+            <ul className="mt-3 space-y-2 text-sm text-neutral-200">
+              <li className="flex justify-between gap-4"><span>Channel info</span><span className="font-mono text-neutral-100">i</span></li>
+              <li className="flex justify-between gap-4"><span>Toggle controls</span><span className="font-mono text-neutral-100">r</span></li>
+              <li className="flex justify-between gap-4"><span>Channel up/down</span><span className="font-mono text-neutral-100">↑ / ↓</span></li>
+              <li className="flex justify-between gap-4"><span>Mute / CRT</span><span className="font-mono text-neutral-100">m / c</span></li>
+              <li className="flex justify-between gap-4"><span>Fullscreen</span><span className="font-mono text-neutral-100">f</span></li>
+            </ul>
+            <div className="mt-4 flex items-center gap-2 text-sm text-neutral-200">
+              <input
+                id="welcome-mute"
+                type="checkbox"
+                className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
+                checked={muted}
+                onChange={(e) => setMuted(e.target.checked)}
+              />
+              <label htmlFor="welcome-mute" className="select-none">
+                Mute
+              </label>
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-sm text-neutral-200">
+              <input
+                id="welcome-crt"
+                type="checkbox"
+                className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
+                checked={crtEnabled}
+                onChange={(e) => setCrtEnabled(e.target.checked)}
+              />
+              <label htmlFor="welcome-crt" className="select-none">
+                CRT Effect
+              </label>
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-sm text-neutral-200">
+              <input
+                id="welcome-remote"
+                type="checkbox"
+                className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
+                checked={showControls}
+                onChange={(e) => setShowControls(e.target.checked)}
+              />
+              <label htmlFor="welcome-remote" className="select-none">
+                Show Remote
+              </label>
+            </div>
+            <p className="mt-3 text-xs text-neutral-400">
+              Press Esc or click below to close. This will show each time you load the page.
+            </p>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={closeWelcome}
+                className="rounded-md border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/40 hover:bg-white/15"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,13 @@
+import { execFile } from "node:child_process";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { Client, FileInfo } from "basic-ftp";
 import fs from "node:fs/promises";
+import ffprobe from "ffprobe-static";
+
+const execFileAsync = promisify(execFile);
 
 type ScanResult = {
   success: boolean;
@@ -24,6 +29,7 @@ type MediaItem = {
 const ALLOWED_EXTENSIONS = [".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm"];
 const BROWSER_FRIENDLY_FORMATS = ["mp4", "webm", "m4v"];
 const LOCAL_INDEX_PATH = path.join(process.cwd(), "data", "media-index.json");
+const REMOTE_MEDIA_BASE = process.env.REMOTE_MEDIA_BASE || "https://chrismeisner.com/media/";
 
 function getEnv() {
   const host = process.env.FTP_HOST?.trim();
@@ -53,6 +59,107 @@ function isSupported(format: string): boolean {
 
 function getTitle(filename: string): string {
   return path.basename(filename, path.extname(filename));
+}
+
+async function resolveFfprobePath(): Promise<string> {
+  const envPath = process.env.FFPROBE_PATH;
+  if (envPath) {
+    try {
+      await fs.access(envPath);
+      return envPath;
+    } catch {
+      console.warn("FFPROBE_PATH set but not accessible:", envPath);
+    }
+  }
+
+  const candidate = ffprobe?.path;
+  if (candidate) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      console.warn("Bundled ffprobe not found at", candidate);
+    }
+  }
+
+  const common = ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"];
+  for (const c of common) {
+    try {
+      await fs.access(c);
+      return c;
+    } catch {
+      // continue
+    }
+  }
+
+  return "ffprobe";
+}
+
+function extractDurationSeconds(probeJson: unknown): number | null {
+  if (!probeJson || typeof probeJson !== "object") return null;
+  const obj = probeJson as { format?: { duration?: unknown }; streams?: unknown };
+  const fmt = obj.format;
+  const streams = Array.isArray(obj.streams) ? obj.streams : [];
+
+  const fromFormat = Number(fmt?.duration);
+  if (Number.isFinite(fromFormat) && fromFormat > 0) {
+    return Math.round(fromFormat);
+  }
+
+  for (const s of streams) {
+    const streamDuration = Number(s?.duration);
+    if (Number.isFinite(streamDuration) && streamDuration > 0) {
+      return Math.round(streamDuration);
+    }
+    const nbFrames = Number(s?.nb_frames);
+    const avgFps = typeof s?.avg_frame_rate === "string" ? parseFps(s.avg_frame_rate) : null;
+    if (Number.isFinite(nbFrames) && avgFps && avgFps > 0) {
+      const seconds = nbFrames / avgFps;
+      if (seconds > 0) return Math.round(seconds);
+    }
+  }
+
+  return null;
+}
+
+function parseFps(value: string): number | null {
+  if (!value || value === "0/0") return null;
+  const parts = value.split("/");
+  if (parts.length === 2) {
+    const num = Number(parts[0]);
+    const den = Number(parts[1]);
+    if (Number.isFinite(num) && Number.isFinite(den) && den !== 0) {
+      return num / den;
+    }
+  }
+  const asNum = Number(value);
+  return Number.isFinite(asNum) ? asNum : null;
+}
+
+async function probeRemoteDuration(url: string): Promise<number> {
+  try {
+    const ffprobePath = await resolveFfprobePath();
+    const { stdout } = await execFileAsync(ffprobePath, [
+      "-v",
+      "quiet",
+      "-print_format",
+      "json",
+      "-show_format",
+      "-show_streams",
+      url,
+    ], { timeout: 30000 }); // 30 second timeout per file
+
+    const parsed = JSON.parse(stdout);
+    const duration = extractDurationSeconds(parsed);
+
+    if (duration !== null && Number.isFinite(duration) && duration > 0) {
+      return duration;
+    }
+  } catch (error) {
+    console.warn("ffprobe failed for remote URL", url, error);
+  }
+
+  return 0;
 }
 
 export const runtime = "nodejs";
@@ -108,21 +215,44 @@ export async function POST() {
       (f) => f.isFile && isMediaFile(f.name)
     );
 
-    const items: MediaItem[] = mediaFiles.map((f) => {
-      const format = getFormat(f.name);
-      const supported = isSupported(format);
-      // Try to get duration from local index, fallback to 0
-      const durationSeconds = localDurations.get(f.name) || 0;
-      
-      return {
-        relPath: f.name,
-        durationSeconds,
-        format,
-        supported,
-        supportedViaCompanion: false,
-        title: getTitle(f.name),
-      };
-    });
+    // Build base URL for probing remote files
+    const baseUrl = REMOTE_MEDIA_BASE.endsWith("/")
+      ? REMOTE_MEDIA_BASE
+      : REMOTE_MEDIA_BASE + "/";
+
+    // Probe each file for duration (in parallel with concurrency limit)
+    const items: MediaItem[] = [];
+    const CONCURRENCY = 3; // Limit concurrent ffprobe calls
+    
+    for (let i = 0; i < mediaFiles.length; i += CONCURRENCY) {
+      const batch = mediaFiles.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(
+        batch.map(async (f) => {
+          const format = getFormat(f.name);
+          const supported = isSupported(format);
+          
+          // First check local index for cached duration
+          let durationSeconds = localDurations.get(f.name) || 0;
+          
+          // If no cached duration, probe the remote file
+          if (durationSeconds === 0) {
+            const fileUrl = baseUrl + encodeURIComponent(f.name);
+            console.log(`Probing remote file: ${fileUrl}`);
+            durationSeconds = await probeRemoteDuration(fileUrl);
+          }
+          
+          return {
+            relPath: f.name,
+            durationSeconds,
+            format,
+            supported,
+            supportedViaCompanion: false,
+            title: getTitle(f.name),
+          };
+        })
+      );
+      items.push(...batchResults);
+    }
 
     // Sort by filename
     items.sort((a, b) => a.relPath.localeCompare(b.relPath));

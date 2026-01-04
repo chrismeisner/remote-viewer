@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   MEDIA_SOURCE_EVENT,
@@ -10,17 +11,17 @@ import {
 
 export default function Header() {
   return (
-    <header className="border-b border-white/10 bg-slate-900/60 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4 text-slate-100">
+    <header className="site-header border-b border-white/10 bg-neutral-900/80 backdrop-blur">
+      <div className="header-inner mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4 text-neutral-100">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-300">
+          <Link
+            href="/"
+            className="text-sm font-semibold text-neutral-300 hover:text-neutral-100"
+          >
             Remote Viewer
-          </p>
-          <p className="text-sm text-slate-400">
-            Tune into your local video channels
-          </p>
+          </Link>
         </div>
-        <div className="flex items-center gap-3 text-xs text-slate-300">
+        <div className="flex items-center gap-3 text-xs text-neutral-300">
           <MediaSourceBadge />
           <NowClocks />
         </div>
@@ -49,12 +50,11 @@ function MediaSourceBadge() {
 
   return (
     <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1">
-      <span className="text-slate-400">Media</span>
-      <span className="font-semibold text-slate-100">
+      <span className="font-semibold text-neutral-100">
         {mediaSource === "remote" ? "Remote" : "Local"}
       </span>
       {mediaSource === "remote" && (
-        <span className="hidden sm:inline text-[11px] text-slate-400">
+        <span className="hidden sm:inline text-[11px] text-neutral-400">
           {REMOTE_MEDIA_BASE}
         </span>
       )}
@@ -80,12 +80,12 @@ function NowClocks() {
   return (
     <>
       <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1">
-        <span className="text-slate-400">Local</span>
-        <span className="font-mono text-slate-100">{clock}</span>
+        <span className="text-neutral-400">Local</span>
+        <span className="font-mono text-neutral-100">{clock}</span>
       </div>
       <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1">
-        <span className="text-slate-400">UTC</span>
-        <span className="font-mono text-slate-100">{clockUtc}</span>
+        <span className="text-neutral-400">UTC</span>
+        <span className="font-mono text-neutral-100">{clockUtc}</span>
       </div>
     </>
   );

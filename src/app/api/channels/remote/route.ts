@@ -3,10 +3,16 @@ import { Readable } from "node:stream";
 import { NextRequest, NextResponse } from "next/server";
 import { Client } from "basic-ftp";
 import { REMOTE_MEDIA_BASE } from "@/constants/media";
-import type { ChannelInfo } from "@/lib/media";
 
-type ChannelsPayload = {
-  channels: ChannelInfo[];
+export const runtime = "nodejs";
+
+type Channel = {
+  id: string;
+  shortName?: string;
+};
+
+type ChannelsData = {
+  channels: Channel[];
 };
 
 function getEnv() {
@@ -21,342 +27,153 @@ function getEnv() {
   return { host, user, password, port, remotePath, secure };
 }
 
-export const runtime = "nodejs";
-
-// Helper to normalize legacy string[] to ChannelInfo[]
-function normalizeChannels(channels: unknown): ChannelInfo[] {
-  if (!Array.isArray(channels)) return [];
-  return channels.map((ch) => {
-    if (typeof ch === "string") {
-      return { id: ch };
-    }
-    if (ch && typeof ch === "object" && typeof (ch as ChannelInfo).id === "string") {
-      return ch as ChannelInfo;
-    }
-    return null;
-  }).filter(Boolean) as ChannelInfo[];
-}
-
-// Get remote channels
-export async function GET() {
+// Read remote channels from CDN
+async function readRemoteChannels(): Promise<Channel[]> {
   const base = process.env.REMOTE_MEDIA_BASE || REMOTE_MEDIA_BASE;
-  if (!base) {
-    return NextResponse.json({ channels: [] });
-  }
+  if (!base) return [];
 
   try {
-    const channelsUrl = new URL("channels.json", base).toString();
-    const res = await fetch(channelsUrl, { cache: "no-store" });
-    if (!res.ok) {
-      return NextResponse.json({ channels: [] });
-    }
-    const data = await res.json();
-    const channels = normalizeChannels(data?.channels);
-    return NextResponse.json({ channels });
+    const url = new URL("channels.json", base).toString();
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data: ChannelsData = await res.json();
+    return Array.isArray(data.channels) ? data.channels : [];
   } catch {
-    return NextResponse.json({ channels: [] });
+    return [];
   }
 }
 
-// Add a channel to remote
-export async function POST(request: NextRequest) {
+// Push channels to remote via FTP
+async function pushRemoteChannels(channels: Channel[]): Promise<void> {
   const { host, user, password, port, remotePath, secure } = getEnv();
   if (!host || !user || !password || !remotePath) {
-    return NextResponse.json(
-      { error: "FTP not configured. Set FTP_HOST, FTP_USER, FTP_PASS, FTP_REMOTE_PATH." },
-      { status: 400 },
-    );
+    throw new Error("FTP not configured. Set FTP_HOST, FTP_USER, FTP_PASS, FTP_REMOTE_PATH.");
   }
 
+  const data: ChannelsData = { channels };
+  const json = JSON.stringify(data, null, 2);
+  const baseDir = path.posix.dirname(remotePath);
+  const targetPath = path.posix.join(baseDir, "channels.json");
+
+  const client = new Client(15000);
   try {
-    const body = await request.json();
-    const name = typeof body?.name === "string" ? body.name.trim() : "";
-    const shortName = typeof body?.shortName === "string" ? body.shortName.trim() : undefined;
-    if (!name) {
-      return NextResponse.json({ error: "Channel name is required" }, { status: 400 });
+    await client.access({ host, port, user, password, secure });
+    if (baseDir && baseDir !== ".") {
+      await client.ensureDir(baseDir);
     }
+    const stream = Readable.from([json]);
+    await client.uploadFrom(stream, targetPath);
+  } finally {
+    client.close();
+  }
+}
 
-    // Normalize channel name
-    const normalized = name.replace(/[^a-zA-Z0-9_-]/g, "-");
-    if (!normalized) {
-      return NextResponse.json({ error: "Invalid channel name" }, { status: 400 });
-    }
-
-    // Fetch current channels from remote
-    const base = process.env.REMOTE_MEDIA_BASE || REMOTE_MEDIA_BASE;
-    let currentChannels: ChannelInfo[] = [];
-    if (base) {
-      try {
-        const res = await fetch(new URL("channels.json", base).toString(), { cache: "no-store" });
-        if (res.ok) {
-          const data = await res.json();
-          currentChannels = normalizeChannels(data?.channels);
-        }
-      } catch {
-        // Start with empty list
-      }
-    }
-
-    // Check if channel already exists
-    if (currentChannels.some((c) => c.id === normalized)) {
-      return NextResponse.json({ error: "Channel already exists" }, { status: 400 });
-    }
-
-    // Add new channel and sort
-    const newChannel: ChannelInfo = { id: normalized, shortName: shortName || undefined };
-    const newChannels = [...currentChannels, newChannel].sort((a, b) =>
-      a.id.localeCompare(b.id, undefined, { sensitivity: "base" }),
-    );
-
-    // Push updated channels.json to remote
-    const payload: ChannelsPayload = { channels: newChannels };
-    const jsonBody = JSON.stringify(payload, null, 2);
-    const baseDir = path.posix.dirname(remotePath);
-    const targetPath = path.posix.join(baseDir, "channels.json");
-
-    const client = new Client(15000);
-    try {
-      await client.access({ host, port, user, password, secure });
-      if (baseDir && baseDir !== ".") {
-        await client.ensureDir(baseDir);
-      }
-      const stream = Readable.from([jsonBody]);
-      await client.uploadFrom(stream, targetPath);
-    } finally {
-      client.close();
-    }
-
-    // Also update the schedule.json to add empty schedule for the new channel
-    const scheduleClient = new Client(15000);
-    try {
-      await scheduleClient.access({ host, port, user, password, secure });
-      const schedulePath = path.posix.join(baseDir, "schedule.json");
-      
-      // Fetch existing schedule
-      let currentSchedule: { channels: Record<string, { slots: unknown[]; shortName?: string }> } = { channels: {} };
-      if (base) {
-        try {
-          const res = await fetch(new URL("schedule.json", base).toString(), { cache: "no-store" });
-          if (res.ok) {
-            currentSchedule = await res.json();
-          }
-        } catch {
-          // Start with empty schedule
-        }
-      }
-      
-      // Add empty schedule for new channel
-      if (!currentSchedule.channels) {
-        currentSchedule.channels = {};
-      }
-      currentSchedule.channels[normalized] = { slots: [], shortName: shortName || undefined };
-      
-      const scheduleBody = JSON.stringify(currentSchedule, null, 2);
-      const scheduleStream = Readable.from([scheduleBody]);
-      await scheduleClient.uploadFrom(scheduleStream, schedulePath);
-    } finally {
-      scheduleClient.close();
-    }
-
-    return NextResponse.json({ channel: normalized, shortName: shortName || undefined, channels: newChannels });
+// GET - List remote channels
+export async function GET() {
+  try {
+    const channels = await readRemoteChannels();
+    return NextResponse.json({ channels });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: `Failed to create channel: ${msg}` }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Failed to list channels";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
-// Update a channel on remote (shortName)
-export async function PATCH(request: NextRequest) {
-  const { host, user, password, port, remotePath, secure } = getEnv();
-  if (!host || !user || !password || !remotePath) {
-    return NextResponse.json(
-      { error: "FTP not configured. Set FTP_HOST, FTP_USER, FTP_PASS, FTP_REMOTE_PATH." },
-      { status: 400 },
-    );
-  }
-
+// POST - Create a new remote channel
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const channelId = typeof body?.channel === "string" ? body.channel.trim() : "";
+    const body = await request.json().catch(() => ({}));
+    const id = typeof body?.id === "string" ? body.id.trim() : "";
     const shortName = typeof body?.shortName === "string" ? body.shortName.trim() : undefined;
-    
-    if (!channelId) {
+
+    if (!id) {
       return NextResponse.json({ error: "Channel ID is required" }, { status: 400 });
     }
 
-    const base = process.env.REMOTE_MEDIA_BASE || REMOTE_MEDIA_BASE;
-    
-    // Fetch current channels from remote
-    let currentChannels: ChannelInfo[] = [];
-    if (base) {
-      try {
-        const res = await fetch(new URL("channels.json", base).toString(), { cache: "no-store" });
-        if (res.ok) {
-          const data = await res.json();
-          currentChannels = normalizeChannels(data?.channels);
-        }
-      } catch {
-        // Start with empty list
-      }
+    const normalizedId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!normalizedId) {
+      return NextResponse.json({ error: "Invalid channel ID" }, { status: 400 });
     }
 
-    // Find and update the channel
-    const channelIndex = currentChannels.findIndex((c) => c.id === channelId);
-    if (channelIndex === -1) {
-      return NextResponse.json({ error: `Channel "${channelId}" not found` }, { status: 404 });
+    const channels = await readRemoteChannels();
+
+    if (channels.some((ch) => ch.id === normalizedId)) {
+      return NextResponse.json({ error: "Channel already exists" }, { status: 400 });
     }
 
-    // Update shortName
-    currentChannels[channelIndex] = {
-      ...currentChannels[channelIndex],
-      shortName: shortName || undefined,
-    };
+    const newChannel: Channel = { id: normalizedId };
+    if (shortName) newChannel.shortName = shortName;
 
-    // Push updated channels.json to remote
-    const payload: ChannelsPayload = { channels: currentChannels };
-    const jsonBody = JSON.stringify(payload, null, 2);
-    const baseDir = path.posix.dirname(remotePath);
-    const targetPath = path.posix.join(baseDir, "channels.json");
+    channels.push(newChannel);
+    channels.sort((a, b) => {
+      const numA = parseInt(a.id, 10);
+      const numB = parseInt(b.id, 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.id.localeCompare(b.id);
+    });
 
-    const client = new Client(15000);
-    try {
-      await client.access({ host, port, user, password, secure });
-      if (baseDir && baseDir !== ".") {
-        await client.ensureDir(baseDir);
-      }
-      const stream = Readable.from([jsonBody]);
-      await client.uploadFrom(stream, targetPath);
-    } finally {
-      client.close();
-    }
-
-    // Also update the schedule.json with the new shortName
-    const scheduleClient = new Client(15000);
-    try {
-      await scheduleClient.access({ host, port, user, password, secure });
-      const schedulePath = path.posix.join(baseDir, "schedule.json");
-      
-      // Fetch existing schedule
-      let currentSchedule: { channels: Record<string, { slots?: unknown[]; shortName?: string }> } = { channels: {} };
-      if (base) {
-        try {
-          const res = await fetch(new URL("schedule.json", base).toString(), { cache: "no-store" });
-          if (res.ok) {
-            currentSchedule = await res.json();
-          }
-        } catch {
-          // Continue with empty schedule
-        }
-      }
-      
-      // Update shortName in schedule
-      if (currentSchedule.channels && currentSchedule.channels[channelId]) {
-        currentSchedule.channels[channelId].shortName = shortName || undefined;
-        
-        const scheduleBody = JSON.stringify(currentSchedule, null, 2);
-        const scheduleStream = Readable.from([scheduleBody]);
-        await scheduleClient.uploadFrom(scheduleStream, schedulePath);
-      }
-    } finally {
-      scheduleClient.close();
-    }
-
-    return NextResponse.json({ id: channelId, shortName: shortName || undefined });
+    await pushRemoteChannels(channels);
+    return NextResponse.json({ channel: newChannel, channels });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: `Failed to update channel: ${msg}` }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Failed to create channel";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
-// Delete a channel from remote
-export async function DELETE(request: NextRequest) {
-  const { host, user, password, port, remotePath, secure } = getEnv();
-  if (!host || !user || !password || !remotePath) {
-    return NextResponse.json(
-      { error: "FTP not configured. Set FTP_HOST, FTP_USER, FTP_PASS, FTP_REMOTE_PATH." },
-      { status: 400 },
-    );
-  }
+// PATCH - Update a remote channel
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const id = typeof body?.id === "string" ? body.id.trim() : "";
+    const shortName = typeof body?.shortName === "string" ? body.shortName : undefined;
 
-  const channel = request.nextUrl.searchParams.get("channel");
-  if (!channel) {
-    return NextResponse.json({ error: "Channel name is required" }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: "Channel ID is required" }, { status: 400 });
+    }
+
+    const channels = await readRemoteChannels();
+    const index = channels.findIndex((ch) => ch.id === id);
+
+    if (index === -1) {
+      return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+    }
+
+    if (shortName !== undefined) {
+      const trimmed = shortName.trim();
+      if (trimmed) {
+        channels[index].shortName = trimmed;
+      } else {
+        delete channels[index].shortName;
+      }
+    }
+
+    await pushRemoteChannels(channels);
+    return NextResponse.json({ channel: channels[index], channels });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to update channel";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// DELETE - Delete a remote channel
+export async function DELETE(request: NextRequest) {
+  const id = request.nextUrl.searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ error: "Channel ID is required" }, { status: 400 });
   }
 
   try {
-    // Fetch current channels from remote
-    const base = process.env.REMOTE_MEDIA_BASE || REMOTE_MEDIA_BASE;
-    let currentChannels: ChannelInfo[] = [];
-    if (base) {
-      try {
-        const res = await fetch(new URL("channels.json", base).toString(), { cache: "no-store" });
-        if (res.ok) {
-          const data = await res.json();
-          currentChannels = normalizeChannels(data?.channels);
-        }
-      } catch {
-        // Continue with empty list
-      }
+    const channels = await readRemoteChannels();
+    const filtered = channels.filter((ch) => ch.id !== id);
+
+    if (filtered.length === channels.length) {
+      return NextResponse.json({ error: "Channel not found" }, { status: 404 });
     }
 
-    // Remove the channel
-    const newChannels = currentChannels.filter((c) => c.id !== channel);
-
-    // Push updated channels.json to remote
-    const payload: ChannelsPayload = { channels: newChannels };
-    const jsonBody = JSON.stringify(payload, null, 2);
-    const baseDir = path.posix.dirname(remotePath);
-    const targetPath = path.posix.join(baseDir, "channels.json");
-
-    const client = new Client(15000);
-    try {
-      await client.access({ host, port, user, password, secure });
-      if (baseDir && baseDir !== ".") {
-        await client.ensureDir(baseDir);
-      }
-      const stream = Readable.from([jsonBody]);
-      await client.uploadFrom(stream, targetPath);
-    } finally {
-      client.close();
-    }
-
-    // Also update the schedule.json to remove the channel's schedule
-    try {
-      const scheduleClient = new Client(15000);
-      await scheduleClient.access({ host, port, user, password, secure });
-      const schedulePath = path.posix.join(baseDir, "schedule.json");
-      
-      // Fetch existing schedule
-      let currentSchedule: { channels: Record<string, unknown> } = { channels: {} };
-      if (base) {
-        try {
-          const res = await fetch(new URL("schedule.json", base).toString(), { cache: "no-store" });
-          if (res.ok) {
-            currentSchedule = await res.json();
-          }
-        } catch {
-          // Continue with empty schedule
-        }
-      }
-      
-      // Remove the channel from schedule
-      if (currentSchedule.channels && currentSchedule.channels[channel]) {
-        delete currentSchedule.channels[channel];
-        
-        const scheduleBody = JSON.stringify(currentSchedule, null, 2);
-        const scheduleStream = Readable.from([scheduleBody]);
-        await scheduleClient.uploadFrom(scheduleStream, schedulePath);
-      }
-      
-      scheduleClient.close();
-    } catch {
-      // Ignore - schedule file might not exist
-    }
-
-    return NextResponse.json({ ok: true, channels: newChannels });
+    await pushRemoteChannels(filtered);
+    return NextResponse.json({ ok: true, channels: filtered });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: `Failed to delete channel: ${msg}` }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Failed to delete channel";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

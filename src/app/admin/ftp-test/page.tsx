@@ -55,10 +55,10 @@ export default function FtpTestPage() {
   };
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4 px-6 py-8 text-slate-100">
+    <div className="mx-auto flex max-w-4xl flex-col gap-4 px-6 py-8 text-neutral-100">
       <div>
-        <p className="text-sm uppercase tracking-[0.2em] text-slate-300">FTP Test</p>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">FTP Test</p>
+        <p className="text-sm text-neutral-400">
           Uses FTP_HOST/FTP_USER/FTP_PASS/FTP_REMOTE_PATH from env to try a connection and list the
           target directory.
         </p>
@@ -80,7 +80,7 @@ export default function FtpTestPage() {
         >
           {pushing ? "Uploading…" : "Generate & upload media-index.json"}
         </button>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-neutral-400">
           Builds manifest from local media scan and uploads via FTP_REMOTE_PATH.
         </p>
       </div>
@@ -97,11 +97,11 @@ export default function FtpTestPage() {
       )}
 
       {result && (
-        <div className="rounded-lg border border-white/10 bg-slate-900/70 p-4 text-sm text-slate-200">
+        <div className="rounded-lg border border-white/10 bg-neutral-900/70 p-4 text-sm text-neutral-200">
           <p className="font-semibold text-emerald-200">{result.message}</p>
-          {result.cwd && <p className="text-xs text-slate-400">Dir: {result.cwd}</p>}
+          {result.cwd && <p className="text-xs text-neutral-400">Dir: {result.cwd}</p>}
           {result.writeTest && (
-            <p className="mt-1 text-xs text-slate-300">
+            <p className="mt-1 text-xs text-neutral-300">
               Write test:{" "}
               <span
                 className={
@@ -116,12 +116,12 @@ export default function FtpTestPage() {
           )}
           {Array.isArray(result.entries) && result.entries.length > 0 && (
             <div className="mt-2 rounded-md border border-white/10 bg-black/30 p-2 text-xs">
-              <p className="mb-1 font-semibold text-slate-200">Entries</p>
+              <p className="mb-1 font-semibold text-neutral-200">Entries</p>
               <ul className="space-y-1">
                 {result.entries.map((e) => (
                   <li key={`${e.type}-${e.name}`} className="flex items-center justify-between">
                     <span>{e.name}</span>
-                    <span className="text-slate-400">
+                    <span className="text-neutral-400">
                       {e.type} {typeof e.size === "number" ? `(${e.size} bytes)` : ""}
                     </span>
                   </li>
