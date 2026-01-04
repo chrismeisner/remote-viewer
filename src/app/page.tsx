@@ -395,6 +395,18 @@ export default function Home() {
       console.log("[player] video can play, clearing loading state");
       onVideoReady();
     };
+    
+    // Called when video stalls due to buffering - show loading state
+    const handleWaiting = () => {
+      console.log("[player] video buffering (waiting)");
+      setIsVideoLoading(true);
+    };
+    
+    // Called when video resumes playing - clear loading state
+    const handlePlaying = () => {
+      console.log("[player] video playing, clearing loading state");
+      onVideoReady();
+    };
 
     video.src = nowPlaying.src;
     video.preload = "auto";
@@ -407,6 +419,8 @@ export default function Home() {
     video.load();
     video.addEventListener("loadedmetadata", handleLoaded);
     video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("waiting", handleWaiting);
+    video.addEventListener("playing", handlePlaying);
     const preventPause = () => {
       if (video.paused) {
         video
@@ -421,6 +435,8 @@ export default function Home() {
     return () => {
       video.removeEventListener("loadedmetadata", handleLoaded);
       video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("waiting", handleWaiting);
+      video.removeEventListener("playing", handlePlaying);
       video.removeEventListener("pause", preventPause);
       clearTimeout(lateSeek);
     };
@@ -776,43 +792,45 @@ export default function Home() {
                   isFullscreen ? "hidden" : ""
                 }`}
               >
-                <button
-                  onClick={() => setCrtEnabled((c) => !c)}
-                  className={`inline-flex w-full min-w-[140px] flex-1 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
-                    crtEnabled
-                      ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
-                      : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
-                  }`}
-                >
-                  CRT
-                </button>
-                <button
-                  onClick={() => setMuted((m) => !m)}
-                  aria-pressed={muted}
-                  className={`inline-flex w-full min-w-[140px] flex-1 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
-                    muted
-                      ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
-                      : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
-                  }`}
-                >
-                  {muted ? "Muted" : "Mute"}
-                </button>
-                <button
-                  onClick={toggleFullscreen}
-                  className="inline-flex w-full min-w-[140px] flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
-                >
-                  {isFullscreen ? "Exit" : "Fullscreen"}
-                </button>
+                <div className="flex w-full flex-nowrap gap-2 sm:flex-wrap">
+                  <button
+                    onClick={() => setCrtEnabled((c) => !c)}
+                    className={`inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
+                      crtEnabled
+                        ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+                        : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
+                    }`}
+                  >
+                    CRT
+                  </button>
+                  <button
+                    onClick={() => setMuted((m) => !m)}
+                    aria-pressed={muted}
+                    className={`inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
+                      muted
+                        ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+                        : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
+                    }`}
+                  >
+                    {muted ? "Muted" : "Mute"}
+                  </button>
+                  <button
+                    onClick={toggleFullscreen}
+                    className="inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+                  >
+                    {isFullscreen ? "Exit" : "Fullscreen"}
+                  </button>
+                </div>
                 <button
                   onClick={channelUp}
-                  className="inline-flex w-full min-w-[140px] flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+                  className="inline-flex w-full min-w-[140px] basis-full items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
                   disabled={channels.length === 0}
                 >
                   Channel Up
                 </button>
                 <button
                   onClick={channelDown}
-                  className="inline-flex w-full min-w-[140px] flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+                  className="inline-flex w-full min-w-[140px] basis-full items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
                   disabled={channels.length === 0}
                 >
                   Channel Down
