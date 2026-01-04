@@ -364,18 +364,14 @@ export default function Home() {
     const handleWebkitBegin = () => setIsFullscreen(true);
     const handleWebkitEnd = () => setIsFullscreen(false);
     if (video) {
-      // @ts-expect-error iOS-specific events
       video.addEventListener("webkitbeginfullscreen", handleWebkitBegin);
-      // @ts-expect-error iOS-specific events
       video.addEventListener("webkitendfullscreen", handleWebkitEnd);
     }
 
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       if (video) {
-        // @ts-expect-error iOS-specific events
         video.removeEventListener("webkitbeginfullscreen", handleWebkitBegin);
-        // @ts-expect-error iOS-specific events
         video.removeEventListener("webkitendfullscreen", handleWebkitEnd);
       }
     };
