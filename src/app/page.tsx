@@ -10,7 +10,6 @@ import {
 const MUTED_PREF_KEY = "player-muted-default";
 const CRT_PREF_KEY = "player-crt-default";
 const REMOTE_PREF_KEY = "player-remote-default";
-const HELPER_PREF_KEY = "player-helper-default";
 
 type NowPlaying = {
   title: string;
@@ -55,7 +54,6 @@ export default function Home() {
   const [showHeader, setShowHeader] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showWelcome, setShowWelcome] = useState(true);
-  const [showWelcomePref, setShowWelcomePref] = useState(true);
   
   // Channel overlay state for CRT-style display
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
@@ -193,27 +191,6 @@ export default function Home() {
     if (typeof window === "undefined") return;
     localStorage.setItem(REMOTE_PREF_KEY, showControls ? "true" : "false");
   }, [showControls]);
-
-  // Load helper/welcome preference from localStorage
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = localStorage.getItem(HELPER_PREF_KEY);
-    if (stored === "true" || stored === "false") {
-      const pref = stored === "true";
-      setShowWelcomePref(pref);
-      setShowWelcome(pref);
-    } else {
-      localStorage.setItem(HELPER_PREF_KEY, "true");
-      setShowWelcomePref(true);
-      setShowWelcome(true);
-    }
-  }, []);
-
-  // Persist helper/welcome preference
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(HELPER_PREF_KEY, showWelcomePref ? "true" : "false");
-  }, [showWelcomePref]);
 
   // Re-apply media source mapping when source changes
   useEffect(() => {
@@ -927,33 +904,19 @@ export default function Home() {
             <h2 className="text-2xl font-semibold text-neutral-50 font-homevideo tracking-tight">
               Remote Viewer
             </h2>
-            <p className="mt-3 text-sm font-semibold text-neutral-200">Keyboard shortcuts</p>
-            <ul className="mt-3 space-y-2 text-sm text-neutral-200">
-              <li className="flex justify-between gap-4"><span>Show helper</span><span className="font-mono text-neutral-100">/</span></li>
-              <li className="flex justify-between gap-4"><span>Show remote</span><span className="font-mono text-neutral-100">r</span></li>
-              <li className="flex justify-between gap-4"><span>Channel up</span><span className="font-mono text-neutral-100">↑</span></li>
-              <li className="flex justify-between gap-4"><span>Channel down</span><span className="font-mono text-neutral-100">↓</span></li>
-              <li className="flex justify-between gap-4"><span>Mute</span><span className="font-mono text-neutral-100">m</span></li>
-              <li className="flex justify-between gap-4"><span>CRT Effect</span><span className="font-mono text-neutral-100">c</span></li>
-              <li className="flex justify-between gap-4"><span>Fullscreen</span><span className="font-mono text-neutral-100">f</span></li>
-            </ul>
-            <p className="mt-4 text-sm font-semibold text-neutral-200">Launch preferences</p>
-            <div className="mt-2 flex items-center gap-2 text-sm text-neutral-200">
-              <input
-                id="welcome-helper"
-                type="checkbox"
-                className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
-                checked={showWelcomePref}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  setShowWelcomePref(next);
-                  setShowWelcome(next);
-                }}
-              />
-              <label htmlFor="welcome-helper" className="select-none">
-                Show helper
-              </label>
+            <div className="hidden sm:block">
+              <p className="mt-3 text-sm font-semibold text-neutral-200">Keyboard shortcuts</p>
+              <ul className="mt-3 space-y-2 text-sm text-neutral-200">
+                <li className="flex justify-between gap-4"><span>Show helper</span><span className="font-mono text-neutral-100">/</span></li>
+                <li className="flex justify-between gap-4"><span>Show remote</span><span className="font-mono text-neutral-100">r</span></li>
+                <li className="flex justify-between gap-4"><span>Channel up</span><span className="font-mono text-neutral-100">↑</span></li>
+                <li className="flex justify-between gap-4"><span>Channel down</span><span className="font-mono text-neutral-100">↓</span></li>
+                <li className="flex justify-between gap-4"><span>Mute</span><span className="font-mono text-neutral-100">m</span></li>
+                <li className="flex justify-between gap-4"><span>CRT Effect</span><span className="font-mono text-neutral-100">c</span></li>
+                <li className="flex justify-between gap-4"><span>Fullscreen</span><span className="font-mono text-neutral-100">f</span></li>
+              </ul>
             </div>
+            <p className="mt-4 text-sm font-semibold text-neutral-200">Launch preferences</p>
             <div className="mt-2 flex items-center gap-2 text-sm text-neutral-200">
               <input
                 id="welcome-mute"
