@@ -442,10 +442,10 @@ function ScheduleAdminContent() {
             Schedule Admin
           </p>
           <p className="text-sm text-neutral-400">
-            Single-day (24h, UTC) schedule per channel. Changes auto-save{mediaSource === "remote" ? " and push to remote" : " to local JSON"}.
+            24-hour cycling schedule per channel. Supports midnight rollovers (e.g., 23:00→01:00). Changes auto-save{mediaSource === "remote" ? " and push to remote" : " to local JSON"}.
           </p>
           <p className="mt-1 text-xs text-neutral-500">
-            Add or edit slots — changes save automatically{mediaSource === "remote" ? " and sync to CDN via FTP" : ""}.
+            Add or edit slots — changes save automatically{mediaSource === "remote" ? " and sync to CDN via FTP" : ""}. Slots cycle continuously every 24 hours.
           </p>
         </div>
       </div>
@@ -546,29 +546,40 @@ function ScheduleAdminContent() {
                         )
                         .map(({ slot, idx }) => {
                           const duration = fileByRel.get(slot.file)?.durationSeconds || 0;
+                          const crossesMidnight = slotCrossesMidnight(slot.start, slot.end);
                           return (
-                            <tr key={idx} className="bg-neutral-950/60 text-neutral-100">
+                            <tr key={idx} className={`text-neutral-100 ${crossesMidnight ? "bg-indigo-950/40" : "bg-neutral-950/60"}`}>
                               <td className="px-3 py-2">
-                                <input
-                                  type="time"
-                                  step="1"
-                                  className="w-24 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
-                                  value={slot.start}
-                                  onChange={(e) =>
-                                    updateSlot(idx, { ...slot, start: e.target.value })
-                                  }
-                                />
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="time"
+                                    step="1"
+                                    className="w-24 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
+                                    value={slot.start}
+                                    onChange={(e) =>
+                                      updateSlot(idx, { ...slot, start: e.target.value })
+                                    }
+                                  />
+                                  {crossesMidnight && (
+                                    <span className="text-indigo-300 text-xs" title="Crosses midnight">🌙</span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-3 py-2">
-                                <input
-                                  type="time"
-                                  step="1"
-                                  className="w-24 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
-                                  value={slot.end}
-                                  onChange={(e) =>
-                                    updateSlot(idx, { ...slot, end: e.target.value })
-                                  }
-                                />
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="time"
+                                    step="1"
+                                    className="w-24 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
+                                    value={slot.end}
+                                    onChange={(e) =>
+                                      updateSlot(idx, { ...slot, end: e.target.value })
+                                    }
+                                  />
+                                  {crossesMidnight && (
+                                    <span className="text-indigo-300 text-xs">+1d</span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-3 py-2">
                                 <select
@@ -710,18 +721,28 @@ function ScheduleAdminContent() {
                 </div>
                 <label className="text-xs text-neutral-300">
                   End time
-                  <input
-                    type="time"
-                    step="1"
-                    value={modalEnd}
-                    onChange={(e) => setModalEnd(e.target.value)}
-                    className="ml-2 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
-                  />
+                  <div className="flex items-center gap-1 mt-1">
+                    <input
+                      type="time"
+                      step="1"
+                      value={modalEnd}
+                      onChange={(e) => setModalEnd(e.target.value)}
+                      className="rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
+                    />
+                    {isValidTime(modalStart) && isValidTime(modalEnd) && slotCrossesMidnight(modalStart, modalEnd) && (
+                      <span className="text-indigo-300 text-xs flex items-center gap-1" title="Crosses midnight">
+                        🌙 +1d
+                      </span>
+                    )}
+                  </div>
                 </label>
                 <div className="text-xs text-neutral-300">
                   Suggested end
-                  <div className="mt-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-neutral-100">
+                  <div className="mt-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-neutral-100 flex items-center gap-2">
                     {computeEndTime(modalStart, modalFile, supportedFiles)}
+                    {isValidTime(modalStart) && slotCrossesMidnight(modalStart, computeEndTime(modalStart, modalFile, supportedFiles)) && (
+                      <span className="text-indigo-300 text-xs">+1d</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -748,11 +769,13 @@ function ScheduleAdminContent() {
               <button
                 onClick={() => {
                   void (async () => {
+                    // Allow midnight crossover: end can be <= start if wrapping past midnight
+                    // Only reject if start === end (zero-length slot) or invalid times
                     if (
                       !modalFile ||
                       !isValidTime(modalStart) ||
                       !isValidTime(modalEnd) ||
-                      timeToSeconds(modalEnd) <= timeToSeconds(modalStart)
+                      modalStart === modalEnd
                     )
                       return;
                     const newSlot: ScheduleSlot = {
@@ -767,7 +790,7 @@ function ScheduleAdminContent() {
                     setShowSlotModal(false);
                   })();
                 }}
-                disabled={!modalFile || !isValidTime(modalStart)}
+                disabled={!modalFile || !isValidTime(modalStart) || !isValidTime(modalEnd) || modalStart === modalEnd}
                 className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
               >
                 Add schedule item
@@ -1126,6 +1149,27 @@ function computeEndTime(
   const startSec = timeToSeconds(start);
   const endSec = (startSec + dur) % 86400;
   return secondsToTime(endSec);
+}
+
+/**
+ * Check if a time slot crosses midnight (end time is before start time in 24h clock).
+ */
+function slotCrossesMidnight(start: string, end: string): boolean {
+  if (!isValidTime(start) || !isValidTime(end)) return false;
+  return timeToSeconds(end) <= timeToSeconds(start);
+}
+
+/**
+ * Get the effective duration of a slot in seconds, accounting for midnight crossover.
+ */
+function getSlotDurationSeconds(start: string, end: string): number {
+  if (!isValidTime(start) || !isValidTime(end)) return 0;
+  const startSec = timeToSeconds(start);
+  const endSec = timeToSeconds(end);
+  if (slotCrossesMidnight(start, end)) {
+    return (86400 - startSec) + endSec;
+  }
+  return endSec - startSec;
 }
 
 function secondsToTime(totalSeconds: number): string {

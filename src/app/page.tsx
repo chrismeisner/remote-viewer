@@ -721,16 +721,9 @@ export default function Home() {
               {/* Blue screen fallback when channel is selected but video is loading or nothing scheduled */}
               {channel && (!nowPlaying || isVideoLoading) && (
                 <div
-                  className="aspect-video w-full flex items-center justify-center"
+                  className="aspect-video w-full"
                   style={{ backgroundColor: "#0000FF" }}
-                >
-                  {/* Show "NO PROGRAMMING" when nothing is scheduled (not loading) */}
-                  {!nowPlaying && !isVideoLoading && (
-                    <span className="font-homevideo text-2xl sm:text-3xl text-white/90 tracking-wide">
-                      NO PROGRAMMING
-                    </span>
-                  )}
-                </div>
+                />
               )}
 
               {/* Video element - hidden when showing blue screen */}
@@ -754,10 +747,10 @@ export default function Home() {
                 }`}
               />
 
-              {/* CRT-style channel overlay - stays visible while loading */}
+              {/* CRT-style channel overlay - stays visible while loading or no programming */}
               <div
                 className={`absolute top-4 left-4 z-10 transition-opacity duration-500 ${
-                  showChannelOverlay || isVideoLoading ? "opacity-100" : "opacity-0 pointer-events-none"
+                  showChannelOverlay || isVideoLoading || (channel && !nowPlaying) ? "opacity-100" : "opacity-0 pointer-events-none"
                 }`}
               >
                 <div className="channel-overlay font-mono">
@@ -765,9 +758,13 @@ export default function Home() {
                   {overlayChannel?.shortName && (
                     <span className="channel-name">{overlayChannel.shortName}</span>
                   )}
-                  {/* Blinking cursor while loading */}
-                  {isVideoLoading && (
+                  {/* Blinking cursor while loading or no programming */}
+                  {(isVideoLoading || (channel && !nowPlaying)) && (
                     <span className="channel-cursor">▌</span>
+                  )}
+                  {/* TUNING text (static) when no programming scheduled */}
+                  {channel && !nowPlaying && !isVideoLoading && (
+                    <span className="channel-tuning">TUNING</span>
                   )}
                 </div>
               </div>

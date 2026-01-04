@@ -13,6 +13,8 @@ import {
   parseTimeToSeconds,
   validateChannelSchedule,
   validateSchedule,
+  slotCrossesMidnight,
+  getSlotDurationSeconds,
 } from "@/lib/schedule";
 
 const execFileAsync = promisify(execFile);
@@ -625,6 +627,7 @@ type ResolvedSlot = {
   windowSeconds: number;
   deltaSeconds: number;
   offsetSeconds?: number;
+  crossesMidnight: boolean;
 };
 
 function resolveSlots(
@@ -635,7 +638,8 @@ function resolveSlots(
     .map((slot) => {
       const startSeconds = parseTimeToSeconds(slot.start);
       const endSeconds = parseTimeToSeconds(slot.end);
-      if (startSeconds === null || endSeconds === null || endSeconds <= startSeconds) {
+      // Only reject if both are null or identical (zero-length slot)
+      if (startSeconds === null || endSeconds === null || startSeconds === endSeconds) {
         return null;
       }
       return {
@@ -643,10 +647,11 @@ function resolveSlots(
         relPath: normalizeRel(slot.file),
         startSeconds,
         endSeconds,
+        crossesMidnight: slotCrossesMidnight(startSeconds, endSeconds),
       };
     })
     .filter(Boolean) as Array<
-    ScheduleSlot & { relPath: string; startSeconds: number; endSeconds: number }
+    ScheduleSlot & { relPath: string; startSeconds: number; endSeconds: number; crossesMidnight: boolean }
   >;
 
   normalized.sort((a, b) => a.startSeconds - b.startSeconds);
@@ -658,14 +663,16 @@ function resolveSlots(
     if (!file) continue;
 
     const rawDurationSeconds = file.durationSeconds;
-    const fallbackDuration = Math.max(1, slot.endSeconds - slot.startSeconds);
+    // For midnight-crossing slots, use the helper to get proper duration
+    const slotWindowDuration = getSlotDurationSeconds(slot.startSeconds, slot.endSeconds);
+    const fallbackDuration = Math.max(1, slotWindowDuration);
     const durationSeconds =
       typeof rawDurationSeconds === "number" && rawDurationSeconds > 0
         ? rawDurationSeconds
         : fallbackDuration;
     const windowSeconds = Math.max(
       1,
-      Math.min(durationSeconds, slot.endSeconds - slot.startSeconds),
+      Math.min(durationSeconds, slotWindowDuration),
     );
 
     resolved.push({
@@ -676,6 +683,7 @@ function resolveSlots(
       endSeconds: slot.endSeconds,
       windowSeconds,
       deltaSeconds: 0,
+      crossesMidnight: slot.crossesMidnight,
     });
   }
 
@@ -685,14 +693,48 @@ function resolveSlots(
 function findActiveSlot(slots: ResolvedSlot[], secondsOfDay: number) {
   for (const slot of slots) {
     const startSeconds = slot.startSeconds;
-    const endSeconds = startSeconds + slot.windowSeconds;
-    if (secondsOfDay >= startSeconds && secondsOfDay < endSeconds) {
-      const offsetSeconds = clampSeconds(
-        secondsOfDay - startSeconds,
-        0,
-        slot.windowSeconds - 1,
-      );
-      return { ...slot, deltaMinutes: 0, offsetSeconds };
+    
+    if (slot.crossesMidnight) {
+      // Slot crosses midnight (e.g., 23:00 -> 01:00)
+      // We're in this slot if:
+      // - currentTime >= startSeconds (late night portion), OR
+      // - currentTime < endSeconds (early morning portion after midnight)
+      const effectiveEnd = Math.min(slot.endSeconds, startSeconds + slot.windowSeconds - 86400);
+      const inLateNight = secondsOfDay >= startSeconds;
+      const inEarlyMorning = secondsOfDay < effectiveEnd && secondsOfDay < slot.endSeconds;
+      
+      if (inLateNight) {
+        // We're in the before-midnight portion
+        const offsetSeconds = clampSeconds(
+          secondsOfDay - startSeconds,
+          0,
+          slot.windowSeconds - 1,
+        );
+        return { ...slot, deltaMinutes: 0, offsetSeconds };
+      }
+      
+      if (inEarlyMorning) {
+        // We're in the after-midnight portion
+        // Offset = (time from start to midnight) + (time from midnight to now)
+        const timeUntilMidnight = 86400 - startSeconds;
+        const offsetSeconds = clampSeconds(
+          timeUntilMidnight + secondsOfDay,
+          0,
+          slot.windowSeconds - 1,
+        );
+        return { ...slot, deltaMinutes: 0, offsetSeconds };
+      }
+    } else {
+      // Normal slot that doesn't cross midnight
+      const endSeconds = startSeconds + slot.windowSeconds;
+      if (secondsOfDay >= startSeconds && secondsOfDay < endSeconds) {
+        const offsetSeconds = clampSeconds(
+          secondsOfDay - startSeconds,
+          0,
+          slot.windowSeconds - 1,
+        );
+        return { ...slot, deltaMinutes: 0, offsetSeconds };
+      }
     }
   }
   return null;
@@ -704,6 +746,22 @@ function findNextSlot(
   dayOffset: number,
 ) {
   for (const slot of slots) {
+    // For midnight-crossing slots, also check if we're currently in the after-midnight portion
+    if (slot.crossesMidnight && dayOffset === 0) {
+      // Check if we're in the early morning portion of this slot
+      if (currentSeconds < slot.endSeconds) {
+        // We're in a midnight-crossing slot right now (after midnight portion)
+        const timeUntilMidnight = 86400 - slot.startSeconds;
+        const offsetSeconds = timeUntilMidnight + currentSeconds;
+        if (offsetSeconds < slot.windowSeconds) {
+          return {
+            slot: { ...slot, deltaSeconds: 0, offsetSeconds },
+            dayOffset: 0,
+          };
+        }
+      }
+    }
+    
     const deltaSeconds = dayOffset * 86400 + (slot.startSeconds - currentSeconds);
     if (deltaSeconds >= 0) {
       return {
@@ -721,21 +779,32 @@ function buildNowPlaying(
   currentSeconds: number,
   dayOffset: number,
 ): NowPlaying {
-  const deltaSeconds =
-    dayOffset * 86400 + (slot.startSeconds - currentSeconds);
-  const secondsUntilStart = Math.max(0, deltaSeconds);
   const startOffsetSeconds = slot.offsetSeconds ?? 0;
-  const remainingWindow = Math.max(
-    1,
-    Math.min(slot.windowSeconds, slot.durationSeconds) - startOffsetSeconds,
-  );
+  
+  // Calculate seconds until the slot ends
+  let secondsUntilEnd: number;
+  
+  if (startOffsetSeconds > 0) {
+    // We're already playing this slot - calculate remaining time
+    const remainingWindow = Math.max(
+      1,
+      Math.min(slot.windowSeconds, slot.durationSeconds) - startOffsetSeconds,
+    );
+    secondsUntilEnd = remainingWindow;
+  } else {
+    // Slot hasn't started yet
+    const deltaSeconds = dayOffset * 86400 + (slot.startSeconds - currentSeconds);
+    const secondsUntilStart = Math.max(0, deltaSeconds);
+    const windowDuration = Math.min(slot.windowSeconds, slot.durationSeconds);
+    secondsUntilEnd = secondsUntilStart + windowDuration;
+  }
 
   return {
     title: slot.title,
     relPath: slot.relPath,
     durationSeconds: slot.durationSeconds,
     startOffsetSeconds,
-    endsAt: now + (secondsUntilStart + remainingWindow) * 1000,
+    endsAt: now + secondsUntilEnd * 1000,
     src: buildMediaUrl(slot.relPath),
   };
 }
