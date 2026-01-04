@@ -762,10 +762,6 @@ export default function Home() {
                   {(isVideoLoading || (channel && !nowPlaying)) && (
                     <span className="channel-cursor">▌</span>
                   )}
-                  {/* TUNING text (static) when no programming scheduled */}
-                  {channel && !nowPlaying && !isVideoLoading && (
-                    <span className="channel-tuning">TUNING</span>
-                  )}
                 </div>
               </div>
             </div>
