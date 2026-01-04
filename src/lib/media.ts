@@ -82,10 +82,10 @@ export async function getNowPlaying(
   now: number = Date.now(),
   channel?: string,
   source: MediaSource = "local",
-): Promise<NowPlaying> {
+): Promise<NowPlaying | null> {
   const scheduled = await getScheduledNowPlaying(now, channel, source);
   if (scheduled) return scheduled;
-  throw new Error("Schedule has no playable media for now");
+  return null;
 }
 
 export async function resolveMediaPath(relPath: string): Promise<string> {

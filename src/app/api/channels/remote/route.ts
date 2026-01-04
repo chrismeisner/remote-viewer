@@ -15,6 +15,10 @@ type ChannelsData = {
   channels: Channel[];
 };
 
+function normalizeChannelId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
 function getEnv() {
   const host = process.env.FTP_HOST?.trim();
   const user = process.env.FTP_USER?.trim();
@@ -125,6 +129,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const id = typeof body?.id === "string" ? body.id.trim() : "";
+    const newIdRaw = typeof body?.newId === "string" ? body.newId.trim() : "";
     const shortName = typeof body?.shortName === "string" ? body.shortName : undefined;
 
     if (!id) {
@@ -138,6 +143,15 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Channel not found" }, { status: 404 });
     }
 
+    const normalizedNewId = newIdRaw ? normalizeChannelId(newIdRaw) : "";
+    const targetId = normalizedNewId || id;
+    if (normalizedNewId && normalizedNewId !== id) {
+      if (channels.some((ch) => ch.id === normalizedNewId)) {
+        return NextResponse.json({ error: "Channel ID already exists" }, { status: 400 });
+      }
+      channels[index].id = normalizedNewId;
+    }
+
     if (shortName !== undefined) {
       const trimmed = shortName.trim();
       if (trimmed) {
@@ -147,8 +161,50 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    channels.sort((a, b) => {
+      const numA = parseInt(a.id, 10);
+      const numB = parseInt(b.id, 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.id.localeCompare(b.id);
+    });
+
     await pushRemoteChannels(channels);
-    return NextResponse.json({ channel: channels[index], channels });
+
+    // Keep local schedule in sync and push to remote
+    if (normalizedNewId || shortName !== undefined) {
+      try {
+        const { loadFullSchedule, saveFullSchedule } = await import("@/lib/media");
+        const schedule = await loadFullSchedule("local");
+        const trimmed = typeof shortName === "string" ? shortName.trim() : undefined;
+        const existing = schedule.channels?.[id];
+        const targetExisting = schedule.channels?.[targetId];
+
+        if (existing) {
+          const updated = { ...existing };
+          if (trimmed !== undefined) {
+            updated.shortName = trimmed || undefined;
+          }
+          delete schedule.channels[id];
+          schedule.channels[targetId] = updated;
+        } else if (targetExisting && trimmed !== undefined) {
+          schedule.channels[targetId] = { ...targetExisting, shortName: trimmed || undefined };
+        }
+
+        await saveFullSchedule(schedule);
+
+        const { pushScheduleToRemote } = await import("./schedule-helper");
+        try {
+          await pushScheduleToRemote(schedule);
+        } catch (pushErr) {
+          console.warn("Failed to push remote schedule after channel update:", pushErr);
+        }
+      } catch (scheduleErr) {
+        console.warn("Failed to sync schedule for remote channel update:", scheduleErr);
+      }
+    }
+
+    const updatedChannel = channels.find((ch) => ch.id === targetId) ?? channels[index];
+    return NextResponse.json({ channel: updatedChannel, channels });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update channel";
     return NextResponse.json({ error: message }, { status: 500 });

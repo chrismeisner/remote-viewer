@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { REMOTE_MEDIA_BASE } from "@/constants/media";
+import type { Schedule } from "@/lib/schedule";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,11 @@ type ChannelsData = {
 };
 
 const CHANNELS_FILE = path.join(process.cwd(), "data", "channels.json");
+const SCHEDULE_FILE = path.join(process.cwd(), "data", "schedule.json");
+
+function normalizeChannelId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "");
+}
 
 // Read local channels from file
 async function readLocalChannels(): Promise<Channel[]> {
@@ -32,6 +38,52 @@ async function writeLocalChannels(channels: Channel[]): Promise<void> {
   await fs.mkdir(path.dirname(CHANNELS_FILE), { recursive: true });
   const data: ChannelsData = { channels };
   await fs.writeFile(CHANNELS_FILE, JSON.stringify(data, null, 2), "utf8");
+}
+
+async function loadLocalSchedule(): Promise<Schedule> {
+  try {
+    const raw = await fs.readFile(SCHEDULE_FILE, "utf8");
+    const parsed = JSON.parse(raw) as Schedule;
+    if (!parsed.channels || typeof parsed.channels !== "object") {
+      return { channels: {} };
+    }
+    return parsed;
+  } catch {
+    return { channels: {} };
+  }
+}
+
+async function updateScheduleForChannelChange(
+  oldId: string,
+  newId: string,
+  shortName?: string,
+): Promise<void> {
+  const schedule = await loadLocalSchedule();
+  const trimmedShortName = typeof shortName === "string" ? shortName.trim() : undefined;
+  const targetId = newId || oldId;
+  if (!targetId) return;
+
+  const existing = schedule.channels?.[oldId];
+  const targetExisting = schedule.channels?.[targetId];
+  const nextChannels = { ...(schedule.channels || {}) };
+
+  if (existing) {
+    const updated = { ...existing };
+    if (trimmedShortName !== undefined) {
+      updated.shortName = trimmedShortName || undefined;
+    }
+    delete nextChannels[oldId];
+    nextChannels[targetId] = updated;
+  } else if (targetExisting && trimmedShortName !== undefined) {
+    nextChannels[targetId] = { ...targetExisting, shortName: trimmedShortName || undefined };
+  }
+
+  await fs.mkdir(path.dirname(SCHEDULE_FILE), { recursive: true });
+  await fs.writeFile(
+    SCHEDULE_FILE,
+    JSON.stringify({ ...schedule, channels: nextChannels }, null, 2),
+    "utf8",
+  );
 }
 
 // Read remote channels from CDN
@@ -76,7 +128,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Normalize ID (allow numbers and alphanumeric)
-    const normalizedId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+    const normalizedId = normalizeChannelId(id);
     if (!normalizedId) {
       return NextResponse.json({ error: "Invalid channel ID" }, { status: 400 });
     }
@@ -113,6 +165,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const id = typeof body?.id === "string" ? body.id.trim() : "";
+    const newIdRaw = typeof body?.newId === "string" ? body.newId.trim() : "";
     const shortName = typeof body?.shortName === "string" ? body.shortName : undefined;
 
     if (!id) {
@@ -126,6 +179,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Channel not found" }, { status: 404 });
     }
 
+    // Handle ID change
+    const normalizedNewId = newIdRaw ? normalizeChannelId(newIdRaw) : "";
+    const targetId = normalizedNewId || id;
+    if (normalizedNewId && normalizedNewId !== id) {
+      if (channels.some((ch) => ch.id === normalizedNewId)) {
+        return NextResponse.json({ error: "Channel ID already exists" }, { status: 400 });
+      }
+      channels[index].id = normalizedNewId;
+    }
+
     // Update shortName
     if (shortName !== undefined) {
       const trimmed = shortName.trim();
@@ -136,8 +199,23 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    // Re-sort if ID changed
+    channels.sort((a, b) => {
+      const numA = parseInt(a.id, 10);
+      const numB = parseInt(b.id, 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.id.localeCompare(b.id);
+    });
+
     await writeLocalChannels(channels);
-    return NextResponse.json({ channel: channels[index], channels });
+    try {
+      await updateScheduleForChannelChange(id, targetId, shortName);
+    } catch (scheduleErr) {
+      console.warn("Failed to update schedule for channel change:", scheduleErr);
+    }
+
+    const updatedChannel = channels.find((ch) => ch.id === targetId) ?? channels[index];
+    return NextResponse.json({ channel: updatedChannel, channels });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update channel";
     return NextResponse.json({ error: message }, { status: 400 });

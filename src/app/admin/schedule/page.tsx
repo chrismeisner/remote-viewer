@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   MEDIA_SOURCE_EVENT,
   MEDIA_SOURCE_KEY,
@@ -34,6 +34,7 @@ export default function ScheduleAdminPage() {
 
 function ScheduleAdminContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,14 +56,40 @@ function ScheduleAdminContent() {
   const pendingSlotsRef = useRef<ScheduleSlot[] | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedSlotsRef = useRef<string>("");
+  const lastUrlChannelRef = useRef<string | null>(searchParams.get("channel"));
+  const lastSuggestedEndRef = useRef<string>(""); // track auto-suggested end time
+
+  const syncChannelParam = useCallback(
+    (nextChannel: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (nextChannel) {
+        params.set("channel", nextChannel);
+      } else {
+        params.delete("channel");
+      }
+      const query = params.toString();
+      router.replace(query ? `?${query}` : "?", { scroll: false });
+      lastUrlChannelRef.current = nextChannel;
+    },
+    [router, searchParams],
+  );
+
+  const handleChannelChange = useCallback(
+    (nextChannel: string | null) => {
+      setChannel(nextChannel);
+      syncChannelParam(nextChannel);
+    },
+    [syncChannelParam],
+  );
 
   // Sync channel from URL if provided
   useEffect(() => {
     const urlChannel = searchParams.get("channel");
-    if (urlChannel && urlChannel !== channel) {
+    if (urlChannel !== lastUrlChannelRef.current) {
+      lastUrlChannelRef.current = urlChannel;
       setChannel(urlChannel);
     }
-  }, [searchParams, channel]);
+  }, [searchParams]);
 
   // Load media source preference from localStorage and stay in sync with other tabs/pages.
   useEffect(() => {
@@ -138,10 +165,10 @@ function ScheduleAdminContent() {
           const channelIds = channelList.map(c => c.id);
           if (channelList.length > 0) {
             if (!channel || !channelIds.includes(channel)) {
-              setChannel(channelList[0].id);
+              handleChannelChange(channelList[0].id);
             }
           } else {
-            setChannel(null);
+            handleChannelChange(null);
           }
         }
       } catch {
@@ -242,7 +269,9 @@ function ScheduleAdminContent() {
   const setModalStartWithSuggestedTime = useCallback(
     (startValue: string) => {
       setModalStart(startValue);
-      setModalEnd(computeEndTime(startValue, modalFile, supportedFiles));
+      const suggestedEnd = computeEndTime(startValue, modalFile, supportedFiles);
+      lastSuggestedEndRef.current = suggestedEnd;
+      setModalEnd(suggestedEnd);
     },
     [modalFile, supportedFiles],
   );
@@ -391,6 +420,20 @@ function ScheduleAdminContent() {
     setShowSlotModal(true);
   };
 
+  // Keep end time in sync when file, start time, or durations change.
+  // Only overwrite if the current end matches the previous suggestion or is invalid.
+  useEffect(() => {
+    const suggested = computeEndTime(modalStart, modalFile, supportedFiles);
+    const shouldUpdate =
+      !isValidTime(modalEnd) || modalEnd === lastSuggestedEndRef.current;
+    if (shouldUpdate && suggested !== modalEnd) {
+      lastSuggestedEndRef.current = suggested;
+      setModalEnd(suggested);
+    } else {
+      lastSuggestedEndRef.current = suggested;
+    }
+  }, [modalStart, modalFile, supportedFiles, modalEnd]);
+
   return (
     <div className="flex flex-col gap-6 text-neutral-100">
       <div className="flex items-start justify-between gap-3">
@@ -411,7 +454,7 @@ function ScheduleAdminContent() {
             <label className="text-neutral-300">Channel</label>
             <select
               value={channel ?? ""}
-              onChange={(e) => setChannel(e.target.value || null)}
+              onChange={(e) => handleChannelChange(e.target.value || null)}
               disabled={loadingChannels || channels.length === 0}
               className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-neutral-100"
             >

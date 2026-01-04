@@ -351,7 +351,6 @@ export default function MediaAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [mediaSource, setMediaSource] = useState<MediaSource>("local");
   const [mediaRefreshToken, setMediaRefreshToken] = useState(0);
-  const [forceMediaRefresh, setForceMediaRefresh] = useState(false);
   const [pushingManifest, setPushingManifest] = useState(false);
   const [scanningRemote, setScanningRemote] = useState(false);
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
@@ -360,6 +359,7 @@ export default function MediaAdminPage() {
     "all",
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const [manifestUpdatedAt, setManifestUpdatedAt] = useState<string | null>(null);
 
   // Load media source preference from localStorage and stay in sync with other tabs/pages.
   useEffect(() => {
@@ -382,16 +382,16 @@ export default function MediaAdminPage() {
   // Load available media list
   useEffect(() => {
     let cancelled = false;
-    const shouldForceRefresh = forceMediaRefresh;
-    if (forceMediaRefresh) setForceMediaRefresh(false);
     setFiles([]);
     setLoading(true);
     setMessage(null);
     setError(null);
+    setManifestUpdatedAt(null);
 
     const load = async () => {
       try {
-        let filesJson: { items?: MediaFile[] } = {};
+        let filesJson: { items?: MediaFile[]; generatedAt?: string } = {};
+        let generatedAt: string | null = null;
         if (mediaSource === "remote") {
           try {
             const manifestRes = await fetch(
@@ -403,13 +403,14 @@ export default function MediaAdminPage() {
               throw new Error(text);
             }
             filesJson = await manifestRes.json();
+            generatedAt = filesJson.generatedAt ?? null;
           } catch (err) {
             console.warn("Remote manifest fetch failed", err);
             throw new Error("Failed to load remote media index");
           }
         } else {
           const filesRes = await fetch(
-            `/api/media-files?${shouldForceRefresh ? "refresh=1&" : ""}t=${Date.now()}`,
+            `/api/media-files?t=${Date.now()}`,
             { cache: "no-store" },
           );
           filesJson = await filesRes.json();
@@ -417,6 +418,7 @@ export default function MediaAdminPage() {
 
         if (!cancelled) {
           setFiles(filesJson.items || []);
+          setManifestUpdatedAt(generatedAt);
         }
       } catch {
         if (!cancelled) {
@@ -431,7 +433,7 @@ export default function MediaAdminPage() {
     return () => {
       cancelled = true;
     };
-  }, [mediaSource, mediaRefreshToken, forceMediaRefresh]);
+  }, [mediaSource, mediaRefreshToken]);
 
   const sortedFiles = useMemo(
     () =>
@@ -473,8 +475,7 @@ export default function MediaAdminPage() {
     [sortedFiles],
   );
 
-  const refreshMediaList = (opts?: { force?: boolean }) => {
-    if (opts?.force) setForceMediaRefresh(true);
+  const refreshMediaList = () => {
     setMediaRefreshToken((token) => token + 1);
   };
 
@@ -489,7 +490,7 @@ export default function MediaAdminPage() {
         throw new Error(data?.message || "Upload failed");
       }
       setMessage(data.message || "Uploaded media-index.json");
-      refreshMediaList({ force: true });
+      refreshMediaList();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -508,7 +509,7 @@ export default function MediaAdminPage() {
         throw new Error(data?.message || "Scan failed");
       }
       setMessage(data.message || `Scanned remote and found ${data.count} files`);
-      refreshMediaList({ force: true });
+      refreshMediaList();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
     } finally {
@@ -526,6 +527,11 @@ export default function MediaAdminPage() {
           <p className="text-sm text-neutral-400">
             Single source of truth for all media files based on current source settings ({mediaSource === "remote" ? "Remote CDN" : "Local files"}).
           </p>
+          {manifestUpdatedAt && (
+            <p className="text-xs text-neutral-500 mt-1">
+              Media index JSON updated {formatDateTime(manifestUpdatedAt)}
+            </p>
+          )}
         </div>
         <span
           className={`rounded-full px-3 py-1 text-xs font-semibold flex-shrink-0 ${
@@ -572,21 +578,6 @@ export default function MediaAdminPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => refreshMediaList()}
-              disabled={loading}
-              className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
-            >
-              {loading ? "Refreshing…" : "Refresh list"}
-            </button>
-            <button
-              onClick={() => refreshMediaList({ force: true })}
-              disabled={loading}
-              className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
-              title="Rescan media folder to pick up new or removed files"
-            >
-              {loading ? "Syncing…" : "Sync media"}
-            </button>
             {mediaSource === "remote" && (
               <>
                 <button
@@ -745,6 +736,18 @@ function formatDuration(seconds: number): string {
     return `${h}h ${m}m`;
   }
   return `${minutes}m`;
+}
+
+function formatDateTime(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function shouldShowConvert(file: MediaFile): boolean {

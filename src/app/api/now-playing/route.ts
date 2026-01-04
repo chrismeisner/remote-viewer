@@ -13,17 +13,27 @@ export async function GET(request: NextRequest) {
   try {
     const nowPlaying = await getNowPlaying(undefined, channel, source);
     const serverTimeMs = Date.now();
+
+    if (!nowPlaying) {
+      console.log("[now-playing] resolved empty", {
+        channel: channel ?? "default",
+        source,
+        serverTimeMs,
+      });
+      return NextResponse.json({ nowPlaying: null, serverTimeMs });
+    }
+
     console.log("[now-playing] resolved", {
       channel: channel ?? "default",
       source,
-      title: nowPlaying?.title,
-      relPath: nowPlaying?.relPath,
-      durationSeconds: nowPlaying?.durationSeconds,
-      startOffsetSeconds: nowPlaying?.startOffsetSeconds,
-      endsAt: nowPlaying?.endsAt,
+      title: nowPlaying.title,
+      relPath: nowPlaying.relPath,
+      durationSeconds: nowPlaying.durationSeconds,
+      startOffsetSeconds: nowPlaying.startOffsetSeconds,
+      endsAt: nowPlaying.endsAt,
       serverTimeMs,
     });
-    return NextResponse.json({ ...nowPlaying, serverTimeMs });
+    return NextResponse.json({ nowPlaying, serverTimeMs });
   } catch (error) {
     try {
       // Extra diagnostics when schedule resolution fails.

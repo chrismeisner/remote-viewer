@@ -27,6 +27,12 @@ export default function ChannelAdminPage() {
     show: false,
     channel: null,
   });
+  const [editModal, setEditModal] = useState<{ show: boolean; channel: Channel | null }>({
+    show: false,
+    channel: null,
+  });
+  const [editId, setEditId] = useState("");
+  const [editShortName, setEditShortName] = useState("");
   const [orphanedSchedules, setOrphanedSchedules] = useState<string[]>([]);
   const [cleaningUp, setCleaningUp] = useState(false);
 
@@ -131,8 +137,14 @@ export default function ChannelAdminPage() {
     }
   };
 
-  // Update channel shortName
-  const handleUpdateShortName = async (channelId: string, shortName: string) => {
+  // Update channel id and shortName
+  const handleUpdateChannel = async (channelId: string, nextId: string, shortName: string) => {
+    const normalizedNextId = nextId.trim();
+    if (!normalizedNextId) {
+      setError("Channel number is required");
+      return;
+    }
+
     setSaving(channelId);
     setError(null);
     setMessage(null);
@@ -140,12 +152,25 @@ export default function ChannelAdminPage() {
       const res = await fetch(apiBase, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: channelId, shortName }),
+        body: JSON.stringify({
+          id: channelId,
+          newId: normalizedNextId,
+          shortName: shortName.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to update");
       setChannels(data.channels);
-      setMessage(`Channel "${channelId}" updated`);
+
+      const renamed = normalizedNextId !== channelId;
+      setMessage(
+        renamed
+          ? `Channel "${channelId}" renamed to "${normalizedNextId}"`
+          : `Channel "${channelId}" updated`,
+      );
+      setEditModal({ show: false, channel: null });
+      setEditId("");
+      setEditShortName("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update");
     } finally {
@@ -180,6 +205,18 @@ export default function ChannelAdminPage() {
 
   const closeDeleteModal = () => {
     setDeleteModal({ show: false, channel: null });
+  };
+
+  const openEditModal = (channel: Channel) => {
+    setEditModal({ show: true, channel });
+    setEditId(channel.id);
+    setEditShortName(channel.shortName ?? "");
+  };
+
+  const closeEditModal = () => {
+    setEditModal({ show: false, channel: null });
+    setEditId("");
+    setEditShortName("");
   };
 
   return (
@@ -311,9 +348,7 @@ export default function ChannelAdminPage() {
                     key={channel.id}
                     channel={channel}
                     saving={saving === channel.id}
-                    onUpdateShortName={(shortName) =>
-                      handleUpdateShortName(channel.id, shortName)
-                    }
+                    onEdit={() => openEditModal(channel)}
                     onDelete={() => openDeleteModal(channel)}
                   />
                 ))}
@@ -325,6 +360,67 @@ export default function ChannelAdminPage() {
 
       {message && <p className="text-sm text-emerald-300">{message}</p>}
       {error && <p className="text-sm text-amber-300">{error}</p>}
+
+      {/* Edit Channel Modal */}
+      {editModal.show && editModal.channel && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={closeEditModal}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900 p-6 shadow-2xl shadow-black/60"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-neutral-50">Edit Channel</h3>
+              <p className="mt-2 text-sm text-neutral-300">
+                Update the channel number and short name. Renaming the number will also move any
+                existing schedule entries to the new number.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-neutral-300">Channel number</label>
+                <input
+                  value={editId}
+                  onChange={(e) => setEditId(e.target.value)}
+                  placeholder="e.g., 1"
+                  className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-neutral-300">Short name</label>
+                <input
+                  value={editShortName}
+                  onChange={(e) => setEditShortName(e.target.value)}
+                  placeholder="Optional short label"
+                  className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={closeEditModal}
+                className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() =>
+                  editModal.channel &&
+                  handleUpdateChannel(editModal.channel.id, editId, editShortName)
+                }
+                disabled={saving !== null}
+                className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
+              >
+                {saving === editModal.channel.id ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteModal.show && deleteModal.channel && (
@@ -389,22 +485,14 @@ export default function ChannelAdminPage() {
 function ChannelRow({
   channel,
   saving,
-  onUpdateShortName,
+  onEdit,
   onDelete,
 }: {
   channel: Channel;
   saving: boolean;
-  onUpdateShortName: (shortName: string) => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
-  const [localShortName, setLocalShortName] = useState(channel.shortName ?? "");
-  const hasChanged = localShortName !== (channel.shortName ?? "");
-
-  // Reset local state when channel data changes from server
-  useEffect(() => {
-    setLocalShortName(channel.shortName ?? "");
-  }, [channel.shortName]);
-
   return (
     <tr className="text-neutral-100">
       <td className="px-3 py-2">
@@ -413,28 +501,13 @@ function ChannelRow({
         </span>
       </td>
       <td className="px-3 py-2">
-        <div className="flex items-center gap-2">
-          <input
-            value={localShortName}
-            onChange={(e) => setLocalShortName(e.target.value)}
-            placeholder="Enter short name"
-            className="w-40 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-neutral-100 placeholder:text-neutral-500"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && hasChanged) {
-                onUpdateShortName(localShortName);
-              }
-            }}
-          />
-          {hasChanged && (
-            <button
-              onClick={() => onUpdateShortName(localShortName)}
-              disabled={saving}
-              className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
-          )}
-        </div>
+        {channel.shortName ? (
+          <span className="rounded-md bg-white/5 px-2 py-1 text-xs font-semibold text-neutral-50">
+            {channel.shortName}
+          </span>
+        ) : (
+          <span className="text-xs text-neutral-500">Not set</span>
+        )}
       </td>
       <td className="px-3 py-2 text-right">
         <div className="flex justify-end gap-2">
@@ -444,6 +517,13 @@ function ChannelRow({
           >
             Schedule
           </Link>
+          <button
+            onClick={onEdit}
+            disabled={saving}
+            className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+          >
+            Edit
+          </button>
           <button
             onClick={onDelete}
             disabled={saving}

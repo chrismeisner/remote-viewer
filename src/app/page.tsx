@@ -22,6 +22,11 @@ type NowPlaying = {
   serverTimeMs?: number;
 };
 
+type NowPlayingResponse = {
+  nowPlaying: NowPlaying | null;
+  serverTimeMs?: number;
+};
+
 type ChannelInfo = {
   id: string;
   shortName?: string;
@@ -226,21 +231,30 @@ export default function Home() {
             throw new Error(text || "Unable to resolve current playback");
           }
         }
-        const data = (await res.json()) as NowPlaying;
+        const data = (await res.json()) as NowPlayingResponse;
         if (!cancelled) {
           console.log("[player] now-playing fetched", {
             channel,
-            title: data?.title,
-            relPath: data?.relPath,
-            startOffsetSeconds: data?.startOffsetSeconds,
-            endsAt: data?.endsAt,
+            title: data?.nowPlaying?.title,
+            relPath: data?.nowPlaying?.relPath,
+            startOffsetSeconds: data?.nowPlaying?.startOffsetSeconds,
+            endsAt: data?.nowPlaying?.endsAt,
             fetchedAt: new Date().toISOString(),
             serverTimeMs: data?.serverTimeMs,
           });
           const resolvedAt = Date.now();
           lastResolvedAtRef.current = resolvedAt;
           lastRttMsRef.current = Math.max(0, resolvedAt - startedAt);
-          setNowPlaying(withMediaSource(data, mediaSource));
+          if (data?.nowPlaying) {
+            setNowPlaying(
+              withMediaSource(
+                { ...data.nowPlaying, serverTimeMs: data.serverTimeMs },
+                mediaSource,
+              ),
+            );
+          } else {
+            setNowPlaying(null);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -649,7 +663,8 @@ export default function Home() {
     : showControls
       ? "mx-auto max-w-7xl px-6 pb-2 pt-0 space-y-4"
       : "mx-auto max-w-7xl px-6 pb-8 pt-0 space-y-4";
-  const playerShellClass = isChromeless ? "max-w-none" : showControls ? "max-w-5xl" : "max-w-6xl";
+  // Keep the player as wide as possible even when the remote is visible.
+  const playerShellClass = isChromeless ? "max-w-none" : "max-w-6xl";
 
   return (
     <div className="min-h-screen bg-black text-neutral-100">
@@ -713,7 +728,7 @@ export default function Home() {
               >
                 <button
                   onClick={() => setCrtEnabled((c) => !c)}
-                  className={`w-full min-w-[140px] flex-1 rounded-md border px-4 py-2 text-sm font-semibold transition sm:w-auto sm:flex-none ${
+                  className={`inline-flex w-full min-w-[140px] flex-1 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
                     crtEnabled
                       ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
                       : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -724,7 +739,7 @@ export default function Home() {
                 <button
                   onClick={() => setMuted((m) => !m)}
                   aria-pressed={muted}
-                  className={`w-full min-w-[140px] flex-1 rounded-md border px-4 py-2 text-sm font-semibold transition sm:w-auto sm:flex-none ${
+                  className={`inline-flex w-full min-w-[140px] flex-1 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
                     muted
                       ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
                       : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -734,20 +749,20 @@ export default function Home() {
                 </button>
                 <button
                   onClick={toggleFullscreen}
-                  className="w-full min-w-[140px] flex-1 rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+                  className="inline-flex w-full min-w-[140px] flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
                 >
                   {isFullscreen ? "Exit" : "Fullscreen"}
                 </button>
                 <button
                   onClick={channelUp}
-                  className="w-full min-w-[140px] flex-1 rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+                  className="inline-flex w-full min-w-[140px] flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
                   disabled={channels.length === 0}
                 >
                   Channel Up
                 </button>
                 <button
                   onClick={channelDown}
-                  className="w-full min-w-[140px] flex-1 rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+                  className="inline-flex w-full min-w-[140px] flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
                   disabled={channels.length === 0}
                 >
                   Channel Down
