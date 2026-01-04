@@ -370,6 +370,23 @@ export default function Home() {
       }
     };
 
+    const attemptPlay = async (allowFallback = true): Promise<boolean> => {
+      try {
+        await video.play();
+        console.log("[player] autoplay started");
+        return true;
+      } catch (err) {
+        console.warn("Autoplay failed", err);
+        if (allowFallback && !video.muted) {
+          console.log("[player] retrying autoplay muted");
+          video.muted = true;
+          setMuted(true);
+          return attemptPlay(false);
+        }
+        return false;
+      }
+    };
+
     const handleLoaded = () => {
       video.muted = muted;
       const desiredTime = seekToDesired();
@@ -380,14 +397,7 @@ export default function Home() {
         desiredTime,
         at: new Date().toISOString(),
       });
-      video
-        .play()
-        .then(() => {
-          console.log("[player] autoplay started");
-        })
-        .catch((err) => {
-          console.warn("Autoplay failed", err);
-        });
+      attemptPlay(true);
     };
     
     // Called when video has enough data to play - clear loading state
@@ -788,7 +798,7 @@ export default function Home() {
 
             {showControls && (
               <div
-                className={`flex w-full flex-wrap items-stretch justify-center gap-2 sm:gap-3 ${
+                className={`flex w-full flex-wrap items-stretch justify-center gap-2 sm:flex-nowrap sm:gap-3 ${
                   isFullscreen ? "hidden" : ""
                 }`}
               >
@@ -823,14 +833,14 @@ export default function Home() {
                 </div>
                 <button
                   onClick={channelUp}
-                  className="inline-flex w-full min-w-[140px] basis-full items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+                  className="inline-flex w-full min-w-[140px] basis-full items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:basis-auto"
                   disabled={channels.length === 0}
                 >
                   Channel Up
                 </button>
                 <button
                   onClick={channelDown}
-                  className="inline-flex w-full min-w-[140px] basis-full items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+                  className="inline-flex w-full min-w-[140px] basis-full items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:basis-auto"
                   disabled={channels.length === 0}
                 >
                   Channel Down
