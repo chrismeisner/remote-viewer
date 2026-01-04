@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   MEDIA_SOURCE_EVENT,
   MEDIA_SOURCE_KEY,
@@ -16,6 +16,303 @@ type MediaItem = {
   supportedViaCompanion?: boolean;
   title?: string;
 };
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Media Detail Modal Component
+   ───────────────────────────────────────────────────────────────────────────── */
+function MediaDetailModal({
+  item,
+  mediaSource,
+  onClose,
+}: {
+  item: MediaItem;
+  mediaSource: MediaSource;
+  onClose: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(item.durationSeconds || 0);
+  const [volume, setVolume] = useState(0.7);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Build the video URL based on media source
+  const videoUrl =
+    mediaSource === "remote"
+      ? `${REMOTE_MEDIA_BASE}${item.relPath}`
+      : `/api/media?file=${encodeURIComponent(item.relPath)}`;
+
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [onClose]);
+
+  // Update time display
+  const handleTimeUpdate = useCallback(() => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  }, []);
+
+  const handleLoadedMetadata = useCallback(() => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+      setIsLoading(false);
+    }
+  }, []);
+
+  const handleError = useCallback(() => {
+    setError("Failed to load video. The format may not be supported by your browser.");
+    setIsLoading(false);
+  }, []);
+
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+      setCurrentTime(time);
+    }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const vol = parseFloat(e.target.value);
+    setVolume(vol);
+    if (videoRef.current) {
+      videoRef.current.volume = vol;
+    }
+  };
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  };
+
+  const formatTime = (seconds: number): string => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    }
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const fileName = item.relPath.split("/").pop() || item.relPath;
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 shadow-2xl shadow-black/60"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-white/10 bg-slate-800/50 px-5 py-4">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-semibold text-slate-50 truncate" title={fileName}>
+              {fileName}
+            </h2>
+            <p className="text-xs text-slate-400 truncate font-mono" title={item.relPath}>
+              {item.relPath}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-4 flex-shrink-0 rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-slate-100 transition"
+            aria-label="Close modal"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Video Player */}
+        <div className="relative bg-black aspect-video">
+          {isLoading && !error && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-10 h-10 border-3 border-slate-600 border-t-emerald-400 rounded-full animate-spin" />
+                <p className="text-sm text-slate-400">Loading video...</p>
+              </div>
+            </div>
+          )}
+          {error && (
+            <div className="absolute inset-0 flex items-center justify-center p-6">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/20 mb-4">
+                  <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <p className="text-sm text-amber-200 mb-2">Unable to preview</p>
+                <p className="text-xs text-slate-400 max-w-xs">{error}</p>
+              </div>
+            </div>
+          )}
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            className={`w-full h-full object-contain ${isLoading || error ? "opacity-0" : "opacity-100"}`}
+            onTimeUpdate={handleTimeUpdate}
+            onLoadedMetadata={handleLoadedMetadata}
+            onError={handleError}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnded={() => setIsPlaying(false)}
+            preload="metadata"
+          />
+        </div>
+
+        {/* Video Controls */}
+        {!error && (
+          <div className="border-t border-white/10 bg-slate-800/70 px-4 py-3">
+            {/* Progress bar */}
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-xs text-slate-400 w-14 text-right font-mono">
+                {formatTime(currentTime)}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={duration || 100}
+                value={currentTime}
+                onChange={handleSeek}
+                className="flex-1 h-1.5 rounded-full appearance-none bg-slate-700 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-emerald-500/30"
+              />
+              <span className="text-xs text-slate-400 w-14 font-mono">
+                {formatTime(duration)}
+              </span>
+            </div>
+
+            {/* Playback controls */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={togglePlay}
+                  className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 transition shadow-lg shadow-emerald-500/30"
+                  disabled={isLoading}
+                >
+                  {isPlaying ? (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+
+              {/* Volume control */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleMute}
+                  className="p-2 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/10 transition"
+                >
+                  {isMuted || volume === 0 ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                  )}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={isMuted ? 0 : volume}
+                  onChange={handleVolumeChange}
+                  className="w-20 h-1 rounded-full appearance-none bg-slate-700 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-slate-300"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Media Details */}
+        <div className="border-t border-white/10 bg-slate-800/30 px-5 py-4">
+          <h3 className="text-xs uppercase tracking-widest text-slate-500 mb-3">Media Details</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-slate-500 mb-1">Format</p>
+              <p className="text-sm font-medium text-slate-200 uppercase">
+                {item.format || "Unknown"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-1">Duration</p>
+              <p className="text-sm font-medium text-slate-200">
+                {item.durationSeconds ? formatTime(item.durationSeconds) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-1">Playback</p>
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  item.supported
+                    ? "bg-emerald-500/20 text-emerald-200"
+                    : "bg-amber-500/20 text-amber-200"
+                }`}
+              >
+                {item.supported
+                  ? item.supportedViaCompanion
+                    ? "Companion"
+                    : "Native"
+                  : "Unsupported"}
+              </span>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-1">Source</p>
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  mediaSource === "remote"
+                    ? "bg-blue-500/20 text-blue-200"
+                    : "bg-emerald-500/20 text-emerald-200"
+                }`}
+              >
+                {mediaSource === "remote" ? "CDN" : "Local"}
+              </span>
+            </div>
+          </div>
+          {item.title && (
+            <div className="mt-4 pt-3 border-t border-white/5">
+              <p className="text-xs text-slate-500 mb-1">Title</p>
+              <p className="text-sm text-slate-200">{item.title}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type RemoteFileStatus = {
   file: string;
@@ -44,6 +341,7 @@ export default function SourceAdminPage() {
   const [checkingRemote, setCheckingRemote] = useState(false);
   const [pushingFile, setPushingFile] = useState<string | null>(null);
   const [scanningRemote, setScanningRemote] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
 
   // Load and sync media source preference
   useEffect(() => {
@@ -656,9 +954,14 @@ export default function SourceAdminPage() {
               </thead>
               <tbody className="divide-y divide-white/5 bg-slate-950/40 text-slate-100">
                 {files.map((file) => (
-                  <tr key={file.relPath}>
+                  <tr key={file.relPath} className="hover:bg-white/5 transition-colors">
                     <td className="px-3 py-2">
-                      <span className="text-left break-all">{file.relPath}</span>
+                      <button
+                        onClick={() => setSelectedMedia(file)}
+                        className="text-left break-all text-blue-300 hover:text-blue-200 hover:underline transition cursor-pointer"
+                      >
+                        {file.relPath}
+                      </button>
                     </td>
                     <td className="px-3 py-2 text-left text-slate-200 uppercase">
                       {file.format || "—"}
@@ -688,6 +991,15 @@ export default function SourceAdminPage() {
           </div>
         )}
       </div>
+
+      {/* Media Detail Modal */}
+      {selectedMedia && (
+        <MediaDetailModal
+          item={selectedMedia}
+          mediaSource={mediaSource}
+          onClose={() => setSelectedMedia(null)}
+        />
+      )}
     </div>
   );
 }

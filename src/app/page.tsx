@@ -455,39 +455,32 @@ export default function Home() {
         <div className="rounded-xl border border-white/10 bg-slate-900/60 p-5 shadow-lg shadow-black/30">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                Now Playing
+              <p className="text-lg font-semibold text-slate-50">
+                {nowPlaying?.relPath || nowPlaying?.title || "Waiting for schedule"}
               </p>
-              <h2 className="text-xl font-semibold text-slate-50">
-                {nowPlaying?.title || "Waiting for schedule"}
-              </h2>
-              {channel && (
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-slate-200">
-                    Channel: {channel}
-                  </span>
-                </div>
-              )}
-              {nowPlaying?.relPath && (
-                <p className="text-sm text-slate-400">{nowPlaying.relPath}</p>
-              )}
             </div>
-            {nowPlaying && (
-              <div className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-200">
-                {formatTimeRemaining()} left
-              </div>
-            )}
           </div>
 
           <div
             className={`relative mt-4 overflow-hidden rounded-lg border border-white/10 bg-black ${crtEnabled ? "crt-frame" : ""}`}
           >
+            {/* Blue screen fallback when channel is selected but nothing is playing */}
+            {channel && !nowPlaying && (
+              <div 
+                className="aspect-video w-full"
+                style={{ backgroundColor: "#0000FF" }}
+              />
+            )}
+            
+            {/* Video element - hidden when showing blue screen */}
             <video
               ref={videoRef}
               key={`${channel}-${resolvedSrc(nowPlaying) || "none"}`}
               autoPlay
               playsInline
-              className="relative z-[1] aspect-video w-full bg-black"
+              className={`relative z-[1] aspect-video w-full bg-black ${
+                channel && !nowPlaying ? "hidden" : ""
+              }`}
             />
             
             {/* CRT-style channel overlay */}
@@ -518,13 +511,14 @@ export default function Home() {
             </button>
             <button
               onClick={() => setMuted((m) => !m)}
+              aria-pressed={muted}
               className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
                 muted
-                  ? "border-white/15 bg-white/5 text-slate-100 hover:border-white/30 hover:bg-white/10"
-                  : "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+                  ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+                  : "border-white/15 bg-white/5 text-slate-100 hover:border-white/30 hover:bg-white/10"
               }`}
             >
-              {muted ? "Muted" : "Sound On"}
+              Muted {muted ? "On" : "Off"}
             </button>
             <button
               onClick={toggleFullscreen}
@@ -534,28 +528,15 @@ export default function Home() {
             </button>
           </div>
 
-          {error && (
-            <p className="mt-3 text-sm text-amber-300">
-              {error}. Check your media folder path and schedule content.
-            </p>
-          )}
-          {!error && !nowPlaying && (
+          {!nowPlaying && (
             <p className="mt-3 text-sm text-slate-400">
               {channels.length === 0
                 ? "No channels configured. Create a channel in the admin panel to begin."
-                : "Add a slot in Schedule Admin to begin playback."}
+                : "No scheduled content. Add programs in the Schedule Admin."}
             </p>
           )}
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-slate-900/40 p-4 text-sm text-slate-300">
-          <p className="font-semibold text-slate-100">How it works</p>
-          <ul className="mt-2 space-y-1 text-slate-300">
-            <li>A single 24h schedule maps times to media files from your library.</li>
-            <li>Arriving mid-slot jumps you into the correct offset.</li>
-            <li>Transitions happen automatically when programs end.</li>
-          </ul>
-        </div>
       </main>
     </div>
   );
