@@ -155,7 +155,7 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// DELETE - Delete a remote channel
+// DELETE - Delete a remote channel and its schedule
 export async function DELETE(request: NextRequest) {
   const id = request.nextUrl.searchParams.get("id");
   if (!id) {
@@ -163,6 +163,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
+    // 1. Get current remote channels
     const channels = await readRemoteChannels();
     const filtered = channels.filter((ch) => ch.id !== id);
 
@@ -170,8 +171,30 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Channel not found" }, { status: 404 });
     }
 
+    // 2. Also update schedule.json to remove this channel
+    // Load the local schedule (which will be pushed to remote)
+    const { loadFullSchedule, saveFullSchedule } = await import("@/lib/media");
+    const schedule = await loadFullSchedule("local");
+    
+    if (schedule.channels && schedule.channels[id]) {
+      delete schedule.channels[id];
+      await saveFullSchedule(schedule);
+      console.log(`Deleted schedule for remote channel ${id}`);
+    }
+
+    // 3. Push updated channels.json to remote
     await pushRemoteChannels(filtered);
-    return NextResponse.json({ ok: true, channels: filtered });
+
+    // 4. Push updated schedule.json to remote
+    const { pushScheduleToRemote } = await import("./schedule-helper");
+    try {
+      await pushScheduleToRemote(schedule);
+    } catch (err) {
+      console.warn("Failed to push schedule to remote:", err);
+      // Don't fail the whole operation if schedule push fails
+    }
+
+    return NextResponse.json({ ok: true, channels: filtered, deletedSchedule: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete channel";
     return NextResponse.json({ error: message }, { status: 500 });

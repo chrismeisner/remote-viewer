@@ -23,6 +23,12 @@ export default function ChannelAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [mediaSource, setMediaSource] = useState<MediaSource>("local");
+  const [deleteModal, setDeleteModal] = useState<{ show: boolean; channel: Channel | null }>({
+    show: false,
+    channel: null,
+  });
+  const [orphanedSchedules, setOrphanedSchedules] = useState<string[]>([]);
+  const [cleaningUp, setCleaningUp] = useState(false);
 
   const isRemote = mediaSource === "remote";
   const apiBase = isRemote ? "/api/channels/remote" : "/api/channels";
@@ -54,12 +60,46 @@ export default function ChannelAdminPage() {
       if (!res.ok) throw new Error("Failed to load channels");
       const data = await res.json();
       setChannels(Array.isArray(data.channels) ? data.channels : []);
+
+      // Also check for orphaned schedules
+      void checkOrphanedSchedules();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
       setLoading(false);
     }
   }, [apiBase, mediaSource]);
+
+  // Check for orphaned schedules
+  const checkOrphanedSchedules = async () => {
+    try {
+      const res = await fetch("/api/schedule/cleanup");
+      if (res.ok) {
+        const data = await res.json();
+        setOrphanedSchedules(data.orphanedChannels || []);
+      }
+    } catch {
+      // Ignore errors in checking orphans
+    }
+  };
+
+  // Clean up orphaned schedules
+  const cleanupOrphanedSchedules = async () => {
+    setCleaningUp(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/schedule/cleanup", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Cleanup failed");
+      setMessage(data.message);
+      setOrphanedSchedules([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cleanup failed");
+    } finally {
+      setCleaningUp(false);
+    }
+  };
 
   useEffect(() => {
     void loadChannels();
@@ -115,7 +155,6 @@ export default function ChannelAdminPage() {
 
   // Delete channel
   const handleDelete = async (channelId: string) => {
-    if (!confirm(`Delete channel "${channelId}"?`)) return;
     setSaving(channelId);
     setError(null);
     setMessage(null);
@@ -126,12 +165,21 @@ export default function ChannelAdminPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete");
       setChannels(data.channels);
-      setMessage(`Channel "${channelId}" deleted`);
+      setMessage(`Channel "${channelId}" and its schedule deleted`);
+      setDeleteModal({ show: false, channel: null });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
     } finally {
       setSaving(null);
     }
+  };
+
+  const openDeleteModal = (channel: Channel) => {
+    setDeleteModal({ show: true, channel });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({ show: false, channel: null });
   };
 
   return (
@@ -162,6 +210,32 @@ export default function ChannelAdminPage() {
             <code className="rounded bg-blue-500/20 px-1">{REMOTE_MEDIA_BASE}channels.json</code>.
             Changes pushed via FTP.
           </p>
+        </div>
+      )}
+
+      {/* Orphaned Schedules Warning */}
+      {!isRemote && orphanedSchedules.length > 0 && (
+        <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <p className="font-semibold text-amber-100">⚠️ Orphaned Schedules Detected</p>
+              <p className="mt-1 text-xs text-amber-200">
+                Found {orphanedSchedules.length} schedule(s) for deleted channels:{" "}
+                <span className="font-mono">{orphanedSchedules.join(", ")}</span>
+              </p>
+              <p className="mt-2 text-xs text-amber-300">
+                These schedules exist in <code className="bg-amber-500/20 px-1 rounded">schedule.json</code> but 
+                their channels no longer exist in <code className="bg-amber-500/20 px-1 rounded">channels.json</code>.
+              </p>
+            </div>
+            <button
+              onClick={() => void cleanupOrphanedSchedules()}
+              disabled={cleaningUp}
+              className="rounded-md border border-amber-300/50 bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:border-amber-200 hover:bg-amber-500/30 disabled:opacity-50 whitespace-nowrap"
+            >
+              {cleaningUp ? "Cleaning…" : "Clean Up"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -240,7 +314,7 @@ export default function ChannelAdminPage() {
                     onUpdateShortName={(shortName) =>
                       handleUpdateShortName(channel.id, shortName)
                     }
-                    onDelete={() => handleDelete(channel.id)}
+                    onDelete={() => openDeleteModal(channel)}
                   />
                 ))}
               </tbody>
@@ -251,6 +325,62 @@ export default function ChannelAdminPage() {
 
       {message && <p className="text-sm text-emerald-300">{message}</p>}
       {error && <p className="text-sm text-amber-300">{error}</p>}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal.show && deleteModal.channel && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={closeDeleteModal}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900 p-6 shadow-2xl shadow-black/60"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-neutral-50">Delete Channel?</h3>
+              <p className="mt-2 text-sm text-neutral-300">
+                Are you sure you want to delete channel{" "}
+                <span className="font-semibold text-neutral-100">
+                  {deleteModal.channel.id}
+                </span>
+                {deleteModal.channel.shortName && (
+                  <span className="text-neutral-400"> ({deleteModal.channel.shortName})</span>
+                )}
+                ?
+              </p>
+              <div className="mt-3 rounded-lg border border-red-400/30 bg-red-500/10 p-3">
+                <p className="text-sm font-semibold text-red-200">⚠️ Warning</p>
+                <p className="mt-1 text-xs text-red-300">
+                  This will permanently delete:
+                </p>
+                <ul className="mt-2 ml-4 space-y-1 text-xs text-red-300 list-disc">
+                  <li>The channel configuration</li>
+                  <li>All schedule items for this channel</li>
+                </ul>
+                <p className="mt-2 text-xs text-red-200 font-semibold">
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={closeDeleteModal}
+                className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteModal.channel && handleDelete(deleteModal.channel.id)}
+                disabled={saving !== null}
+                className="rounded-md border border-red-400/50 bg-red-500/20 px-4 py-2 text-sm font-semibold text-red-100 transition hover:border-red-300 hover:bg-red-500/30 disabled:opacity-50"
+              >
+                {saving === deleteModal.channel.id ? "Deleting…" : "Delete Channel & Schedule"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

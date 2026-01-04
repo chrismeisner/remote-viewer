@@ -144,7 +144,7 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// DELETE - Delete a channel
+// DELETE - Delete a channel and its schedule
 export async function DELETE(request: NextRequest) {
   const id = request.nextUrl.searchParams.get("id");
   if (!id) {
@@ -159,8 +159,29 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Channel not found" }, { status: 404 });
     }
 
+    // Delete the channel from channels.json
     await writeLocalChannels(filtered);
-    return NextResponse.json({ ok: true, channels: filtered });
+
+    // Also delete the channel's schedule from schedule.json
+    try {
+      const scheduleFile = path.join(process.cwd(), "data", "schedule.json");
+      const scheduleRaw = await fs.readFile(scheduleFile, "utf8");
+      const scheduleData = JSON.parse(scheduleRaw);
+      
+      // The schedule file has structure: { channels: { [channelId]: { slots: [...] } } }
+      if (scheduleData && scheduleData.channels && typeof scheduleData.channels === "object") {
+        if (scheduleData.channels[id]) {
+          delete scheduleData.channels[id];
+          await fs.writeFile(scheduleFile, JSON.stringify(scheduleData, null, 2), "utf8");
+          console.log(`Deleted schedule for channel ${id}`);
+        }
+      }
+    } catch (scheduleErr) {
+      // If schedule deletion fails, log but don't fail the whole operation
+      console.warn(`Failed to delete schedule for channel ${id}:`, scheduleErr);
+    }
+
+    return NextResponse.json({ ok: true, channels: filtered, deletedSchedule: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete channel";
     return NextResponse.json({ error: message }, { status: 500 });

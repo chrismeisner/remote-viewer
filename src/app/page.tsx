@@ -10,6 +10,7 @@ import {
 const MUTED_PREF_KEY = "player-muted-default";
 const CRT_PREF_KEY = "player-crt-default";
 const REMOTE_PREF_KEY = "player-remote-default";
+const HELPER_PREF_KEY = "player-helper-default";
 
 type NowPlaying = {
   title: string;
@@ -49,6 +50,7 @@ export default function Home() {
   const [showHeader, setShowHeader] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcomePref, setShowWelcomePref] = useState(true);
   
   // Channel overlay state for CRT-style display
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
@@ -162,6 +164,27 @@ export default function Home() {
     if (typeof window === "undefined") return;
     localStorage.setItem(REMOTE_PREF_KEY, showControls ? "true" : "false");
   }, [showControls]);
+
+  // Load helper/welcome preference from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(HELPER_PREF_KEY);
+    if (stored === "true" || stored === "false") {
+      const pref = stored === "true";
+      setShowWelcomePref(pref);
+      setShowWelcome(pref);
+    } else {
+      localStorage.setItem(HELPER_PREF_KEY, "true");
+      setShowWelcomePref(true);
+      setShowWelcome(true);
+    }
+  }, []);
+
+  // Persist helper/welcome preference
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(HELPER_PREF_KEY, showWelcomePref ? "true" : "false");
+  }, [showWelcomePref]);
 
   // Re-apply media source mapping when source changes
   useEffect(() => {
@@ -450,7 +473,13 @@ export default function Home() {
         return;
       }
 
-      if (key === "h") {
+      if (key === "/") {
+        event.preventDefault();
+        setShowWelcome(true);
+        return;
+      }
+
+      if (key === "z") {
         event.preventDefault();
         setShowHeader((prev) => !prev);
         return;
@@ -657,13 +686,13 @@ export default function Home() {
 
             {showControls && (
               <div
-                className={`flex flex-row justify-center gap-2 ${
+                className={`flex w-full flex-wrap items-stretch justify-center gap-2 sm:gap-3 ${
                   isFullscreen ? "hidden" : ""
                 }`}
               >
                 <button
                   onClick={() => setCrtEnabled((c) => !c)}
-                  className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
+                  className={`w-full min-w-[140px] flex-1 rounded-md border px-4 py-2 text-sm font-semibold transition sm:w-auto sm:flex-none ${
                     crtEnabled
                       ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
                       : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -674,7 +703,7 @@ export default function Home() {
                 <button
                   onClick={() => setMuted((m) => !m)}
                   aria-pressed={muted}
-                  className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
+                  className={`w-full min-w-[140px] flex-1 rounded-md border px-4 py-2 text-sm font-semibold transition sm:w-auto sm:flex-none ${
                     muted
                       ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
                       : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -684,20 +713,20 @@ export default function Home() {
                 </button>
                 <button
                   onClick={toggleFullscreen}
-                  className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                  className="w-full min-w-[140px] flex-1 rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
                 >
                   {isFullscreen ? "Exit" : "Fullscreen"}
                 </button>
                 <button
                   onClick={channelUp}
-                  className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                  className="w-full min-w-[140px] flex-1 rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
                   disabled={channels.length === 0}
                 >
                   Channel Up
                 </button>
                 <button
                   onClick={channelDown}
-                  className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                  className="w-full min-w-[140px] flex-1 rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
                   disabled={channels.length === 0}
                 >
                   Channel Down
@@ -706,13 +735,6 @@ export default function Home() {
             )}
           </div>
 
-          {!nowPlaying && (
-            <p className="text-sm text-neutral-400">
-              {channels.length === 0
-                ? "No channels configured. Create a channel in the admin panel to begin."
-                : "No scheduled content. Add programs in the Schedule Admin."}
-            </p>
-          )}
         </div>
       </main>
 
@@ -788,18 +810,37 @@ export default function Home() {
           }}
         >
           <div className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur">
-            <h2 className="text-xl font-semibold text-neutral-50">Welcome to Remote Viewer</h2>
-            <p className="mt-2 text-sm text-neutral-300">
-              Quick controls to get you started:
-            </p>
+            <h2 className="text-2xl font-semibold text-neutral-50 font-homevideo tracking-tight">
+              Remote Viewer
+            </h2>
+            <p className="mt-3 text-sm font-semibold text-neutral-200">Keyboard shortcuts</p>
             <ul className="mt-3 space-y-2 text-sm text-neutral-200">
-              <li className="flex justify-between gap-4"><span>Channel info</span><span className="font-mono text-neutral-100">i</span></li>
-              <li className="flex justify-between gap-4"><span>Toggle controls</span><span className="font-mono text-neutral-100">r</span></li>
-              <li className="flex justify-between gap-4"><span>Channel up/down</span><span className="font-mono text-neutral-100">↑ / ↓</span></li>
-              <li className="flex justify-between gap-4"><span>Mute / CRT</span><span className="font-mono text-neutral-100">m / c</span></li>
+              <li className="flex justify-between gap-4"><span>Show helper</span><span className="font-mono text-neutral-100">/</span></li>
+              <li className="flex justify-between gap-4"><span>Show remote</span><span className="font-mono text-neutral-100">r</span></li>
+              <li className="flex justify-between gap-4"><span>Channel up</span><span className="font-mono text-neutral-100">↑</span></li>
+              <li className="flex justify-between gap-4"><span>Channel down</span><span className="font-mono text-neutral-100">↓</span></li>
+              <li className="flex justify-between gap-4"><span>Mute</span><span className="font-mono text-neutral-100">m</span></li>
+              <li className="flex justify-between gap-4"><span>CRT Effect</span><span className="font-mono text-neutral-100">c</span></li>
               <li className="flex justify-between gap-4"><span>Fullscreen</span><span className="font-mono text-neutral-100">f</span></li>
             </ul>
-            <div className="mt-4 flex items-center gap-2 text-sm text-neutral-200">
+            <p className="mt-4 text-sm font-semibold text-neutral-200">Launch preferences</p>
+            <div className="mt-2 flex items-center gap-2 text-sm text-neutral-200">
+              <input
+                id="welcome-helper"
+                type="checkbox"
+                className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
+                checked={showWelcomePref}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setShowWelcomePref(next);
+                  setShowWelcome(next);
+                }}
+              />
+              <label htmlFor="welcome-helper" className="select-none">
+                Show helper
+              </label>
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-sm text-neutral-200">
               <input
                 id="welcome-mute"
                 type="checkbox"
@@ -835,9 +876,6 @@ export default function Home() {
                 Show Remote
               </label>
             </div>
-            <p className="mt-3 text-xs text-neutral-400">
-              Press Esc or click below to close. This will show each time you load the page.
-            </p>
             <div className="mt-4 flex justify-end">
               <button
                 onClick={closeWelcome}

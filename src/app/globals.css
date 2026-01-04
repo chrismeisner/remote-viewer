@@ -155,6 +155,11 @@ video {
     Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+.font-homevideo {
+  font-family: "HomeVideo", "DM Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .channel-overlay .channel-number {
   font-size: 28px;
   font-weight: 400;

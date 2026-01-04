@@ -4,6 +4,11 @@ import Link from "next/link";
 
 const links = [
   {
+    href: "/admin/media",
+    title: "Media Library",
+    desc: "Browse and manage all media files (single source of truth).",
+  },
+  {
     href: "/admin/schedule",
     title: "Schedule Admin",
     desc: "Edit the 24h schedule for a channel.",

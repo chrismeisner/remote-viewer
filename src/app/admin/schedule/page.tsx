@@ -51,9 +51,6 @@ function ScheduleAdminContent() {
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [mediaSource, setMediaSource] = useState<MediaSource>("local");
-  const [mediaRefreshToken, setMediaRefreshToken] = useState(0);
-  const [forceMediaRefresh, setForceMediaRefresh] = useState(false);
-  const [pushingManifest, setPushingManifest] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "pending" | "saving" | "saved">("idle");
   const pendingSlotsRef = useRef<ScheduleSlot[] | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -88,8 +85,6 @@ function ScheduleAdminContent() {
   // Load available channels and media list once
   useEffect(() => {
     let cancelled = false;
-    const shouldForceRefresh = forceMediaRefresh;
-    if (forceMediaRefresh) setForceMediaRefresh(false);
     setFiles([]);
     setLoading(true);
     setMessage(null);
@@ -130,7 +125,7 @@ function ScheduleAdminContent() {
           }
         } else {
           const filesRes = await fetch(
-            `/api/media-files?${shouldForceRefresh ? "refresh=1&" : ""}t=${Date.now()}`,
+            `/api/media-files?t=${Date.now()}`,
             { cache: "no-store" },
           );
           filesJson = await filesRes.json();
@@ -162,7 +157,7 @@ function ScheduleAdminContent() {
     return () => {
       cancelled = true;
     };
-  }, [mediaSource, mediaRefreshToken, forceMediaRefresh]);
+  }, [mediaSource]);
 
   // Reload schedule when channel changes
   useEffect(() => {
@@ -228,30 +223,6 @@ function ScheduleAdminContent() {
     [sortedFiles],
   );
 
-  const refreshMediaList = (opts?: { force?: boolean }) => {
-    if (opts?.force) setForceMediaRefresh(true);
-    setMediaRefreshToken((token) => token + 1);
-  };
-
-  const pushRemoteManifest = async () => {
-    setPushingManifest(true);
-    setMessage(null);
-    setError(null);
-    try {
-      const res = await fetch("/api/media-index/push", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.message || "Upload failed");
-      }
-      setMessage(data.message || "Uploaded media-index.json");
-      refreshMediaList({ force: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setPushingManifest(false);
-    }
-  };
-
   const addSlot = () => {
     const defaultFile = supportedFiles[0]?.relPath || "";
     const nextStart =
@@ -270,6 +241,38 @@ function ScheduleAdminContent() {
 
   const updateSlot = (index: number, slot: ScheduleSlot) => {
     setSlots((prev) => prev.map((s, i) => (i === index ? slot : s)));
+  };
+
+  const clearSchedule = async () => {
+    if (!channel) return;
+    const confirmed = window.confirm(
+      `Clear schedule for "${channel}"? This removes all items for this channel.`,
+    );
+    if (!confirmed) return;
+
+    const previousSaved = lastSavedSlotsRef.current;
+    lastSavedSlotsRef.current = JSON.stringify([]);
+
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+
+    setMessage(null);
+    setError(null);
+    setSlots([]);
+    setAutoSaveStatus("saving");
+
+    const success = await doSave([]);
+    if (success) {
+      setMessage("Schedule cleared");
+      setAutoSaveStatus("saved");
+      setTimeout(() => setAutoSaveStatus("idle"), 1500);
+    } else {
+      lastSavedSlotsRef.current = previousSaved;
+      setError("Failed to clear schedule");
+      setAutoSaveStatus("idle");
+    }
   };
 
   // Core save function - always saves to local, then pushes to remote if needed
@@ -421,6 +424,19 @@ function ScheduleAdminContent() {
           >
             + Add schedule item
           </button>
+          <button
+            onClick={() => void clearSchedule()}
+            className="rounded-md border border-red-400/60 bg-red-500/20 px-3 py-1 text-sm font-semibold text-red-50 transition hover:border-red-300 hover:bg-red-500/30 disabled:opacity-50"
+            disabled={
+              loading ||
+              autoSaveStatus === "saving" ||
+              !channel ||
+              slots.length === 0
+            }
+            title="Remove all schedule items for this channel"
+          >
+            Clear schedule
+          </button>
           <span
             className={`text-xs px-2 py-1 rounded-full transition-opacity ${
               autoSaveStatus === "saving"
@@ -559,105 +575,6 @@ function ScheduleAdminContent() {
               )}
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-semibold text-neutral-100">
-                    Available media
-                  </h3>
-                  <span className="text-xs text-neutral-400">
-                    {sortedFiles.length} file{sortedFiles.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => refreshMediaList()}
-                    disabled={loading}
-                    className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
-                  >
-                    {loading ? "Refreshing…" : "Refresh list"}
-                  </button>
-                  <button
-                    onClick={() => refreshMediaList({ force: true })}
-                    disabled={loading}
-                    className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
-                    title="Rescan media folder to pick up new or removed files"
-                  >
-                    {loading ? "Syncing…" : "Sync media"}
-                  </button>
-                  {mediaSource === "remote" && (
-                    <button
-                      onClick={() => void pushRemoteManifest()}
-                      disabled={loading || pushingManifest}
-                      className="rounded-md border border-blue-300/50 bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30 disabled:opacity-50"
-                      title="Rebuild and upload media-index.json to the remote server"
-                    >
-                      {pushingManifest ? "Updating JSON…" : "Update JSON"}
-                    </button>
-                  )}
-                </div>
-              </div>
-              {sortedFiles.length === 0 ? (
-                <p className="text-sm text-neutral-300">
-                  No media found in your library. Add files to your media folder.
-                </p>
-              ) : (
-                <div className="overflow-hidden rounded-lg border border-white/5">
-                  <table className="min-w-full text-sm text-left">
-                    <thead className="bg-white/5 text-neutral-200">
-                      <tr>
-                        <th className="px-3 py-2 font-semibold">File</th>
-                        <th className="px-3 py-2 font-semibold w-24 text-left">
-                          Format
-                        </th>
-                        <th className="px-3 py-2 font-semibold w-28 text-left">
-                          Supported
-                        </th>
-                        <th className="px-3 py-2 font-semibold w-28 text-right">
-                          Duration
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5 bg-neutral-950/40 text-neutral-100">
-                      {sortedFiles.map((file) => (
-                        <tr key={file.relPath}>
-                          <td className="px-3 py-2">
-                            <button
-                              type="button"
-                              className="text-left underline decoration-dotted underline-offset-2 hover:text-emerald-200"
-                              onClick={() => setSelectedFile(file)}
-                            >
-                              {file.relPath}
-                            </button>
-                          </td>
-                          <td className="px-3 py-2 text-left text-neutral-200 uppercase">
-                            {file.format || "—"}
-                          </td>
-                          <td className="px-3 py-2 text-left">
-                            <span
-                              className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                                file.supported
-                                  ? "bg-emerald-500/20 text-emerald-100"
-                                  : "bg-amber-500/20 text-amber-100"
-                              }`}
-                            >
-                              {file.supported
-                                ? file.supportedViaCompanion
-                                  ? "Yes (companion)"
-                                  : "Yes"
-                                : "No"}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-right text-neutral-200">
-                            {formatDuration(file.durationSeconds)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
           </div>
         )}
 

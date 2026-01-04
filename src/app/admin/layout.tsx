@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 const navLinks = [
   { href: "/", label: "Player" },
   { href: "/admin/source", label: "Source" },
+  { href: "/admin/media", label: "Media" },
   { href: "/admin/schedule", label: "Schedule" },
   { href: "/admin/channels", label: "Channels" },
   { href: "/admin/ftp-test", label: "FTP Test" },
