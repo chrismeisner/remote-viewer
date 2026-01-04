@@ -61,6 +61,9 @@ export default function Home() {
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
   const [overlayChannel, setOverlayChannel] = useState<ChannelInfo | null>(null);
   const overlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Video loading state - show blue screen while buffering
+  const [isVideoLoading, setIsVideoLoading] = useState(false);
   // Reset playback context when channel changes to ensure fresh offsets.
   useEffect(() => {
     previousNowPlayingRef.current = null;
@@ -70,7 +73,7 @@ export default function Home() {
   }, [channel]);
 
   // Show channel overlay when channel changes
-  const triggerChannelOverlay = (channelInfo: ChannelInfo) => {
+  const triggerChannelOverlay = (channelInfo: ChannelInfo, startLoading = true) => {
     // Clear any existing timeout
     if (overlayTimeoutRef.current) {
       clearTimeout(overlayTimeoutRef.current);
@@ -79,7 +82,28 @@ export default function Home() {
     setOverlayChannel(channelInfo);
     setShowChannelOverlay(true);
     
-    // Hide overlay after 2 seconds
+    // Set loading state - will show blue screen until video is ready
+    if (startLoading) {
+      setIsVideoLoading(true);
+    }
+    
+    // Don't auto-hide while loading - we'll hide when video is ready
+    // Only set timeout if not in loading state
+    if (!startLoading) {
+      overlayTimeoutRef.current = setTimeout(() => {
+        setShowChannelOverlay(false);
+      }, 2000);
+    }
+  };
+  
+  // Called when video is ready to play - hide loading state and start overlay timeout
+  const onVideoReady = () => {
+    setIsVideoLoading(false);
+    
+    // Now start the overlay hide timeout
+    if (overlayTimeoutRef.current) {
+      clearTimeout(overlayTimeoutRef.current);
+    }
     overlayTimeoutRef.current = setTimeout(() => {
       setShowChannelOverlay(false);
     }, 2000);
@@ -254,6 +278,8 @@ export default function Home() {
             );
           } else {
             setNowPlaying(null);
+            // No content scheduled - clear loading state but keep overlay visible briefly
+            setIsVideoLoading(false);
           }
         }
       } catch (err) {
@@ -263,6 +289,8 @@ export default function Home() {
             err instanceof Error ? err.message : "Unable to resolve current playback";
           setError(message);
           setNowPlaying(null);
+          // Clear loading state on error
+          setIsVideoLoading(false);
         }
       }
     };
@@ -361,6 +389,12 @@ export default function Home() {
           console.warn("Autoplay failed", err);
         });
     };
+    
+    // Called when video has enough data to play - clear loading state
+    const handleCanPlay = () => {
+      console.log("[player] video can play, clearing loading state");
+      onVideoReady();
+    };
 
     video.src = nowPlaying.src;
     video.preload = "auto";
@@ -372,6 +406,7 @@ export default function Home() {
     );
     video.load();
     video.addEventListener("loadedmetadata", handleLoaded);
+    video.addEventListener("canplay", handleCanPlay);
     const preventPause = () => {
       if (video.paused) {
         video
@@ -385,6 +420,7 @@ export default function Home() {
 
     return () => {
       video.removeEventListener("loadedmetadata", handleLoaded);
+      video.removeEventListener("canplay", handleCanPlay);
       video.removeEventListener("pause", preventPause);
       clearTimeout(lateSeek);
     };
@@ -679,12 +715,19 @@ export default function Home() {
             <div
               className={`relative overflow-hidden rounded-lg border border-white/10 bg-black ${crtEnabled ? "crt-frame" : ""}`}
             >
-              {/* Blue screen fallback when channel is selected but nothing is playing */}
-              {channel && !nowPlaying && (
+              {/* Blue screen fallback when channel is selected but video is loading or nothing scheduled */}
+              {channel && (!nowPlaying || isVideoLoading) && (
                 <div
-                  className="aspect-video w-full"
+                  className="aspect-video w-full flex items-center justify-center"
                   style={{ backgroundColor: "#0000FF" }}
-                />
+                >
+                  {/* Show "NO PROGRAMMING" when nothing is scheduled (not loading) */}
+                  {!nowPlaying && !isVideoLoading && (
+                    <span className="font-homevideo text-2xl sm:text-3xl text-white/90 tracking-wide">
+                      NO PROGRAMMING
+                    </span>
+                  )}
+                </div>
               )}
 
               {/* Video element - hidden when showing blue screen */}
@@ -704,20 +747,24 @@ export default function Home() {
                 }}
                 tabIndex={0}
                 className={`relative z-[1] aspect-video w-full bg-black ${
-                  channel && !nowPlaying ? "hidden" : ""
+                  channel && (!nowPlaying || isVideoLoading) ? "hidden" : ""
                 }`}
               />
 
-              {/* CRT-style channel overlay */}
+              {/* CRT-style channel overlay - stays visible while loading */}
               <div
                 className={`absolute top-4 left-4 z-10 transition-opacity duration-500 ${
-                  showChannelOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
+                  showChannelOverlay || isVideoLoading ? "opacity-100" : "opacity-0 pointer-events-none"
                 }`}
               >
                 <div className="channel-overlay font-mono">
                   <span className="channel-number">{overlayChannelId}</span>
                   {overlayChannel?.shortName && (
                     <span className="channel-name">{overlayChannel.shortName}</span>
+                  )}
+                  {/* Blinking cursor while loading */}
+                  {isVideoLoading && (
+                    <span className="channel-cursor">▌</span>
                   )}
                 </div>
               </div>
