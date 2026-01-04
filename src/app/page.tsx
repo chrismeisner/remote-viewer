@@ -366,7 +366,10 @@ export default function Home() {
     video.preload = "auto";
     video.controls = false;
     video.disablePictureInPicture = true;
-    video.controlsList = "nodownload noremoteplayback noplaybackrate nofullscreen";
+    video.setAttribute(
+      "controlsList",
+      "nodownload noremoteplayback noplaybackrate nofullscreen"
+    );
     video.load();
     video.addEventListener("loadedmetadata", handleLoaded);
     const preventPause = () => {
