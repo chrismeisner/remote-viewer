@@ -350,13 +350,25 @@ export default function Home() {
 
     video.src = nowPlaying.src;
     video.preload = "auto";
+    video.controls = false;
+    video.disablePictureInPicture = true;
+    video.controlsList = "nodownload noremoteplayback noplaybackrate nofullscreen";
     video.load();
     video.addEventListener("loadedmetadata", handleLoaded);
+    const preventPause = () => {
+      if (video.paused) {
+        video
+          .play()
+          .catch((err) => console.warn("Autoplay resume failed", err));
+      }
+    };
+    video.addEventListener("pause", preventPause);
     const lateSeek = setTimeout(() => ensureSeeked(0), 300);
     previousNowPlayingRef.current = nowPlaying;
 
     return () => {
       video.removeEventListener("loadedmetadata", handleLoaded);
+      video.removeEventListener("pause", preventPause);
       clearTimeout(lateSeek);
     };
   }, [nowPlaying, muted]);
@@ -663,6 +675,15 @@ export default function Home() {
                 key={`${channel}-${resolvedSrc(nowPlaying) || "none"}`}
                 autoPlay
                 playsInline
+                controls={false}
+                disablePictureInPicture
+                controlsList="nodownload noremoteplayback noplaybackrate nofullscreen"
+                onContextMenu={(e) => e.preventDefault()}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  videoRef.current?.play().catch(() => {});
+                }}
                 tabIndex={0}
                 className={`relative z-[1] aspect-video w-full bg-black ${
                   channel && !nowPlaying ? "hidden" : ""

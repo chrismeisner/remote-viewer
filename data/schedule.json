@@ -18,6 +18,15 @@
           "file": "The Simpsons S03E03 When Flanders Failed.mp4"
         }
       ]
+    },
+    "3": {
+      "slots": [
+        {
+          "start": "17:00:00",
+          "end": "18:38:01",
+          "file": "Machete.Kills.2013.1080p.BluRay.x264.YIFY.mp4"
+        }
+      ]
     }
   }
 }

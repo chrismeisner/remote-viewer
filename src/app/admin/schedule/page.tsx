@@ -239,6 +239,14 @@ function ScheduleAdminContent() {
     setCopiedCommand(false);
   }, [selectedFile]);
 
+  const setModalStartWithSuggestedTime = useCallback(
+    (startValue: string) => {
+      setModalStart(startValue);
+      setModalEnd(computeEndTime(startValue, modalFile, supportedFiles));
+    },
+    [modalFile, supportedFiles],
+  );
+
   const updateSlot = (index: number, slot: ScheduleSlot) => {
     setSlots((prev) => prev.map((s, i) => (i === index ? slot : s)));
   };
@@ -620,7 +628,7 @@ function ScheduleAdminContent() {
                 </select>
               </label>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <label className="text-xs text-neutral-300">
                   Start time
                   <input
@@ -628,14 +636,35 @@ function ScheduleAdminContent() {
                     step="1"
                     value={modalStart}
                     onChange={(e) => {
-                      setModalStart(e.target.value);
-                      setModalEnd(
-                        computeEndTime(e.target.value, modalFile, supportedFiles),
-                      );
+                      setModalStartWithSuggestedTime(e.target.value);
                     }}
                     className="ml-2 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
                   />
                 </label>
+                <div className="flex flex-wrap items-center gap-1 text-[11px] text-neutral-300">
+                  <span className="text-neutral-400">Quick set:</span>
+                  <button
+                    type="button"
+                    onClick={() => setModalStartWithSuggestedTime(formatNowUtc())}
+                    className="rounded-md border border-white/15 bg-white/5 px-2 py-1 font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                  >
+                    Now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalStartWithSuggestedTime(formatThisHourUtc())}
+                    className="rounded-md border border-white/15 bg-white/5 px-2 py-1 font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                  >
+                    This hour
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalStartWithSuggestedTime(formatNextHourUtc())}
+                    className="rounded-md border border-white/15 bg-white/5 px-2 py-1 font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                  >
+                    Next hour
+                  </button>
+                </div>
                 <label className="text-xs text-neutral-300">
                   End time
                   <input
@@ -1064,5 +1093,29 @@ function secondsToTime(totalSeconds: number): string {
   const m = minutes.toString().padStart(2, "0");
   const s = seconds.toString().padStart(2, "0");
   return `${h}:${m}:${s}`;
+}
+
+function formatNowUtc(): string {
+  const now = new Date();
+  return formatTimeFromParts(now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds());
+}
+
+function formatThisHourUtc(): string {
+  const now = new Date();
+  return formatTimeFromParts(now.getUTCHours(), 0, 0);
+}
+
+function formatNextHourUtc(): string {
+  const now = new Date();
+  const nextHour = (now.getUTCHours() + 1) % 24;
+  return formatTimeFromParts(nextHour, 0, 0);
+}
+
+function formatTimeFromParts(hours: number, minutes: number, seconds: number): string {
+  return `${padTime(hours % 24)}:${padTime(minutes % 60)}:${padTime(seconds % 60)}`;
+}
+
+function padTime(value: number): string {
+  return value.toString().padStart(2, "0");
 }
 
