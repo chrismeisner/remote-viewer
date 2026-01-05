@@ -1075,7 +1075,7 @@ function copyConvertCommand(
 function buildConvertCommand(file: MediaFile): string {
   const escapedIn = escapeDoubleQuotes(file.relPath);
   const base = file.relPath.replace(/\.[^/.]+$/, "");
-  const escapedOut = escapeDoubleQuotes(`${base}.aac.mp4`);
+  const escapedOut = escapeDoubleQuotes(`${base}.mp4`);
   const inputPath = `"media/${escapedIn}"`;
   const outputPath = `"media/${escapedOut}"`;
 

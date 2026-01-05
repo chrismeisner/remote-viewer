@@ -114,7 +114,7 @@ export default function StylingPage() {
       <section>
         <h2 className="text-lg font-semibold text-neutral-50 mb-3">Typography</h2>
         <p className="text-sm text-neutral-400 mb-4">
-          Font sizes using Geist Sans (primary) and Geist Mono (code).
+          Font sizes using Inter (primary font).
         </p>
         <div className="rounded-xl border border-white/10 bg-neutral-900/70 overflow-hidden">
           {fontSizes.map((font, i) => (
