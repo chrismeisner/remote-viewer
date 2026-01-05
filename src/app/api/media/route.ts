@@ -6,6 +6,69 @@ import path from "node:path";
 
 export const runtime = "nodejs";
 
+function toWebStream(readable: Readable, signal?: AbortSignal): ReadableStream {
+  return new ReadableStream({
+    start(controller) {
+      let closed = false;
+      let onAbort: (() => void) | null = null;
+
+      const cleanup = () => {
+        readable.off("data", onData);
+        readable.off("end", onClose);
+        readable.off("close", onClose);
+        readable.off("error", onError);
+        if (signal && onAbort) {
+          signal.removeEventListener("abort", onAbort);
+        }
+      };
+
+      const onClose = () => {
+        if (closed) return;
+        closed = true;
+        cleanup();
+        try {
+          controller.close();
+        } catch {
+          // Swallow close errors to avoid noisy logs
+        }
+      };
+
+      const onError = (err: unknown) => {
+        if (closed) return;
+        closed = true;
+        cleanup();
+        controller.error(err);
+      };
+
+      const onData = (chunk: Buffer) => {
+        if (closed) return;
+        try {
+          controller.enqueue(chunk);
+        } catch {
+          // If enqueue fails (e.g. consumer went away), stop the stream quietly
+          onClose();
+        }
+      };
+
+      readable.on("data", onData);
+      readable.once("end", onClose);
+      readable.once("close", onClose);
+      readable.once("error", onError);
+
+      if (signal) {
+        onAbort = () => {
+          readable.destroy();
+          onClose();
+        };
+        signal.addEventListener("abort", onAbort);
+      }
+    },
+    cancel() {
+      readable.destroy();
+    },
+  });
+}
+
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
   const relPath = url.searchParams.get("file");
@@ -35,7 +98,10 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const stream = Readable.toWeb(createMediaStream(absPath, start, end));
+      const stream = toWebStream(
+        createMediaStream(absPath, start, end),
+        request.signal,
+      );
       return new NextResponse(stream as unknown as ReadableStream, {
         status: 206,
         headers: {
@@ -47,7 +113,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const stream = Readable.toWeb(createMediaStream(absPath));
+    const stream = toWebStream(createMediaStream(absPath), request.signal);
     return new NextResponse(stream as unknown as ReadableStream, {
       status: 200,
       headers: {

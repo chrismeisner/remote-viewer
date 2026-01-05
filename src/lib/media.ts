@@ -46,6 +46,13 @@ type MediaFile = {
   mtimeMs: number;
 };
 
+type ProbeInfo = {
+  durationSeconds: number;
+  videoCodec?: string;
+  audioCodec?: string;
+  mtimeMs: number;
+};
+
 export type ScheduledItem = {
   relPath: string;
   absPath: string;
@@ -69,7 +76,7 @@ const scheduleCache = new Map<
   string,
   { scannedAt: number; items: ScheduledItem[] }
 >();
-const durationCache = new Map<string, { durationSeconds: number; mtimeMs: number }>();
+const durationCache = new Map<string, ProbeInfo>();
 
 // Cache for the full schedule file
 let localScheduleCache: {
@@ -363,14 +370,25 @@ export async function getScheduleItems(options?: { refresh?: boolean }): Promise
 
   const mediaFiles = await listMediaFiles();
   const items: ScheduledItem[] = [];
-  const companionSet = buildBrowserFriendlyBaseSet(mediaFiles);
+  const probeInfos = new Map<string, ProbeInfo>();
+
+  await Promise.all(
+    mediaFiles.map(async (file) => {
+      const info = await getProbeInfo(file.absPath, file.mtimeMs);
+      probeInfos.set(file.relPath, info);
+    }),
+  );
 
   for (const file of mediaFiles) {
-    const durationSeconds = await getDurationSeconds(file.absPath, file.mtimeMs);
-    const supportedNative = isProbablyBrowserSupported(file.relPath);
-    const supportedViaCompanion =
-      !supportedNative && hasCompanionBrowserFile(file.relPath, companionSet);
-    const supported = supportedNative || supportedViaCompanion;
+    const probeInfo = probeInfos.get(file.relPath);
+    const durationSeconds = probeInfo?.durationSeconds ?? DURATION_FALLBACK_SECONDS;
+    const supportedNative = isProbablyBrowserSupported(
+      file.relPath,
+      probeInfo?.videoCodec,
+      probeInfo?.audioCodec,
+    );
+    const supportedViaCompanion = false;
+    const supported = supportedNative;
     items.push({
       relPath: file.relPath,
       absPath: file.absPath,
@@ -474,17 +492,39 @@ async function getDurationSeconds(
   absPath: string,
   mtimeMs: number,
 ): Promise<number> {
-  const cached = durationCache.get(absPath);
-  if (cached && cached.mtimeMs === mtimeMs) {
-    return cached.durationSeconds;
-  }
-
-  const durationSeconds = await probeDuration(absPath);
-  durationCache.set(absPath, { durationSeconds, mtimeMs });
-  return durationSeconds;
+  const info = await getProbeInfo(absPath, mtimeMs);
+  return info.durationSeconds;
 }
 
-async function probeDuration(absPath: string): Promise<number> {
+async function getProbeInfo(
+  absPath: string,
+  mtimeMs: number,
+): Promise<ProbeInfo> {
+  const cached = durationCache.get(absPath);
+  if (cached && cached.mtimeMs === mtimeMs) {
+    return cached;
+  }
+
+  const probed = await probeMediaInfo(absPath);
+  const info: ProbeInfo = {
+    durationSeconds:
+      typeof probed.durationSeconds === "number" &&
+      Number.isFinite(probed.durationSeconds) &&
+      probed.durationSeconds > 0
+        ? probed.durationSeconds
+        : DURATION_FALLBACK_SECONDS,
+    videoCodec: probed.videoCodec,
+    audioCodec: probed.audioCodec,
+    mtimeMs,
+  };
+
+  durationCache.set(absPath, info);
+  return info;
+}
+
+async function probeMediaInfo(
+  absPath: string,
+): Promise<{ durationSeconds: number | null; videoCodec?: string; audioCodec?: string }> {
   try {
     const ffprobePath = await resolveFfprobePath();
     const { stdout } = await execFileAsync(ffprobePath, [
@@ -499,16 +539,19 @@ async function probeDuration(absPath: string): Promise<number> {
 
     const parsed = JSON.parse(stdout);
     const duration = extractDurationSeconds(parsed);
+    const { videoCodec, audioCodec } = extractCodecNames(parsed);
 
-    if (duration !== null && Number.isFinite(duration) && duration > 0) {
-      return duration;
+    if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) {
+      console.warn("ffprobe missing duration, returning 0", absPath);
+      return { durationSeconds: null, videoCodec, audioCodec };
     }
+
+    return { durationSeconds: duration, videoCodec, audioCodec };
   } catch (error) {
     console.warn("ffprobe failed", absPath, error);
   }
 
-  console.warn("ffprobe missing duration, returning 0", absPath);
-  return DURATION_FALLBACK_SECONDS;
+  return { durationSeconds: null };
 }
 
 function titleFromPath(relPath: string): string {
@@ -521,7 +564,11 @@ function formatFromPath(relPath: string): string {
   return ext || "unknown";
 }
 
-function isProbablyBrowserSupported(relPath: string): boolean {
+function isProbablyBrowserSupported(
+  relPath: string,
+  videoCodec?: string,
+  audioCodec?: string,
+): boolean {
   // Determine browser support based on container and inferred codec.
   // Modern browsers (Chrome, Firefox, Edge) support:
   //   - H.264/AVC video + AAC/MP3 audio in MP4, M4V, MOV, MKV containers
@@ -535,42 +582,61 @@ function isProbablyBrowserSupported(relPath: string): boolean {
   
   const ext = path.extname(relPath).toLowerCase();
   const filename = relPath.toLowerCase();
+  const codec = (videoCodec || "").toLowerCase();
+  // audioCodec reserved for future use; keep signature for potential follow-on checks
+  void audioCodec;
   
   // Check if filename suggests HEVC/x265 codec (limited browser support)
-  const isHevc = filename.includes("x265") || 
-                 filename.includes("hevc") || 
-                 filename.includes("h265") ||
-                 filename.includes("h.265");
+  const nameHevc = filename.includes("x265") ||
+                   filename.includes("hevc") ||
+                   filename.includes("h265") ||
+                   filename.includes("h.265");
   
   // Check if filename suggests H.264/x264 codec (excellent browser support)
-  const isH264 = filename.includes("x264") || 
-                 filename.includes("h264") || 
-                 filename.includes("h.264") ||
-                 filename.includes("avc");
+  const nameH264 = filename.includes("x264") ||
+                   filename.includes("h264") ||
+                   filename.includes("h.264") ||
+                   filename.includes("avc");
+
+  // Prefer actual codec from ffprobe; fall back to filename hints
+  const videoIsHevc =
+    codec.includes("hevc") || codec.includes("h265") || codec.includes("h.265");
+  const videoIsAvc = codec.includes("h264") || codec.includes("avc");
+  const videoIsVp8 = codec.includes("vp8");
+  const videoIsVp9 = codec.includes("vp9");
+
+  const hevcLikely = videoIsHevc || (!codec && nameHevc);
+  const avcLikely = videoIsAvc || (!codec && nameH264);
   
   switch (ext) {
     case ".mp4":
     case ".m4v":
       // MP4/M4V with H.264 = great support
       // MP4 with HEVC = limited (Safari only with hardware)
-      return !isHevc;
+      if (videoIsAvc || videoIsVp8 || videoIsVp9) return true;
+      if (hevcLikely) return false;
+      return true;
     
     case ".webm":
       // WebM is well-supported (VP8/VP9 + Vorbis/Opus)
+      if (videoIsVp8 || videoIsVp9) return true;
+      if (videoIsAvc) return true;
+      if (hevcLikely) return false;
       return true;
     
     case ".mov":
       // QuickTime MOV with H.264 works well
       // MOV with HEVC/ProRes = limited
-      return !isHevc;
+      if (videoIsAvc || videoIsVp8 || videoIsVp9) return true;
+      if (hevcLikely) return false;
+      return true;
     
     case ".mkv":
       // MKV is widely supported in Chrome/Firefox/Edge when containing H.264
       // MKV with HEVC = limited support
       // If we can't tell the codec, assume H.264 (most common) = likely works
-      if (isHevc) return false;
-      // If explicitly H.264, definitely works
-      if (isH264) return true;
+      if (hevcLikely) return false;
+      if (videoIsAvc || videoIsVp8 || videoIsVp9 || avcLikely) return true;
       // MKV without codec hints - most are H.264 and will play in Chrome/Firefox
       // Mark as supported since the player handles errors gracefully
       return true;
@@ -579,7 +645,8 @@ function isProbablyBrowserSupported(relPath: string): boolean {
       // AVI files typically use legacy codecs (XviD, DivX, MPEG-4 Part 2)
       // These are NOT supported by browsers
       // Only rare AVI files with H.264 would work
-      return isH264;
+      if (videoIsAvc || avcLikely) return true;
+      return false;
     
     case ".wmv":
     case ".asf":
@@ -590,21 +657,6 @@ function isProbablyBrowserSupported(relPath: string): boolean {
     default:
       return false;
   }
-}
-
-function buildBrowserFriendlyBaseSet(files: MediaFile[]): Set<string> {
-  const friendly = new Set<string>();
-  for (const f of files) {
-    if (isProbablyBrowserSupported(f.relPath)) {
-      friendly.add(baseNameWithoutExt(f.relPath));
-    }
-  }
-  return friendly;
-}
-
-function hasCompanionBrowserFile(relPath: string, friendlyBases: Set<string>) {
-  const base = baseNameWithoutExt(relPath);
-  return friendlyBases.has(base);
 }
 
 function baseNameWithoutExt(relPath: string): string {
@@ -833,6 +885,33 @@ function extractDurationSeconds(probeJson: unknown): number | null {
   }
 
   return null;
+}
+
+function extractCodecNames(probeJson: unknown): {
+  videoCodec?: string;
+  audioCodec?: string;
+} {
+  if (!probeJson || typeof probeJson !== "object") return {};
+  const obj = probeJson as { streams?: unknown };
+  const streams = Array.isArray(obj.streams) ? obj.streams : [];
+
+  const videoStream = streams.find((s) => s?.codec_type === "video");
+  const audioStream = streams.find((s) => s?.codec_type === "audio");
+
+  return {
+    videoCodec:
+      typeof videoStream?.codec_name === "string"
+        ? videoStream.codec_name
+        : typeof videoStream?.codec_tag_string === "string"
+          ? videoStream.codec_tag_string
+          : undefined,
+    audioCodec:
+      typeof audioStream?.codec_name === "string"
+        ? audioStream.codec_name
+        : typeof audioStream?.codec_tag_string === "string"
+          ? audioStream.codec_tag_string
+          : undefined,
+  };
 }
 
 function parseFps(value: string): number | null {
