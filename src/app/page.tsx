@@ -802,17 +802,14 @@ export default function Home() {
                 playsInline
                 controls={false}
                 disablePictureInPicture
+                disableRemotePlayback
                 controlsList="nodownload noremoteplayback noplaybackrate nofullscreen"
                 onContextMenu={(e) => e.preventDefault()}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.preventDefault();
-                  videoRef.current?.play().catch(() => {});
-                }}
                 tabIndex={0}
                 className={`relative z-[1] bg-black ${
                   isChromeless ? "h-full w-full object-contain" : "aspect-video w-full"
                 } ${channel && (!nowPlaying || isVideoLoading) ? "hidden" : ""}`}
+                style={{ pointerEvents: 'auto' }}
               />
 
               {/* CRT-style channel overlay - stays visible while loading or no programming */}

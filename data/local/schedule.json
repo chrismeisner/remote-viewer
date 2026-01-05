@@ -26,6 +26,41 @@
           "start": "15:32:55",
           "end": "15:56:09",
           "file": "The Simpsons S02E05 Dancin' Homer.mp4"
+        },
+        {
+          "start": "15:58:12",
+          "end": "16:21:15",
+          "file": "The Simpsons S03E18 Separate Vocations.mp4"
+        },
+        {
+          "start": "16:21:16",
+          "end": "16:44:03",
+          "file": "The Simpsons S03E19 Dog of Death.mp4"
+        },
+        {
+          "start": "16:44:04",
+          "end": "17:07:04",
+          "file": "The Simpsons S03E20 Colonel Homer.mp4"
+        },
+        {
+          "start": "17:07:05",
+          "end": "17:30:06",
+          "file": "The Simpsons S03E21 Black Widower.mp4"
+        },
+        {
+          "start": "17:30:07",
+          "end": "17:53:05",
+          "file": "The Simpsons S03E22 The Otto Show.mp4"
+        },
+        {
+          "start": "17:53:06",
+          "end": "18:16:09",
+          "file": "The Simpsons S03E23 Bart's Friend Falls in Love.mp4"
+        },
+        {
+          "start": "18:16:10",
+          "end": "18:38:55",
+          "file": "The Simpsons S03E24 Brother, Can You Spare Two Dimes.mp4"
         }
       ]
     },
@@ -79,6 +114,26 @@
           "start": "14:00:00",
           "end": "15:30:14",
           "file": "Jodorowskys.Dune.2013.1080p.BluRay.x264.YIFY.mp4"
+        },
+        {
+          "start": "16:00:05",
+          "end": "16:53:21",
+          "file": "The.Beatles.Anthology.S01E02.1080p.WEB.h264-GRACE[EZTVx.to].mkv"
+        },
+        {
+          "start": "16:53:22",
+          "end": "17:52:56",
+          "file": "The.Beatles.Anthology.S01E03.1080p.WEB.h264-GRACE[EZTVx.to].mkv"
+        },
+        {
+          "start": "17:52:57",
+          "end": "18:46:27",
+          "file": "The.Beatles.Anthology.S01E04.1080p.WEB.h264-GRACE.aac.mp4"
+        },
+        {
+          "start": "18:46:28",
+          "end": "19:40:57",
+          "file": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE.aac.mp4"
         }
       ]
     },
@@ -172,6 +227,11 @@
           "start": "15:53:10",
           "end": "17:38:17",
           "file": "Jay.and.Silent.Bob.Strike.Back.2001.1080p.BrRip.x264.BOKUTOX.YIFY.mp4"
+        },
+        {
+          "start": "15:59:12",
+          "end": "17:52:21",
+          "file": "Chasing.Amy.1997.1080p.BluRay.x264.YIFY.mp4"
         }
       ]
     },

@@ -76,6 +76,73 @@ video {
   outline: none;
 }
 
+/* Hide native video controls, especially in fullscreen */
+video::-webkit-media-controls {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+video::-webkit-media-controls-enclosure {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+video::-webkit-media-controls-panel {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+video::-webkit-media-controls-play-button {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Ensure video never shows controls */
+video[controls] {
+  pointer-events: auto;
+}
+
+video:not([controls]) {
+  pointer-events: auto;
+}
+
+/* Prevent mouse interactions from triggering native controls UI */
+video::cue {
+  display: none;
+}
+
+/* Additional fullscreen control hiding */
+video:fullscreen::-webkit-media-controls,
+video:-webkit-full-screen::-webkit-media-controls,
+video:-moz-full-screen::-webkit-media-controls,
+video:fullscreen::-webkit-media-controls-enclosure,
+video:-webkit-full-screen::-webkit-media-controls-enclosure {
+  display: none !important;
+}
+
+/* Ensure smooth cursor hiding in fullscreen */
+video:fullscreen {
+  cursor: none;
+}
+
+video:-webkit-full-screen {
+  cursor: none;
+}
+
+video:-moz-full-screen {
+  cursor: none;
+}
+
 /* Shared CRT wrapper: used by the player and available as a general .crt utility */
 .crt-frame,
 .crt {
