@@ -442,10 +442,10 @@ function ScheduleAdminContent() {
             Schedule Admin
           </p>
           <p className="text-sm text-neutral-400">
-            24-hour cycling schedule per channel. Supports midnight rollovers (e.g., 23:00→01:00). Changes auto-save{mediaSource === "remote" ? " and push to remote" : " to local JSON"}.
+            Single-day (24h, UTC) schedule per channel. Changes auto-save{mediaSource === "remote" ? " and push to remote" : " to local JSON"}.
           </p>
           <p className="mt-1 text-xs text-neutral-500">
-            Add or edit slots — changes save automatically{mediaSource === "remote" ? " and sync to CDN via FTP" : ""}. Slots cycle continuously every 24 hours.
+            Add or edit slots — changes save automatically{mediaSource === "remote" ? " and sync to CDN via FTP" : ""}.
           </p>
         </div>
       </div>
@@ -546,11 +546,12 @@ function ScheduleAdminContent() {
                         )
                         .map(({ slot, idx }) => {
                           const duration = fileByRel.get(slot.file)?.durationSeconds || 0;
-                          const crossesMidnight = slotCrossesMidnight(slot.start, slot.end);
+                          const isMidnightCrossing = crossesMidnight(slot.start, slot.end);
+                          const slotWindow = slotDurationSeconds(slot.start, slot.end);
                           return (
-                            <tr key={idx} className={`text-neutral-100 ${crossesMidnight ? "bg-indigo-950/40" : "bg-neutral-950/60"}`}>
+                            <tr key={idx} className={`text-neutral-100 ${isMidnightCrossing ? "bg-indigo-950/40" : "bg-neutral-950/60"}`}>
                               <td className="px-3 py-2">
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-2">
                                   <input
                                     type="time"
                                     step="1"
@@ -560,13 +561,13 @@ function ScheduleAdminContent() {
                                       updateSlot(idx, { ...slot, start: e.target.value })
                                     }
                                   />
-                                  {crossesMidnight && (
-                                    <span className="text-indigo-300 text-xs" title="Crosses midnight">🌙</span>
+                                  {isMidnightCrossing && (
+                                    <span className="text-[10px] text-indigo-300" title="Crosses midnight">🌙</span>
                                   )}
                                 </div>
                               </td>
                               <td className="px-3 py-2">
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-2">
                                   <input
                                     type="time"
                                     step="1"
@@ -576,8 +577,8 @@ function ScheduleAdminContent() {
                                       updateSlot(idx, { ...slot, end: e.target.value })
                                     }
                                   />
-                                  {crossesMidnight && (
-                                    <span className="text-indigo-300 text-xs">+1d</span>
+                                  {isMidnightCrossing && (
+                                    <span className="text-[10px] text-indigo-300" title="Next day">+1d</span>
                                   )}
                                 </div>
                               </td>
@@ -610,7 +611,14 @@ function ScheduleAdminContent() {
                                 </select>
                               </td>
                               <td className="px-3 py-2 text-right text-neutral-300">
-                                {duration ? formatDuration(duration) : "—"}
+                                <div className="flex flex-col items-end text-xs">
+                                  <span title="File duration">{duration ? formatDuration(duration) : "—"}</span>
+                                  {slotWindow !== duration && (
+                                    <span className="text-neutral-500" title="Slot window">
+                                      ({formatDuration(slotWindow)} window)
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-3 py-2 text-right">
                                 <div className="flex justify-end gap-2">
@@ -721,32 +729,39 @@ function ScheduleAdminContent() {
                 </div>
                 <label className="text-xs text-neutral-300">
                   End time
-                  <div className="flex items-center gap-1 mt-1">
-                    <input
-                      type="time"
-                      step="1"
-                      value={modalEnd}
-                      onChange={(e) => setModalEnd(e.target.value)}
-                      className="rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
-                    />
-                    {isValidTime(modalStart) && isValidTime(modalEnd) && slotCrossesMidnight(modalStart, modalEnd) && (
-                      <span className="text-indigo-300 text-xs flex items-center gap-1" title="Crosses midnight">
-                        🌙 +1d
-                      </span>
-                    )}
-                  </div>
+                  <input
+                    type="time"
+                    step="1"
+                    value={modalEnd}
+                    onChange={(e) => setModalEnd(e.target.value)}
+                    className="ml-2 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
+                  />
                 </label>
                 <div className="text-xs text-neutral-300">
                   Suggested end
-                  <div className="mt-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-neutral-100 flex items-center gap-2">
-                    {computeEndTime(modalStart, modalFile, supportedFiles)}
-                    {isValidTime(modalStart) && slotCrossesMidnight(modalStart, computeEndTime(modalStart, modalFile, supportedFiles)) && (
-                      <span className="text-indigo-300 text-xs">+1d</span>
-                    )}
-                  </div>
+                  {(() => {
+                    const suggested = computeEndTimeWithIndicator(modalStart, modalFile, supportedFiles);
+                    return (
+                      <div className="mt-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-neutral-100 flex items-center gap-2">
+                        {suggested.time}
+                        {suggested.crossesMidnight && (
+                          <span className="text-indigo-300" title="Crosses midnight">🌙 +1d</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
+              {isValidTime(modalStart) && isValidTime(modalEnd) && crossesMidnight(modalStart, modalEnd) && (
+                <p className="text-xs text-indigo-300">
+                  🌙 This slot will cross midnight and continue into the next day.
+                  <br />
+                  <span className="text-indigo-400">
+                    Slot window: {formatDuration(slotDurationSeconds(modalStart, modalEnd))}
+                  </span>
+                </p>
+              )}
               {supportedFiles.length === 0 && sortedFiles.length > 0 && (
                 <p className="text-xs text-amber-300">
                   No browser-supported media files. Convert unsupported files to MP4/AAC first.
@@ -766,16 +781,14 @@ function ScheduleAdminContent() {
               >
                 Cancel
               </button>
-              <button
+                <button
                 onClick={() => {
                   void (async () => {
-                    // Allow midnight crossover: end can be <= start if wrapping past midnight
-                    // Only reject if start === end (zero-length slot) or invalid times
                     if (
                       !modalFile ||
                       !isValidTime(modalStart) ||
                       !isValidTime(modalEnd) ||
-                      modalStart === modalEnd
+                      timeToSeconds(modalEnd) === timeToSeconds(modalStart) // Only reject zero-duration
                     )
                       return;
                     const newSlot: ScheduleSlot = {
@@ -790,7 +803,7 @@ function ScheduleAdminContent() {
                     setShowSlotModal(false);
                   })();
                 }}
-                disabled={!modalFile || !isValidTime(modalStart) || !isValidTime(modalEnd) || modalStart === modalEnd}
+                disabled={!modalFile || !isValidTime(modalStart) || !isValidTime(modalEnd) || timeToSeconds(modalEnd) === timeToSeconds(modalStart)}
                 className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
               >
                 Add schedule item
@@ -905,6 +918,24 @@ function timeToSeconds(value: string): number {
   const m = parts[1] || 0;
   const s = parts[2] || 0;
   return ((h * 60 + m) * 60 + s) % 86400;
+}
+
+/**
+ * Calculate slot duration accounting for midnight crossover.
+ * If end < start, the slot crosses midnight (e.g., 23:00 -> 01:00 = 2 hours).
+ */
+function slotDurationSeconds(startTime: string, endTime: string): number {
+  const startSec = timeToSeconds(startTime);
+  const endSec = timeToSeconds(endTime);
+  if (endSec > startSec) {
+    return endSec - startSec;
+  }
+  // Crosses midnight
+  return (86400 - startSec) + endSec;
+}
+
+function crossesMidnight(startTime: string, endTime: string): boolean {
+  return timeToSeconds(endTime) < timeToSeconds(startTime);
 }
 
 function incrementTime(value: string, seconds: number): string {
@@ -1151,25 +1182,17 @@ function computeEndTime(
   return secondsToTime(endSec);
 }
 
-/**
- * Check if a time slot crosses midnight (end time is before start time in 24h clock).
- */
-function slotCrossesMidnight(start: string, end: string): boolean {
-  if (!isValidTime(start) || !isValidTime(end)) return false;
-  return timeToSeconds(end) <= timeToSeconds(start);
-}
-
-/**
- * Get the effective duration of a slot in seconds, accounting for midnight crossover.
- */
-function getSlotDurationSeconds(start: string, end: string): number {
-  if (!isValidTime(start) || !isValidTime(end)) return 0;
+function computeEndTimeWithIndicator(
+  start: string,
+  file: string,
+  files: MediaFile[],
+): { time: string; crossesMidnight: boolean } {
+  if (!isValidTime(start) || !file) return { time: "--:--:--", crossesMidnight: false };
+  const dur = files.find((f) => f.relPath === file)?.durationSeconds || 0;
   const startSec = timeToSeconds(start);
-  const endSec = timeToSeconds(end);
-  if (slotCrossesMidnight(start, end)) {
-    return (86400 - startSec) + endSec;
-  }
-  return endSec - startSec;
+  const endSec = (startSec + dur) % 86400;
+  const crossesMidnight = startSec + dur >= 86400;
+  return { time: secondsToTime(endSec), crossesMidnight };
 }
 
 function secondsToTime(totalSeconds: number): string {

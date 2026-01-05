@@ -701,7 +701,7 @@ export default function Home() {
   const closeChannelInfo = () => setShowChannelInfo(false);
   const isChromeless = !showHeader && !showControls;
   const mainClass = isChromeless
-    ? "mx-auto w-full max-w-none px-0 pb-0 pt-0 space-y-4"
+    ? "mx-auto w-full max-w-none px-0 pb-0 pt-0"
     : showControls
       ? "mx-auto max-w-7xl px-6 pb-2 pt-0 space-y-4"
       : "mx-auto max-w-7xl px-6 pb-8 pt-0 space-y-4";
@@ -709,19 +709,29 @@ export default function Home() {
   const playerShellClass = isChromeless ? "max-w-none" : "max-w-6xl";
 
   return (
-    <div className="min-h-screen bg-black text-neutral-100">
-      <main className={mainClass}>
-        <div className="space-y-4">
+    <div
+      className={`bg-black text-neutral-100 flex flex-col ${
+        isChromeless ? "h-[100dvh] overflow-hidden" : "min-h-screen"
+      }`}
+    >
+      <main className={`${mainClass} flex-1 min-h-0`}>
+        <div className={isChromeless ? "h-full" : "space-y-4"}>
           <div
-            className={`mx-auto w-full ${playerShellClass} space-y-3 transition-all duration-300`}
+            className={
+              isChromeless
+                ? "w-full h-full"
+                : `mx-auto w-full ${playerShellClass} space-y-3 transition-all duration-300`
+            }
           >
             <div
-              className={`relative overflow-hidden rounded-lg border border-white/10 bg-black ${crtEnabled ? "crt-frame" : ""}`}
+              className={`relative overflow-hidden bg-black ${
+                isChromeless ? "h-full w-full" : "rounded-lg border border-white/10"
+              } ${crtEnabled ? "crt-frame" : ""}`}
             >
               {/* Blue screen fallback when channel is selected but video is loading or nothing scheduled */}
               {channel && (!nowPlaying || isVideoLoading) && (
                 <div
-                  className="aspect-video w-full"
+                  className={isChromeless ? "h-full w-full" : "aspect-video w-full"}
                   style={{ backgroundColor: "#0000FF" }}
                 />
               )}
@@ -742,9 +752,9 @@ export default function Home() {
                   videoRef.current?.play().catch(() => {});
                 }}
                 tabIndex={0}
-                className={`relative z-[1] aspect-video w-full bg-black ${
-                  channel && (!nowPlaying || isVideoLoading) ? "hidden" : ""
-                }`}
+                className={`relative z-[1] bg-black ${
+                  isChromeless ? "h-full w-full object-contain" : "aspect-video w-full"
+                } ${channel && (!nowPlaying || isVideoLoading) ? "hidden" : ""}`}
               />
 
               {/* CRT-style channel overlay - stays visible while loading or no programming */}
@@ -818,7 +828,6 @@ export default function Home() {
               </div>
             )}
           </div>
-
         </div>
       </main>
 

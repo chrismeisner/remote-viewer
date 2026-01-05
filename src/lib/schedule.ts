@@ -35,23 +35,27 @@ export function parseTimeToSeconds(value: string | undefined): number | null {
 }
 
 /**
- * Check if a slot crosses midnight (end time is before start time in 24h clock).
- * For example: start=23:00, end=01:00 means the content plays from 11pm to 1am.
+ * Calculate the duration of a slot in seconds.
+ * If end < start, the slot crosses midnight (e.g., 23:00 -> 01:00 = 2 hours).
  */
-export function slotCrossesMidnight(startSeconds: number, endSeconds: number): boolean {
-  return endSeconds <= startSeconds;
+export function slotDurationSeconds(startSeconds: number, endSeconds: number): number {
+  if (endSeconds > startSeconds) {
+    return endSeconds - startSeconds;
+  }
+  // Crosses midnight: time from start to 24:00, plus time from 00:00 to end
+  return (86400 - startSeconds) + endSeconds;
 }
 
 /**
- * Get the effective duration of a slot in seconds, accounting for midnight crossover.
- * A slot from 23:00 to 01:00 has a duration of 2 hours (7200 seconds).
+ * Calculate the effective end seconds for a slot (may exceed 86400 if crossing midnight).
+ * This is useful for range comparisons within a single day cycle.
  */
-export function getSlotDurationSeconds(startSeconds: number, endSeconds: number): number {
-  if (slotCrossesMidnight(startSeconds, endSeconds)) {
-    // Crosses midnight: duration = (time until midnight) + (time after midnight)
-    return (86400 - startSeconds) + endSeconds;
+export function effectiveEndSeconds(startSeconds: number, endSeconds: number): number {
+  if (endSeconds > startSeconds) {
+    return endSeconds;
   }
-  return endSeconds - startSeconds;
+  // Crosses midnight: treat end as next-day time
+  return endSeconds + 86400;
 }
 
 export function validateChannelSchedule(schedule: ChannelSchedule, channelId?: string) {
@@ -70,10 +74,10 @@ export function validateChannelSchedule(schedule: ChannelSchedule, channelId?: s
     if (endSeconds === null) {
       throw new Error(`${prefix}Invalid end time: ${slot.end}`);
     }
-    // Allow midnight crossover: end can be <= start if it means wrapping past midnight
-    // But start and end can't be exactly equal (zero-length slot)
+    // Allow midnight-crossing slots (end < start means it wraps past midnight)
+    // Only reject if start === end (zero-duration slot)
     if (startSeconds === endSeconds) {
-      throw new Error(`${prefix}Start and end time cannot be identical (${slot.start})`);
+      throw new Error(`${prefix}Slot cannot have zero duration (${slot.start} -> ${slot.end})`);
     }
     if (startSeconds <= previous) {
       throw new Error(`${prefix}Start times must be ascending`);
