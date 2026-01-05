@@ -14,7 +14,7 @@ const navLinks = [
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-black text-neutral-100 flex">
-      <aside className="w-64 border-r border-white/10 bg-neutral-900/70 backdrop-blur">
+      <aside className="sticky top-0 h-screen w-64 overflow-y-auto border-r border-white/10 bg-neutral-900/70 backdrop-blur">
         <div className="px-5 py-5">
           <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Admin</p>
           <h1 className="text-lg font-semibold text-neutral-50">Control Panel</h1>

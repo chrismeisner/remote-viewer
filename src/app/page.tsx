@@ -38,6 +38,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [muted, setMuted] = useState(true);
+  const mutedRef = useRef(muted);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [crtEnabled, setCrtEnabled] = useState(true);
   const previousNowPlayingRef = useRef<NowPlaying | null>(null);
@@ -371,7 +372,9 @@ export default function Home() {
     };
 
     const handleLoaded = () => {
-      video.muted = muted;
+      // Ensure newly-loaded media respects the latest mute state without
+      // forcing the whole player wiring effect to re-run on every mute toggle.
+      video.muted = mutedRef.current;
       const desiredTime = seekToDesired();
       console.log("[player] new media load", {
         channel,
@@ -433,11 +436,12 @@ export default function Home() {
       video.removeEventListener("pause", preventPause);
       clearTimeout(lateSeek);
     };
-  }, [nowPlaying, muted]);
+  }, [nowPlaying]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+    mutedRef.current = muted;
     video.muted = muted;
   }, [muted]);
 
@@ -705,14 +709,62 @@ export default function Home() {
     : "";
   const closeWelcome = () => setShowWelcome(false);
   const closeChannelInfo = () => setShowChannelInfo(false);
-  const isChromeless = !showHeader && !showControls;
+  // Chromeless is controlled by the header toggle only.
+  // The remote visibility must never change player sizing/layout.
+  const isChromeless = !showHeader;
   const mainClass = isChromeless
     ? "mx-auto w-full max-w-none px-0 pb-0 pt-0"
-    : showControls
-      ? "mx-auto max-w-7xl px-6 pb-2 pt-0 space-y-4"
-      : "mx-auto max-w-7xl px-6 pb-8 pt-0 space-y-4";
+    : "mx-auto max-w-7xl px-6 pb-8 pt-0 space-y-4";
   // Keep the player as wide as possible even when the remote is visible.
   const playerShellClass = isChromeless ? "max-w-none" : "max-w-6xl";
+
+  const remoteControls = (
+    <div className="flex w-full flex-wrap items-stretch justify-center gap-2 sm:flex-nowrap sm:gap-3">
+      <div className="flex w-full flex-nowrap gap-2 sm:flex-wrap">
+        <button
+          onClick={() => setCrtEnabled((c) => !c)}
+          className={`inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
+            crtEnabled
+              ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+              : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
+          }`}
+        >
+          CRT
+        </button>
+        <button
+          onClick={() => setMuted((m) => !m)}
+          aria-pressed={muted}
+          className={`inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
+            muted
+              ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+              : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
+          }`}
+        >
+          {muted ? "Muted" : "Mute"}
+        </button>
+        <button
+          onClick={toggleFullscreen}
+          className="inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+        >
+          {isFullscreen ? "Exit" : "Fullscreen"}
+        </button>
+      </div>
+      <button
+        onClick={channelUp}
+        className="inline-flex w-full min-w-[140px] basis-full items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:basis-auto"
+        disabled={channels.length === 0}
+      >
+        Channel Up
+      </button>
+      <button
+        onClick={channelDown}
+        className="inline-flex w-full min-w-[140px] basis-full items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:basis-auto"
+        disabled={channels.length === 0}
+      >
+        Channel Down
+      </button>
+    </div>
+  );
 
   return (
     <div
@@ -780,58 +832,26 @@ export default function Home() {
                   )}
                 </div>
               </div>
+
+              {/* Desktop overlay remote (md+) */}
+              {showControls && !isFullscreen && (
+                <div
+                  className={`pointer-events-none absolute inset-x-0 bottom-[4vh] z-20 justify-center px-4 ${
+                    // In chromeless mode the player fills the viewport, so we always overlay
+                    // (under-player would be clipped by overflow-hidden).
+                    isChromeless ? "flex" : "hidden md:flex"
+                  }`}
+                >
+                  <div className="pointer-events-auto w-full max-w-3xl rounded-xl border border-white/15 bg-black/60 p-2 shadow-2xl shadow-black/40 backdrop-blur">
+                    {remoteControls}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {showControls && (
-              <div
-                className={`flex w-full flex-wrap items-stretch justify-center gap-2 sm:flex-nowrap sm:gap-3 ${
-                  isFullscreen ? "hidden" : ""
-                }`}
-              >
-                <div className="flex w-full flex-nowrap gap-2 sm:flex-wrap">
-                  <button
-                    onClick={() => setCrtEnabled((c) => !c)}
-                    className={`inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
-                      crtEnabled
-                        ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
-                        : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
-                    }`}
-                  >
-                    CRT
-                  </button>
-                  <button
-                    onClick={() => setMuted((m) => !m)}
-                    aria-pressed={muted}
-                    className={`inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
-                      muted
-                        ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
-                        : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
-                    }`}
-                  >
-                    {muted ? "Muted" : "Mute"}
-                  </button>
-                  <button
-                    onClick={toggleFullscreen}
-                    className="inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
-                  >
-                    {isFullscreen ? "Exit" : "Fullscreen"}
-                  </button>
-                </div>
-                <button
-                  onClick={channelUp}
-                  className="inline-flex w-full min-w-[140px] basis-full items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:basis-auto"
-                  disabled={channels.length === 0}
-                >
-                  Channel Up
-                </button>
-                <button
-                  onClick={channelDown}
-                  className="inline-flex w-full min-w-[140px] basis-full items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:basis-auto"
-                  disabled={channels.length === 0}
-                >
-                  Channel Down
-                </button>
-              </div>
+            {/* Mobile under-player remote (< md) */}
+            {showControls && !isChromeless && (
+              <div className={`md:hidden ${isFullscreen ? "hidden" : ""}`}>{remoteControls}</div>
             )}
           </div>
         </div>
