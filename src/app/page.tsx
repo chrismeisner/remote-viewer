@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  MEDIA_SOURCE_EVENT,
   MEDIA_SOURCE_KEY,
   type MediaSource,
   REMOTE_MEDIA_BASE,
@@ -43,9 +44,7 @@ export default function Home() {
   const lastResolvedAtRef = useRef<number | null>(null);
   const lastRttMsRef = useRef<number>(0);
   const desiredOffsetRef = useRef<number | null>(null);
-  const [mediaSource, setMediaSource] = useState<MediaSource>(
-    REMOTE_MEDIA_BASE ? "remote" : "local",
-  );
+  const [mediaSource, setMediaSource] = useState<MediaSource>("local");
   const [channel, setChannel] = useState<string | null>(null);
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
@@ -128,13 +127,20 @@ export default function Home() {
     return () => classList.remove("header-hidden");
   }, [showHeader]);
 
-  // Load media source preference from localStorage
+  // Load media source preference from localStorage and stay in sync with other tabs/pages.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
-    if (stored === "remote" || stored === "local") {
-      setMediaSource(stored);
-    }
+    const syncSource = () => {
+      const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
+      setMediaSource(stored === "remote" ? "remote" : "local");
+    };
+    syncSource();
+    window.addEventListener("storage", syncSource);
+    window.addEventListener(MEDIA_SOURCE_EVENT, syncSource);
+    return () => {
+      window.removeEventListener("storage", syncSource);
+      window.removeEventListener(MEDIA_SOURCE_EVENT, syncSource);
+    };
   }, []);
 
   // Load muted preference from localStorage

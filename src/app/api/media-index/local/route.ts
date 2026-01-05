@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { getScheduleItems } from "@/lib/media";
+import { getScheduleItems, getLocalMediaIndexFilePath } from "@/lib/media";
 
 export const runtime = "nodejs";
 
-const LOCAL_INDEX_PATH = path.join(process.cwd(), "data", "media-index.json");
+const LOCAL_INDEX_PATH = getLocalMediaIndexFilePath();
 
 /**
  * GET: Read the local media index from data/media-index.json
@@ -54,7 +54,7 @@ export async function POST() {
     return NextResponse.json({
       success: true,
       message: `Saved media-index.json with ${items.length} files`,
-      path: "data/media-index.json",
+      path: "data/local/media-index.json",
       count: items.length,
     });
   } catch (error) {

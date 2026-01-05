@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
 import { Client } from "basic-ftp";
 import fs from "node:fs/promises";
+import { getLocalMediaIndexFilePath } from "@/lib/media";
 
 type PushResult = {
   success: boolean;
@@ -20,7 +21,7 @@ type MediaItem = {
   title: string;
 };
 
-const LOCAL_INDEX_PATH = path.join(process.cwd(), "data", "media-index.json");
+const LOCAL_INDEX_PATH = getLocalMediaIndexFilePath();
 
 function getEnv() {
   const host = process.env.FTP_HOST?.trim();

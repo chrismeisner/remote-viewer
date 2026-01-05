@@ -21,7 +21,12 @@ const execFileAsync = promisify(execFile);
 
 // Hard-coded to the local project's media folder (./media relative to cwd).
 const MEDIA_ROOT = path.resolve(path.join(process.cwd(), "media"));
-const SCHEDULE_FILE = path.join(process.cwd(), "data", "schedule.json");
+const DATA_ROOT = path.join(process.cwd(), "data");
+
+// Source-specific paths
+const LOCAL_SCHEDULE_FILE = path.join(DATA_ROOT, "local", "schedule.json");
+const LOCAL_CHANNELS_FILE = path.join(DATA_ROOT, "local", "channels.json");
+const LOCAL_MEDIA_INDEX_FILE = path.join(DATA_ROOT, "local", "media-index.json");
 
 const ALLOWED_EXTENSIONS = [
   ".mp4",
@@ -122,12 +127,12 @@ export async function loadFullSchedule(
 
 async function loadLocalFullSchedule(): Promise<Schedule> {
   try {
-    const stat = await fs.stat(SCHEDULE_FILE);
+    const stat = await fs.stat(LOCAL_SCHEDULE_FILE);
     if (localScheduleCache.mtimeMs === stat.mtimeMs && localScheduleCache.schedule) {
       return localScheduleCache.schedule;
     }
 
-    const raw = await fs.readFile(SCHEDULE_FILE, "utf8");
+    const raw = await fs.readFile(LOCAL_SCHEDULE_FILE, "utf8");
     const parsed = JSON.parse(raw) as Schedule;
     validateSchedule(parsed);
     localScheduleCache = { mtimeMs: stat.mtimeMs, schedule: parsed };
@@ -165,12 +170,25 @@ async function loadRemoteFullSchedule(): Promise<Schedule> {
 // Save the full schedule file
 export async function saveFullSchedule(schedule: Schedule): Promise<Schedule> {
   validateSchedule(schedule);
-  await fs.mkdir(path.dirname(SCHEDULE_FILE), { recursive: true });
-  await fs.writeFile(SCHEDULE_FILE, JSON.stringify(schedule, null, 2), {
+  await fs.mkdir(path.dirname(LOCAL_SCHEDULE_FILE), { recursive: true });
+  await fs.writeFile(LOCAL_SCHEDULE_FILE, JSON.stringify(schedule, null, 2), {
     encoding: "utf8",
   });
   localScheduleCache = { mtimeMs: null, schedule };
   return schedule;
+}
+
+// Export path helpers for use by API routes
+export function getLocalScheduleFilePath(): string {
+  return LOCAL_SCHEDULE_FILE;
+}
+
+export function getLocalChannelsFilePath(): string {
+  return LOCAL_CHANNELS_FILE;
+}
+
+export function getLocalMediaIndexFilePath(): string {
+  return LOCAL_MEDIA_INDEX_FILE;
 }
 
 // Save a channel's schedule (updates the full schedule file)

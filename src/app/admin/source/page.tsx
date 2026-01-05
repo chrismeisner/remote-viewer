@@ -344,23 +344,23 @@ export default function SourceAdminPage() {
         </div>
 
         <div className="space-y-3">
-          <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 cursor-pointer hover:bg-white/10 transition">
-            <input
-              type="radio"
-              name="media-source"
-              value="local"
-              checked={pendingSource === "local"}
-              onChange={() => setPendingSource("local")}
-              className="h-4 w-4 mt-0.5"
-            />
-            <div>
-              <p className="font-semibold text-neutral-100">Local</p>
-              <p className="text-xs text-neutral-400">
-                Media from <code className="bg-white/10 px-1 rounded">./media</code>, config from{" "}
-                <code className="bg-white/10 px-1 rounded">data/</code>
-              </p>
-            </div>
-          </label>
+            <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 cursor-pointer hover:bg-white/10 transition">
+              <input
+                type="radio"
+                name="media-source"
+                value="local"
+                checked={pendingSource === "local"}
+                onChange={() => setPendingSource("local")}
+                className="h-4 w-4 mt-0.5"
+              />
+              <div>
+                <p className="font-semibold text-neutral-100">Local</p>
+                <p className="text-xs text-neutral-400">
+                  Media from <code className="bg-white/10 px-1 rounded">./media</code>, config from{" "}
+                  <code className="bg-white/10 px-1 rounded">data/local/</code>
+                </p>
+              </div>
+            </label>
           <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 cursor-pointer hover:bg-white/10 transition">
             <input
               type="radio"
@@ -484,9 +484,9 @@ export default function SourceAdminPage() {
               <p className="text-xs text-neutral-500 mb-2">Local file paths:</p>
               <div className="space-y-1 font-mono text-xs text-neutral-300">
                 <p>./media/ <span className="text-neutral-500">← media files</span></p>
-                <p>./data/media-index.json <span className="text-neutral-500">← {localStatus.mediaCount} files</span></p>
-                <p>./data/channels.json <span className="text-neutral-500">← {localStatus.channelCount} channels</span></p>
-                <p>./data/schedule.json <span className="text-neutral-500">← schedules</span></p>
+                <p>./data/local/media-index.json <span className="text-neutral-500">← {localStatus.mediaCount} files</span></p>
+                <p>./data/local/channels.json <span className="text-neutral-500">← {localStatus.channelCount} channels</span></p>
+                <p>./data/local/schedule.json <span className="text-neutral-500">← schedules</span></p>
               </div>
             </div>
           </div>

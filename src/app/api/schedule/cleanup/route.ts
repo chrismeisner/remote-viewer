@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import { NextResponse } from "next/server";
+import { getLocalScheduleFilePath, getLocalChannelsFilePath } from "@/lib/media";
 
 export const runtime = "nodejs";
 
-const SCHEDULE_FILE = path.join(process.cwd(), "data", "schedule.json");
-const CHANNELS_FILE = path.join(process.cwd(), "data", "channels.json");
+const SCHEDULE_FILE = getLocalScheduleFilePath();
+const CHANNELS_FILE = getLocalChannelsFilePath();
 
 /**
  * POST /api/schedule/cleanup

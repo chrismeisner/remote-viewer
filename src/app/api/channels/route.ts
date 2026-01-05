@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { REMOTE_MEDIA_BASE } from "@/constants/media";
+import { getLocalChannelsFilePath, getLocalScheduleFilePath } from "@/lib/media";
 import type { Schedule } from "@/lib/schedule";
 
 export const runtime = "nodejs";
@@ -15,8 +16,8 @@ type ChannelsData = {
   channels: Channel[];
 };
 
-const CHANNELS_FILE = path.join(process.cwd(), "data", "channels.json");
-const SCHEDULE_FILE = path.join(process.cwd(), "data", "schedule.json");
+const CHANNELS_FILE = getLocalChannelsFilePath();
+const SCHEDULE_FILE = getLocalScheduleFilePath();
 
 function normalizeChannelId(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "");
@@ -242,15 +243,14 @@ export async function DELETE(request: NextRequest) {
 
     // Also delete the channel's schedule from schedule.json
     try {
-      const scheduleFile = path.join(process.cwd(), "data", "schedule.json");
-      const scheduleRaw = await fs.readFile(scheduleFile, "utf8");
+      const scheduleRaw = await fs.readFile(SCHEDULE_FILE, "utf8");
       const scheduleData = JSON.parse(scheduleRaw);
       
       // The schedule file has structure: { channels: { [channelId]: { slots: [...] } } }
       if (scheduleData && scheduleData.channels && typeof scheduleData.channels === "object") {
         if (scheduleData.channels[id]) {
           delete scheduleData.channels[id];
-          await fs.writeFile(scheduleFile, JSON.stringify(scheduleData, null, 2), "utf8");
+          await fs.writeFile(SCHEDULE_FILE, JSON.stringify(scheduleData, null, 2), "utf8");
           console.log(`Deleted schedule for channel ${id}`);
         }
       }
