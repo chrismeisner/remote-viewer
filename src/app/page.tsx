@@ -797,7 +797,7 @@ export default function Home() {
               {/* Video element - hidden when showing blue screen */}
               <video
                 ref={videoRef}
-                key={`${channel}-${resolvedSrc(nowPlaying) || "none"}`}
+                // Avoid remounting between videos so browsers keep fullscreen active.
                 autoPlay
                 playsInline
                 controls={false}
