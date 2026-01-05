@@ -333,35 +333,14 @@ async function getScheduledNowPlaying(
   const slots = resolveSlots(schedule.slots || [], fileMap);
   if (!slots.length) return null;
 
-  // First check for an active slot (including midnight-crossing slots)
+  // Only return content if there's an active slot right now.
+  // If nothing is scheduled at this moment, return null (show blue screen).
   const active = findActiveSlot(slots, zoned.secondsOfDay);
   if (active) {
     return buildNowPlaying(active, now, zoned.secondsOfDay, 0);
   }
 
-  // Look for the next upcoming slot in the current day
-  const upcoming = findNextSlot(slots, zoned.secondsOfDay, 0);
-  if (upcoming) {
-    return buildNowPlaying(
-      upcoming.slot,
-      now,
-      zoned.secondsOfDay,
-      upcoming.dayOffset,
-    );
-  }
-
-  // No more slots today - cycle to first slot of next day (24-hour loop)
-  // The first slot with dayOffset=1 means it starts tomorrow
-  const nextDayCycle = findNextSlot(slots, zoned.secondsOfDay, 1);
-  if (nextDayCycle) {
-    return buildNowPlaying(
-      nextDayCycle.slot,
-      now,
-      zoned.secondsOfDay,
-      nextDayCycle.dayOffset,
-    );
-  }
-
+  // No active slot - show blue screen (return null)
   return null;
 }
 
@@ -769,23 +748,6 @@ function findActiveSlot(slots: ResolvedSlot[], secondsOfDay: number) {
     if (isActive) {
       offsetSeconds = clampSeconds(offsetSeconds, 0, slot.windowSeconds - 1);
       return { ...slot, deltaMinutes: 0, offsetSeconds };
-    }
-  }
-  return null;
-}
-
-function findNextSlot(
-  slots: ResolvedSlot[],
-  currentSeconds: number,
-  dayOffset: number,
-) {
-  for (const slot of slots) {
-    const deltaSeconds = dayOffset * 86400 + (slot.startSeconds - currentSeconds);
-    if (deltaSeconds >= 0) {
-      return {
-        slot: { ...slot, deltaSeconds, offsetSeconds: 0 },
-        dayOffset,
-      };
     }
   }
   return null;
