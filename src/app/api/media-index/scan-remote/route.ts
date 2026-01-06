@@ -17,6 +17,8 @@ type FileResult = {
   supported: boolean;
   probeSuccess: boolean;
   probeError?: string;
+  wasReprobed?: boolean;
+  wasCached?: boolean;
 };
 
 type ScanResult = {
@@ -32,6 +34,9 @@ type ScanResult = {
     zeroDuration: number;
     probeSuccessCount: number;
     probeFailCount: number;
+    reprobedCount: number;
+    fixedCount: number;
+    cachedCount: number;
   };
 };
 
@@ -203,17 +208,28 @@ export async function POST() {
   }
 
   try {
-    // Try to load local index to get durations for matching files
-    let localIndex: { items?: MediaItem[] } = { items: [] };
+    // Fetch existing remote media-index.json to get cached durations
+    // This allows us to skip re-probing files that already have valid durations
+    // while re-trying files that previously had 0 duration
+    const existingDurations = new Map<string, number>();
     try {
-      const raw = await fs.readFile(LOCAL_INDEX_PATH, "utf8");
-      localIndex = JSON.parse(raw);
-    } catch {
-      // No local index, will use 0 for durations
-    }
-    const localDurations = new Map<string, number>();
-    for (const item of localIndex.items || []) {
-      localDurations.set(item.relPath, item.durationSeconds);
+      const manifestUrl = REMOTE_MEDIA_BASE.endsWith("/")
+        ? `${REMOTE_MEDIA_BASE}media-index.json`
+        : `${REMOTE_MEDIA_BASE}/media-index.json`;
+      const res = await fetch(manifestUrl, { cache: "no-store" });
+      if (res.ok) {
+        const existingIndex = await res.json() as { items?: MediaItem[] };
+        for (const item of existingIndex.items || []) {
+          // Only cache durations that are > 0 (valid)
+          // Files with 0 duration will be re-probed
+          if (item.durationSeconds > 0) {
+            existingDurations.set(item.relPath, item.durationSeconds);
+          }
+        }
+        console.log(`Loaded ${existingDurations.size} existing durations from remote index`);
+      }
+    } catch (err) {
+      console.warn("Could not fetch existing remote index, will probe all files:", err);
     }
 
     // Connect to FTP and list files
@@ -257,12 +273,14 @@ export async function POST() {
           const format = getFormat(f.name);
           const supported = isSupported(format);
           
-          // First check local index for cached duration
-          let durationSeconds = localDurations.get(f.name) || 0;
-          let probeSuccess = durationSeconds > 0; // Cached counts as success
+          // Check existing remote index for cached duration (only valid durations > 0 are cached)
+          const cachedDuration = existingDurations.get(f.name);
+          let durationSeconds = cachedDuration ?? 0;
+          let probeSuccess = cachedDuration !== undefined && cachedDuration > 0;
           let probeError: string | undefined;
+          let wasReprobed = false;
           
-          // If no cached duration, probe the remote file
+          // If no valid cached duration (new file or previously 0), probe the remote file
           if (durationSeconds === 0) {
             const fileUrl = baseUrl + encodeURIComponent(f.name);
             console.log(`Probing remote file: ${fileUrl}`);
@@ -270,6 +288,7 @@ export async function POST() {
             durationSeconds = probeResult.durationSeconds;
             probeSuccess = probeResult.success;
             probeError = probeResult.error;
+            wasReprobed = true;
           }
           
           // Record detailed file result
@@ -280,6 +299,8 @@ export async function POST() {
             supported,
             probeSuccess,
             probeError,
+            wasReprobed,
+            wasCached: cachedDuration !== undefined && cachedDuration > 0,
           });
           
           return {
@@ -296,12 +317,19 @@ export async function POST() {
     }
     
     // Calculate stats
+    const reprobedFiles = fileResults.filter(r => r.wasReprobed);
+    const fixedFiles = reprobedFiles.filter(r => r.probeSuccess && r.durationSeconds > 0);
+    const cachedFiles = fileResults.filter(r => r.wasCached);
+    
     const stats = {
       total: items.length,
       withDuration: items.filter(i => i.durationSeconds > 0).length,
       zeroDuration: items.filter(i => i.durationSeconds === 0).length,
       probeSuccessCount: fileResults.filter(r => r.probeSuccess).length,
       probeFailCount: fileResults.filter(r => !r.probeSuccess).length,
+      reprobedCount: reprobedFiles.length,
+      fixedCount: fixedFiles.length,
+      cachedCount: cachedFiles.length,
     };
 
     // Sort by filename

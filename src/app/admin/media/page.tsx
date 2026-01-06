@@ -24,6 +24,8 @@ type FileResult = {
   supported: boolean;
   probeSuccess: boolean;
   probeError?: string;
+  wasReprobed?: boolean;
+  wasCached?: boolean;
 };
 
 type ScanStats = {
@@ -32,6 +34,9 @@ type ScanStats = {
   zeroDuration: number;
   probeSuccessCount: number;
   probeFailCount: number;
+  reprobedCount: number;
+  fixedCount: number;
+  cachedCount: number;
 };
 
 type ScanReport = {
@@ -382,6 +387,7 @@ function ScanReportModal({
   
   // Separate files into categories
   const filesWithIssues = fileResults.filter(f => !f.probeSuccess || f.durationSeconds === 0);
+  const filesFixed = fileResults.filter(f => f.wasReprobed && f.probeSuccess && f.durationSeconds > 0);
   const filesOk = fileResults.filter(f => f.probeSuccess && f.durationSeconds > 0);
   
   // Handle escape key to close modal
@@ -453,7 +459,7 @@ function ScanReportModal({
               <p className={`text-2xl font-bold ${stats.zeroDuration > 0 ? 'text-amber-400' : 'text-neutral-500'}`}>
                 {stats.zeroDuration}
               </p>
-              <p className="text-xs text-neutral-400">Zero Duration</p>
+              <p className="text-xs text-neutral-400">Still Zero</p>
             </div>
             <div className="text-center">
               <p className={`text-2xl font-bold ${successRate >= 80 ? 'text-emerald-400' : successRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
@@ -472,10 +478,59 @@ function ScanReportModal({
               />
             </div>
           </div>
+          
+          {/* Scan details */}
+          <div className="mt-4 flex flex-wrap gap-3 justify-center text-xs">
+            {stats.cachedCount > 0 && (
+              <span className="px-2 py-1 rounded-full bg-blue-500/20 text-blue-300">
+                {stats.cachedCount} cached
+              </span>
+            )}
+            {stats.reprobedCount > 0 && (
+              <span className="px-2 py-1 rounded-full bg-purple-500/20 text-purple-300">
+                {stats.reprobedCount} probed
+              </span>
+            )}
+            {stats.fixedCount > 0 && (
+              <span className="px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300">
+                {stats.fixedCount} fixed ✓
+              </span>
+            )}
+          </div>
         </div>
         
         {/* File Lists */}
         <div className="flex-1 overflow-y-auto p-5">
+          {/* Fixed files - celebrate these! */}
+          {filesFixed.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-emerald-300 mb-3 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Fixed This Scan ({filesFixed.length})
+              </h3>
+              <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                {filesFixed.map((file) => (
+                  <div 
+                    key={file.file} 
+                    className="flex items-center gap-3 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20"
+                  >
+                    <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <p className="text-xs text-neutral-200 font-mono truncate flex-1" title={file.file}>
+                      {file.file}
+                    </p>
+                    <span className="text-xs text-emerald-300">
+                      {formatDurationDisplay(file.durationSeconds)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
           {/* Files with issues */}
           {filesWithIssues.length > 0 && (
             <div className="mb-6">
@@ -483,7 +538,7 @@ function ScanReportModal({
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                Files Needing Attention ({filesWithIssues.length})
+                Still Need Attention ({filesWithIssues.length})
               </h3>
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {filesWithIssues.map((file) => (
