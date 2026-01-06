@@ -96,6 +96,26 @@ async function resolveFfprobePath(): Promise<string> {
   return "ffprobe";
 }
 
+async function loadExistingRemoteDurations(baseUrl: string): Promise<Map<string, number>> {
+  const durations = new Map<string, number>();
+  try {
+    const manifestUrl = new URL("media-index.json", baseUrl).toString();
+    const res = await fetch(manifestUrl, { cache: "no-store" });
+    if (!res.ok) return durations;
+    const json = await res.json();
+    const items = Array.isArray(json?.items) ? (json.items as MediaItem[]) : [];
+    for (const item of items) {
+      if (item?.relPath) {
+        const dur = Number(item.durationSeconds);
+        durations.set(item.relPath, Number.isFinite(dur) ? dur : 0);
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to load existing remote media-index.json", error);
+  }
+  return durations;
+}
+
 function extractDurationSeconds(probeJson: unknown): number | null {
   if (!probeJson || typeof probeJson !== "object") return null;
   const obj = probeJson as { format?: { duration?: unknown }; streams?: unknown };
@@ -221,6 +241,9 @@ export async function POST() {
       ? REMOTE_MEDIA_BASE
       : REMOTE_MEDIA_BASE + "/";
 
+    // Try to load existing remote manifest so we can reuse known durations
+    const remoteDurations = await loadExistingRemoteDurations(baseUrl);
+
     // Probe each file for duration (in parallel with concurrency limit)
     const items: MediaItem[] = [];
     const CONCURRENCY = 3; // Limit concurrent ffprobe calls
@@ -233,7 +256,10 @@ export async function POST() {
           const supported = isSupported(format);
           
           // First check local index for cached duration
-          let durationSeconds = localDurations.get(f.name) || 0;
+          let durationSeconds =
+            localDurations.get(f.name) ??
+            remoteDurations.get(f.name) ??
+            0;
           
           // If no cached duration, probe the remote file
           if (durationSeconds === 0) {
