@@ -10,12 +10,29 @@ import { getLocalMediaIndexFilePath } from "@/lib/media";
 
 const execFileAsync = promisify(execFile);
 
+type FileResult = {
+  file: string;
+  durationSeconds: number;
+  format: string;
+  supported: boolean;
+  probeSuccess: boolean;
+  probeError?: string;
+};
+
 type ScanResult = {
   success: boolean;
   message: string;
   remotePath?: string;
   count?: number;
   files?: string[];
+  fileResults?: FileResult[];
+  stats?: {
+    total: number;
+    withDuration: number;
+    zeroDuration: number;
+    probeSuccessCount: number;
+    probeFailCount: number;
+  };
 };
 
 type MediaItem = {
@@ -96,26 +113,6 @@ async function resolveFfprobePath(): Promise<string> {
   return "ffprobe";
 }
 
-async function loadExistingRemoteDurations(baseUrl: string): Promise<Map<string, number>> {
-  const durations = new Map<string, number>();
-  try {
-    const manifestUrl = new URL("media-index.json", baseUrl).toString();
-    const res = await fetch(manifestUrl, { cache: "no-store" });
-    if (!res.ok) return durations;
-    const json = await res.json();
-    const items = Array.isArray(json?.items) ? (json.items as MediaItem[]) : [];
-    for (const item of items) {
-      if (item?.relPath) {
-        const dur = Number(item.durationSeconds);
-        durations.set(item.relPath, Number.isFinite(dur) ? dur : 0);
-      }
-    }
-  } catch (error) {
-    console.warn("Failed to load existing remote media-index.json", error);
-  }
-  return durations;
-}
-
 function extractDurationSeconds(probeJson: unknown): number | null {
   if (!probeJson || typeof probeJson !== "object") return null;
   const obj = probeJson as { format?: { duration?: unknown }; streams?: unknown };
@@ -157,7 +154,13 @@ function parseFps(value: string): number | null {
   return Number.isFinite(asNum) ? asNum : null;
 }
 
-async function probeRemoteDuration(url: string): Promise<number> {
+type ProbeResult = {
+  durationSeconds: number;
+  success: boolean;
+  error?: string;
+};
+
+async function probeRemoteDuration(url: string): Promise<ProbeResult> {
   try {
     const ffprobePath = await resolveFfprobePath();
     const { stdout } = await execFileAsync(ffprobePath, [
@@ -174,13 +177,14 @@ async function probeRemoteDuration(url: string): Promise<number> {
     const duration = extractDurationSeconds(parsed);
 
     if (duration !== null && Number.isFinite(duration) && duration > 0) {
-      return duration;
+      return { durationSeconds: duration, success: true };
     }
+    return { durationSeconds: 0, success: false, error: "No duration found in metadata" };
   } catch (error) {
-    console.warn("ffprobe failed for remote URL", url, error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.warn("ffprobe failed for remote URL", url, errMsg);
+    return { durationSeconds: 0, success: false, error: errMsg };
   }
-
-  return 0;
 }
 
 export const runtime = "nodejs";
@@ -241,11 +245,9 @@ export async function POST() {
       ? REMOTE_MEDIA_BASE
       : REMOTE_MEDIA_BASE + "/";
 
-    // Try to load existing remote manifest so we can reuse known durations
-    const remoteDurations = await loadExistingRemoteDurations(baseUrl);
-
     // Probe each file for duration (in parallel with concurrency limit)
     const items: MediaItem[] = [];
+    const fileResults: FileResult[] = [];
     const CONCURRENCY = 3; // Limit concurrent ffprobe calls
     
     for (let i = 0; i < mediaFiles.length; i += CONCURRENCY) {
@@ -256,17 +258,29 @@ export async function POST() {
           const supported = isSupported(format);
           
           // First check local index for cached duration
-          let durationSeconds =
-            localDurations.get(f.name) ??
-            remoteDurations.get(f.name) ??
-            0;
+          let durationSeconds = localDurations.get(f.name) || 0;
+          let probeSuccess = durationSeconds > 0; // Cached counts as success
+          let probeError: string | undefined;
           
           // If no cached duration, probe the remote file
           if (durationSeconds === 0) {
             const fileUrl = baseUrl + encodeURIComponent(f.name);
             console.log(`Probing remote file: ${fileUrl}`);
-            durationSeconds = await probeRemoteDuration(fileUrl);
+            const probeResult = await probeRemoteDuration(fileUrl);
+            durationSeconds = probeResult.durationSeconds;
+            probeSuccess = probeResult.success;
+            probeError = probeResult.error;
           }
+          
+          // Record detailed file result
+          fileResults.push({
+            file: f.name,
+            durationSeconds,
+            format,
+            supported,
+            probeSuccess,
+            probeError,
+          });
           
           return {
             relPath: f.name,
@@ -280,6 +294,15 @@ export async function POST() {
       );
       items.push(...batchResults);
     }
+    
+    // Calculate stats
+    const stats = {
+      total: items.length,
+      withDuration: items.filter(i => i.durationSeconds > 0).length,
+      zeroDuration: items.filter(i => i.durationSeconds === 0).length,
+      probeSuccessCount: fileResults.filter(r => r.probeSuccess).length,
+      probeFailCount: fileResults.filter(r => !r.probeSuccess).length,
+    };
 
     // Sort by filename
     items.sort((a, b) => a.relPath.localeCompare(b.relPath));
@@ -311,6 +334,8 @@ export async function POST() {
       remotePath,
       count: items.length,
       files: items.map((i) => i.relPath),
+      fileResults,
+      stats,
     } satisfies ScanResult);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
