@@ -53,6 +53,7 @@ function ScheduleAdminContent() {
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [mediaSource, setMediaSource] = useState<MediaSource>("local");
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "pending" | "saving" | "saved">("idle");
+  const [mediaFilter, setMediaFilter] = useState("");
   const pendingSlotsRef = useRef<ScheduleSlot[] | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedSlotsRef = useRef<string>("");
@@ -238,6 +239,16 @@ function ScheduleAdminContent() {
     () => sortedFiles.filter((f) => f.supported || f.supportedViaCompanion),
     [sortedFiles],
   );
+
+  const filteredSupportedFiles = useMemo(() => {
+    const query = mediaFilter.trim().toLowerCase();
+    if (!query) return supportedFiles;
+    const terms = query.split(/\s+/).filter(Boolean);
+    return supportedFiles.filter((file) => {
+      const haystack = `${file.relPath} ${file.title || ""}`.toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
+  }, [mediaFilter, supportedFiles]);
 
   const fileByRel = useMemo(() => {
     const map = new Map<string, MediaFile>();
@@ -656,7 +667,7 @@ function ScheduleAdminContent() {
           onClick={() => setShowSlotModal(false)}
         >
           <div
-            className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900 p-5 shadow-2xl shadow-black/60"
+            className="w-full max-w-3xl rounded-xl border border-white/15 bg-neutral-900 p-5 shadow-2xl shadow-black/60"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -672,23 +683,99 @@ function ScheduleAdminContent() {
             </div>
 
             <div className="mt-4 space-y-3 text-sm text-neutral-200">
-              <label className="block">
-                Media
-                <select
-                  className="mt-1 w-full rounded-md bg-neutral-900 border border-white/10 px-2 py-2 text-sm"
-                  value={modalFile}
-                  onChange={(e) => setModalFile(e.target.value)}
-                >
-                  {supportedFiles.map((file) => (
-                    <option key={file.relPath} value={file.relPath}>
-                      {file.relPath} ({formatDuration(file.durationSeconds)})
-                    </option>
-                  ))}
-                  {supportedFiles.length === 0 && (
-                    <option value="">No supported files in library</option>
-                  )}
-                </select>
-              </label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm text-neutral-300">Media</label>
+                  <div className="flex items-center gap-2 text-xs text-neutral-400">
+                    <input
+                      type="text"
+                      placeholder="Filter media…"
+                      value={mediaFilter}
+                      onChange={(e) => setMediaFilter(e.target.value)}
+                      className="w-48 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm focus:border-white/30 focus:outline-none"
+                    />
+                    <span className="text-neutral-500">
+                      {filteredSupportedFiles.length}/{supportedFiles.length}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-lg border border-white/10 bg-neutral-950/80">
+                  <div className="max-h-64 overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white/5 text-neutral-200">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-semibold">File</th>
+                          <th className="px-3 py-2 text-right font-semibold w-24">Duration</th>
+                          <th className="px-3 py-2 text-right font-semibold w-28">Support</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {filteredSupportedFiles.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-3 py-3 text-center text-neutral-400"
+                            >
+                              {supportedFiles.length === 0
+                                ? "No supported files in library"
+                                : "No matches — adjust filter"}
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredSupportedFiles.map((file) => {
+                            const selected = modalFile === file.relPath;
+                            return (
+                              <tr
+                                key={file.relPath}
+                                className={`cursor-pointer transition ${
+                                  selected ? "bg-white/10" : "hover:bg-white/5"
+                                }`}
+                                onClick={() => setModalFile(file.relPath)}
+                              >
+                                <td className="px-3 py-2">
+                                  <div className="flex items-start gap-2">
+                                    <input
+                                      type="radio"
+                                      className="mt-1 accent-emerald-400"
+                                      checked={selected}
+                                      onChange={() => setModalFile(file.relPath)}
+                                    />
+                                    <div className="space-y-1">
+                                      <p className="font-mono text-xs break-all text-neutral-100">
+                                        {file.relPath}
+                                      </p>
+                                      {file.title && file.title !== file.relPath && (
+                                        <p className="text-[11px] text-neutral-400">
+                                          {file.title}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-right text-neutral-300">
+                                  {formatDuration(file.durationSeconds)}
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <span
+                                    className={`rounded-full px-2 py-1 text-[11px] ${
+                                      file.supportedViaCompanion
+                                        ? "bg-blue-500/20 text-blue-100"
+                                        : "bg-emerald-500/20 text-emerald-100"
+                                    }`}
+                                  >
+                                    {file.supportedViaCompanion ? "Companion" : "Direct"}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 <label className="text-xs text-neutral-300">

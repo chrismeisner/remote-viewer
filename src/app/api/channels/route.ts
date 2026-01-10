@@ -16,17 +16,15 @@ type ChannelsData = {
   channels: Channel[];
 };
 
-const CHANNELS_FILE = getLocalChannelsFilePath();
-const SCHEDULE_FILE = getLocalScheduleFilePath();
-
 function normalizeChannelId(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "");
 }
 
 // Read local channels from file
 async function readLocalChannels(): Promise<Channel[]> {
+  const channelsFile = await getLocalChannelsFilePath();
   try {
-    const raw = await fs.readFile(CHANNELS_FILE, "utf8");
+    const raw = await fs.readFile(channelsFile, "utf8");
     const data: ChannelsData = JSON.parse(raw);
     return Array.isArray(data.channels) ? data.channels : [];
   } catch {
@@ -36,14 +34,16 @@ async function readLocalChannels(): Promise<Channel[]> {
 
 // Write local channels to file
 async function writeLocalChannels(channels: Channel[]): Promise<void> {
-  await fs.mkdir(path.dirname(CHANNELS_FILE), { recursive: true });
+  const channelsFile = await getLocalChannelsFilePath();
+  await fs.mkdir(path.dirname(channelsFile), { recursive: true });
   const data: ChannelsData = { channels };
-  await fs.writeFile(CHANNELS_FILE, JSON.stringify(data, null, 2), "utf8");
+  await fs.writeFile(channelsFile, JSON.stringify(data, null, 2), "utf8");
 }
 
 async function loadLocalSchedule(): Promise<Schedule> {
+  const scheduleFile = await getLocalScheduleFilePath();
   try {
-    const raw = await fs.readFile(SCHEDULE_FILE, "utf8");
+    const raw = await fs.readFile(scheduleFile, "utf8");
     const parsed = JSON.parse(raw) as Schedule;
     if (!parsed.channels || typeof parsed.channels !== "object") {
       return { channels: {} };
@@ -59,6 +59,7 @@ async function updateScheduleForChannelChange(
   newId: string,
   shortName?: string,
 ): Promise<void> {
+  const scheduleFile = await getLocalScheduleFilePath();
   const schedule = await loadLocalSchedule();
   const trimmedShortName = typeof shortName === "string" ? shortName.trim() : undefined;
   const targetId = newId || oldId;
@@ -79,9 +80,9 @@ async function updateScheduleForChannelChange(
     nextChannels[targetId] = { ...targetExisting, shortName: trimmedShortName || undefined };
   }
 
-  await fs.mkdir(path.dirname(SCHEDULE_FILE), { recursive: true });
+  await fs.mkdir(path.dirname(scheduleFile), { recursive: true });
   await fs.writeFile(
-    SCHEDULE_FILE,
+    scheduleFile,
     JSON.stringify({ ...schedule, channels: nextChannels }, null, 2),
     "utf8",
   );
@@ -231,6 +232,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
+    const scheduleFile = await getLocalScheduleFilePath();
     const channels = await readLocalChannels();
     const filtered = channels.filter((ch) => ch.id !== id);
 
@@ -243,14 +245,14 @@ export async function DELETE(request: NextRequest) {
 
     // Also delete the channel's schedule from schedule.json
     try {
-      const scheduleRaw = await fs.readFile(SCHEDULE_FILE, "utf8");
+      const scheduleRaw = await fs.readFile(scheduleFile, "utf8");
       const scheduleData = JSON.parse(scheduleRaw);
       
       // The schedule file has structure: { channels: { [channelId]: { slots: [...] } } }
       if (scheduleData && scheduleData.channels && typeof scheduleData.channels === "object") {
         if (scheduleData.channels[id]) {
           delete scheduleData.channels[id];
-          await fs.writeFile(SCHEDULE_FILE, JSON.stringify(scheduleData, null, 2), "utf8");
+          await fs.writeFile(scheduleFile, JSON.stringify(scheduleData, null, 2), "utf8");
           console.log(`Deleted schedule for channel ${id}`);
         }
       }

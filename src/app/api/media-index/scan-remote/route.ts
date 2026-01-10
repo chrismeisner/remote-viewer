@@ -6,7 +6,6 @@ import { NextResponse } from "next/server";
 import { Client, FileInfo } from "basic-ftp";
 import fs from "node:fs/promises";
 import ffprobe from "ffprobe-static";
-import { getLocalMediaIndexFilePath } from "@/lib/media";
 
 const execFileAsync = promisify(execFile);
 
@@ -47,11 +46,11 @@ type MediaItem = {
   supported: boolean;
   supportedViaCompanion: boolean;
   title: string;
+  audioCodec?: string;
 };
 
 const ALLOWED_EXTENSIONS = [".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm"];
 const BROWSER_FRIENDLY_FORMATS = ["mp4", "webm", "m4v"];
-const LOCAL_INDEX_PATH = getLocalMediaIndexFilePath();
 const REMOTE_MEDIA_BASE = process.env.REMOTE_MEDIA_BASE || "https://chrismeisner.com/media/";
 
 function getEnv() {

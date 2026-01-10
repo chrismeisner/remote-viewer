@@ -5,14 +5,13 @@ import { getScheduleItems, getLocalMediaIndexFilePath } from "@/lib/media";
 
 export const runtime = "nodejs";
 
-const LOCAL_INDEX_PATH = getLocalMediaIndexFilePath();
-
 /**
  * GET: Read the local media index from data/media-index.json
  */
 export async function GET() {
   try {
-    const raw = await fs.readFile(LOCAL_INDEX_PATH, "utf8");
+    const indexPath = await getLocalMediaIndexFilePath();
+    const raw = await fs.readFile(indexPath, "utf8");
     const json = JSON.parse(raw);
     return NextResponse.json(json);
   } catch (error) {
@@ -30,6 +29,8 @@ export async function GET() {
  */
 export async function POST() {
   try {
+    const indexPath = await getLocalMediaIndexFilePath();
+    
     // Scan media folder with refresh to get latest
     const items = await getScheduleItems({ refresh: true });
 
@@ -42,19 +43,20 @@ export async function POST() {
         supported: item.supported,
         supportedViaCompanion: item.supportedViaCompanion,
         title: item.title,
+        audioCodec: item.audioCodec,
       })),
     };
 
     // Ensure data directory exists
-    await fs.mkdir(path.dirname(LOCAL_INDEX_PATH), { recursive: true });
+    await fs.mkdir(path.dirname(indexPath), { recursive: true });
 
     // Write the index file
-    await fs.writeFile(LOCAL_INDEX_PATH, JSON.stringify(payload, null, 2), "utf8");
+    await fs.writeFile(indexPath, JSON.stringify(payload, null, 2), "utf8");
 
     return NextResponse.json({
       success: true,
       message: `Saved media-index.json with ${items.length} files`,
-      path: "data/local/media-index.json",
+      path: indexPath,
       count: items.length,
     });
   } catch (error) {
@@ -65,4 +67,3 @@ export async function POST() {
     );
   }
 }
-

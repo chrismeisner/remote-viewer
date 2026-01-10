@@ -19,9 +19,8 @@ type MediaItem = {
   supported: boolean;
   supportedViaCompanion: boolean;
   title: string;
+  audioCodec?: string;
 };
-
-const LOCAL_INDEX_PATH = getLocalMediaIndexFilePath();
 
 function getEnv() {
   const host = process.env.FTP_HOST?.trim();
@@ -51,10 +50,12 @@ export async function POST() {
   }
 
   try {
+    const indexPath = await getLocalMediaIndexFilePath();
+    
     // Read the local media-index.json (which has proper durations from ffprobe)
     let localIndex: { items?: MediaItem[]; generatedAt?: string } = { items: [] };
     try {
-      const raw = await fs.readFile(LOCAL_INDEX_PATH, "utf8");
+      const raw = await fs.readFile(indexPath, "utf8");
       localIndex = JSON.parse(raw);
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
@@ -118,4 +119,3 @@ export async function POST() {
     );
   }
 }
-

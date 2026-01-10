@@ -15,6 +15,7 @@ type MediaFile = {
   format: string;
   supported: boolean;
   supportedViaCompanion: boolean;
+  audioCodec?: string;
 };
 
 type FileResult = {
@@ -294,11 +295,17 @@ function MediaDetailModal({
         {/* Media Details */}
         <div className="border-t border-white/10 bg-neutral-800/30 px-5 py-4">
           <h3 className="text-xs uppercase tracking-widest text-neutral-500 mb-3">Media Details</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             <div>
               <p className="text-xs text-neutral-500 mb-1">Format</p>
               <p className="text-sm font-medium text-neutral-200 uppercase">
                 {item.format || "Unknown"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-500 mb-1">Audio</p>
+              <p className="text-sm font-medium text-neutral-200 uppercase">
+                {item.audioCodec || "—"}
               </p>
             </div>
             <div>
@@ -653,6 +660,7 @@ export default function MediaAdminPage() {
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const [scanReport, setScanReport] = useState<ScanReport | null>(null);
   const [formatFilter, setFormatFilter] = useState<string>("all");
+  const [audioFilter, setAudioFilter] = useState<string>("all");
   const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported">(
     "all",
   );
@@ -751,10 +759,27 @@ export default function MediaAdminPage() {
     return Array.from(formats).sort();
   }, [files]);
 
+  const availableAudioCodecs = useMemo(() => {
+    const codecs = new Set<string>();
+    files.forEach((file) => {
+      if (file.audioCodec) {
+        codecs.add(file.audioCodec.toUpperCase());
+      }
+    });
+    return Array.from(codecs).sort();
+  }, [files]);
+
   const filteredFiles = useMemo(() => {
     return sortedFiles.filter((file) => {
       // Format filter
       if (formatFilter !== "all" && (file.format || "").toUpperCase() !== formatFilter) {
+        return false;
+      }
+      // Audio filter
+      if (
+        audioFilter !== "all" &&
+        (file.audioCodec ? file.audioCodec.toUpperCase() : "") !== audioFilter
+      ) {
         return false;
       }
       // Support filter
@@ -766,7 +791,7 @@ export default function MediaAdminPage() {
       }
       return true;
     });
-  }, [sortedFiles, formatFilter, supportedFilter, searchQuery]);
+  }, [sortedFiles, formatFilter, audioFilter, supportedFilter, searchQuery]);
 
   const totalDurationSeconds = useMemo(
     () => sortedFiles.reduce((sum, f) => sum + (f.durationSeconds || 0), 0),
@@ -938,6 +963,21 @@ export default function MediaAdminPage() {
             </select>
           </div>
           <div className="flex items-center gap-2">
+            <label className="text-xs text-neutral-400">Audio</label>
+            <select
+              value={audioFilter}
+              onChange={(e) => setAudioFilter(e.target.value)}
+              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100"
+            >
+              <option value="all">All</option>
+              {availableAudioCodecs.map((codec) => (
+                <option key={codec} value={codec}>
+                  {codec}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
             <label className="text-xs text-neutral-400">Supported</label>
             <select
               value={supportedFilter}
@@ -972,6 +1012,9 @@ export default function MediaAdminPage() {
                       <th className="px-3 py-2 font-semibold w-24 text-left">
                         Format
                       </th>
+                      <th className="px-3 py-2 font-semibold w-24 text-left">
+                        Audio
+                      </th>
                       <th className="px-3 py-2 font-semibold w-28 text-left">
                         Supported
                       </th>
@@ -994,6 +1037,9 @@ export default function MediaAdminPage() {
                         </td>
                         <td className="px-3 py-2 text-left text-neutral-200 uppercase">
                           {file.format || "—"}
+                        </td>
+                        <td className="px-3 py-2 text-left text-neutral-200 uppercase">
+                          {file.audioCodec || "—"}
                         </td>
                         <td className="px-3 py-2 text-left">
                           <span

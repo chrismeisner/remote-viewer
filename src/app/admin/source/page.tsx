@@ -40,6 +40,16 @@ type RemoteStatus = {
   error?: string;
 };
 
+type SourceConfig = {
+  mediaRoot: string | null;
+  effectiveMediaRoot: string;
+  defaultRoot: string;
+  localMode: boolean;
+  dataFolder: string | null;
+};
+
+type LocalSourceMode = "default" | "custom";
+
 export default function SourceAdminPage() {
   const [mediaSource, setMediaSource] = useState<MediaSource>("local");
   const [pendingSource, setPendingSource] = useState<MediaSource>("local");
@@ -69,6 +79,24 @@ export default function SourceAdminPage() {
     channelCount: 0,
     loading: true,
   });
+  
+  // Custom folder state
+  const [sourceConfig, setSourceConfig] = useState<SourceConfig | null>(null);
+  const [localSourceMode, setLocalSourceMode] = useState<LocalSourceMode>("default");
+  const [customFolderPath, setCustomFolderPath] = useState("");
+  const [savingFolder, setSavingFolder] = useState(false);
+  const [folderMessage, setFolderMessage] = useState<string | null>(null);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  
+  // Folder browser state
+  const [showBrowser, setShowBrowser] = useState(false);
+  const [browserPath, setBrowserPath] = useState("");
+  const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; hasMediaFiles?: boolean }[]>([]);
+  const [browserRoots, setBrowserRoots] = useState<{ name: string; path: string }[]>([]);
+  const [browserParent, setBrowserParent] = useState<string | null>(null);
+  const [browserLoading, setBrowserLoading] = useState(false);
+  const [browserError, setBrowserError] = useState<string | null>(null);
 
   // Load and sync media source preference
   useEffect(() => {
@@ -173,6 +201,147 @@ export default function SourceAdminPage() {
     void loadLocalStatus();
     void loadRemoteStatus();
   }, []);
+
+  // Load source config (custom folder settings)
+  const loadSourceConfig = async () => {
+    try {
+      const res = await fetch("/api/source", { cache: "no-store" });
+      if (res.ok) {
+        const config = await res.json() as SourceConfig;
+        setSourceConfig(config);
+        // Set local source mode based on whether a custom folder is set
+        if (config.mediaRoot) {
+          setLocalSourceMode("custom");
+          setCustomFolderPath(config.mediaRoot);
+        } else {
+          setLocalSourceMode("default");
+          setCustomFolderPath("");
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to load source config:", err);
+    }
+  };
+
+  useEffect(() => {
+    void loadSourceConfig();
+  }, []);
+
+  // Save custom folder path
+  const saveCustomFolder = async () => {
+    setSavingFolder(true);
+    setFolderMessage(null);
+    setFolderError(null);
+    try {
+      const res = await fetch("/api/source", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mediaRoot: customFolderPath || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to save folder");
+      }
+      setFolderMessage(data.message || "Folder saved successfully");
+      // Reload config and status
+      await loadSourceConfig();
+      await loadLocalStatus();
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : "Failed to save folder");
+    } finally {
+      setSavingFolder(false);
+    }
+  };
+
+  // Reset to default folder
+  const resetToDefault = async () => {
+    setSavingFolder(true);
+    setFolderMessage(null);
+    setFolderError(null);
+    try {
+      const res = await fetch("/api/source", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mediaRoot: null }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to reset folder");
+      }
+      setFolderMessage("Reset to default folder");
+      setLocalSourceMode("default");
+      setCustomFolderPath("");
+      // Reload config and status
+      await loadSourceConfig();
+      await loadLocalStatus();
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : "Failed to reset folder");
+    } finally {
+      setSavingFolder(false);
+    }
+  };
+
+  // Scan media folder and create index
+  const scanMediaFolder = async () => {
+    setScanning(true);
+    setFolderMessage(null);
+    setFolderError(null);
+    try {
+      const res = await fetch("/api/media-index/local", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Scan failed");
+      }
+      setFolderMessage(data.message || `Scanned ${data.count} files`);
+      // Reload status to show updated counts
+      await loadLocalStatus();
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : "Scan failed");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  // Folder browser functions
+  const openFolderBrowser = () => {
+    setShowBrowser(true);
+    setBrowserError(null);
+    // Start from current custom path or load roots
+    if (customFolderPath) {
+      void browseTo(customFolderPath);
+    } else {
+      void browseTo("");
+    }
+  };
+
+  const browseTo = async (targetPath: string) => {
+    setBrowserLoading(true);
+    setBrowserError(null);
+    try {
+      const url = targetPath
+        ? `/api/browse?path=${encodeURIComponent(targetPath)}`
+        : "/api/browse";
+      const res = await fetch(url, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to browse");
+      }
+      setBrowserPath(data.currentPath || "");
+      setBrowserEntries(data.entries || []);
+      setBrowserRoots(data.roots || []);
+      setBrowserParent(data.parentPath || null);
+    } catch (err) {
+      setBrowserError(err instanceof Error ? err.message : "Failed to browse");
+    } finally {
+      setBrowserLoading(false);
+    }
+  };
+
+  const selectBrowserFolder = (folderPath: string) => {
+    setCustomFolderPath(folderPath);
+    setLocalSourceMode("custom");
+    setShowBrowser(false);
+  };
 
   const saveSource = () => {
     setSaving(true);
@@ -356,8 +525,13 @@ export default function SourceAdminPage() {
               <div>
                 <p className="font-semibold text-neutral-100">Local</p>
                 <p className="text-xs text-neutral-400">
-                  Media from <code className="bg-white/10 px-1 rounded">./media</code>, config from{" "}
-                  <code className="bg-white/10 px-1 rounded">data/local/</code>
+                  Media from{" "}
+                  <code className="bg-white/10 px-1 rounded">
+                    {sourceConfig?.effectiveMediaRoot || "./media"}
+                  </code>
+                  {sourceConfig?.mediaRoot && (
+                    <span className="ml-1 text-emerald-400">(custom folder)</span>
+                  )}
                 </p>
               </div>
             </label>
@@ -397,6 +571,151 @@ export default function SourceAdminPage() {
           </div>
         )}
       </div>
+
+      {/* Custom Folder - Only shown in local mode */}
+      {sourceConfig?.localMode && pendingSource === "local" && (
+        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+          <div className="mb-4">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold text-neutral-100">Media Folder</h2>
+              <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-amber-500/20 text-amber-200">
+                Local Only
+              </span>
+            </div>
+            <p className="text-xs text-neutral-400 mt-1">
+              Choose where media files are stored. This can be an external drive or any folder on your system.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {/* Default folder option */}
+            <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 cursor-pointer hover:bg-white/10 transition">
+              <input
+                type="radio"
+                name="local-source-mode"
+                value="default"
+                checked={localSourceMode === "default"}
+                onChange={() => {
+                  setLocalSourceMode("default");
+                  setCustomFolderPath("");
+                }}
+                className="h-4 w-4 mt-0.5"
+              />
+              <div>
+                <p className="font-semibold text-neutral-100">Default</p>
+                <p className="text-xs text-neutral-400">
+                  Use <code className="bg-white/10 px-1 rounded">{sourceConfig?.defaultRoot || "./media"}</code>
+                </p>
+              </div>
+            </label>
+
+            {/* Custom folder option */}
+            <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 cursor-pointer hover:bg-white/10 transition">
+              <input
+                type="radio"
+                name="local-source-mode"
+                value="custom"
+                checked={localSourceMode === "custom"}
+                onChange={() => setLocalSourceMode("custom")}
+                className="h-4 w-4 mt-0.5"
+              />
+              <div className="flex-1">
+                <p className="font-semibold text-neutral-100">Custom Folder</p>
+                <p className="text-xs text-neutral-400 mb-2">
+                  Point to any folder (e.g., external drive like <code className="bg-white/10 px-1 rounded">/Volumes/MyDrive/Media</code>)
+                </p>
+                {localSourceMode === "custom" && (
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customFolderPath}
+                        onChange={(e) => setCustomFolderPath(e.target.value)}
+                        placeholder="/path/to/media/folder"
+                        className="flex-1 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-400/50 focus:outline-none focus:ring-1 focus:ring-emerald-400/30"
+                      />
+                      <button
+                        type="button"
+                        onClick={openFolderBrowser}
+                        className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                      >
+                        Browse
+                      </button>
+                    </div>
+                    <p className="text-xs text-neutral-500">
+                      Data files will be stored in <code className="bg-white/10 px-1 rounded">{customFolderPath || "/path"}/.remote-viewer/</code>
+                    </p>
+                  </div>
+                )}
+              </div>
+            </label>
+          </div>
+
+          {/* Action buttons */}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            {localSourceMode === "custom" && (
+              <button
+                onClick={() => void saveCustomFolder()}
+                disabled={savingFolder || !customFolderPath.trim()}
+                className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
+              >
+                {savingFolder ? "Saving…" : "Save Folder"}
+              </button>
+            )}
+            {localSourceMode === "default" && sourceConfig?.mediaRoot && (
+              <button
+                onClick={() => void resetToDefault()}
+                disabled={savingFolder}
+                className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
+              >
+                {savingFolder ? "Resetting…" : "Reset to Default"}
+              </button>
+            )}
+            <button
+              onClick={() => void scanMediaFolder()}
+              disabled={scanning}
+              className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+            >
+              {scanning ? "Scanning…" : "Scan Media Folder"}
+            </button>
+          </div>
+
+          {/* Folder status messages */}
+          {(folderMessage || folderError) && (
+            <div
+              className={`mt-3 rounded-md border px-3 py-2 text-sm ${
+                folderMessage
+                  ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-100"
+                  : "border-red-300/40 bg-red-500/10 text-red-100"
+              }`}
+            >
+              {folderMessage || folderError}
+            </div>
+          )}
+
+          {/* Current config info */}
+          {sourceConfig && (
+            <div className="mt-4 rounded-lg border border-white/5 bg-neutral-950/50 p-3">
+              <p className="text-xs text-neutral-500 mb-2">Current configuration:</p>
+              <div className="space-y-1 font-mono text-xs text-neutral-300">
+                <p>
+                  Media folder:{" "}
+                  <span className="text-neutral-100">
+                    {sourceConfig.effectiveMediaRoot}
+                  </span>
+                  {sourceConfig.mediaRoot && <span className="text-emerald-400 ml-1">(custom)</span>}
+                </p>
+                {sourceConfig.dataFolder && (
+                  <p>
+                    Data folder:{" "}
+                    <span className="text-neutral-100">{sourceConfig.dataFolder}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Local Source Status */}
       <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
@@ -764,6 +1083,144 @@ export default function SourceAdminPage() {
               {message || error}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Folder Browser Modal */}
+      {showBrowser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowBrowser(false);
+          }}
+        >
+          <div className="w-full max-w-xl rounded-xl border border-white/15 bg-neutral-900 shadow-2xl shadow-black/60">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-100">Select Media Folder</h3>
+                <p className="text-xs text-neutral-400 mt-0.5 font-mono truncate max-w-md">
+                  {browserPath || "Select a location"}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowBrowser(false)}
+                className="rounded-md p-1 text-neutral-400 hover:bg-white/10 hover:text-neutral-100"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Quick access roots */}
+            {browserRoots.length > 0 && (
+              <div className="flex flex-wrap gap-2 border-b border-white/10 px-4 py-2">
+                {browserRoots.map((root) => (
+                  <button
+                    key={root.path}
+                    onClick={() => void browseTo(root.path)}
+                    className={`rounded-md px-2 py-1 text-xs font-medium transition ${
+                      browserPath === root.path
+                        ? "bg-emerald-500/20 text-emerald-100 border border-emerald-400/40"
+                        : "bg-white/5 text-neutral-300 border border-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    {root.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Directory listing */}
+            <div className="max-h-80 overflow-y-auto">
+              {browserLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-6 w-6 border-2 border-neutral-400 border-t-emerald-400 rounded-full animate-spin" />
+                  <span className="ml-2 text-sm text-neutral-400">Loading...</span>
+                </div>
+              ) : browserError ? (
+                <div className="px-4 py-8 text-center">
+                  <p className="text-sm text-red-400">{browserError}</p>
+                  <button
+                    onClick={() => void browseTo("")}
+                    className="mt-2 text-xs text-neutral-400 hover:text-neutral-200"
+                  >
+                    Back to roots
+                  </button>
+                </div>
+              ) : (
+                <div className="divide-y divide-white/5">
+                  {/* Parent directory */}
+                  {browserParent !== null && (
+                    <button
+                      onClick={() => void browseTo(browserParent)}
+                      className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-white/5 transition"
+                    >
+                      <svg className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+                      </svg>
+                      <span className="text-sm text-neutral-300">..</span>
+                    </button>
+                  )}
+                  
+                  {/* Directories */}
+                  {browserEntries.length === 0 && !browserParent && (
+                    <div className="px-4 py-8 text-center text-sm text-neutral-500">
+                      No folders found. Select a root location above.
+                    </div>
+                  )}
+                  {browserEntries.map((entry) => (
+                    <button
+                      key={entry.path}
+                      onClick={() => void browseTo(entry.path)}
+                      className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-white/5 transition group"
+                    >
+                      <svg className="h-5 w-5 text-amber-400/70" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                      </svg>
+                      <span className="flex-1 text-sm text-neutral-100 truncate">{entry.name}</span>
+                      {entry.hasMediaFiles && (
+                        <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
+                          has media
+                        </span>
+                      )}
+                      <svg className="h-4 w-4 text-neutral-600 group-hover:text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer with actions */}
+            <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
+              <p className="text-xs text-neutral-500 truncate max-w-xs">
+                {browserPath ? `${browserEntries.length} folder${browserEntries.length === 1 ? "" : "s"}` : ""}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowBrowser(false)}
+                  className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (browserPath) {
+                      setCustomFolderPath(browserPath);
+                      setShowBrowser(false);
+                    }
+                  }}
+                  disabled={!browserPath}
+                  className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-3 py-1.5 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
+                >
+                  Select This Folder
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

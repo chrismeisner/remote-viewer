@@ -4,17 +4,17 @@ import { getLocalScheduleFilePath, getLocalChannelsFilePath } from "@/lib/media"
 
 export const runtime = "nodejs";
 
-const SCHEDULE_FILE = getLocalScheduleFilePath();
-const CHANNELS_FILE = getLocalChannelsFilePath();
-
 /**
  * POST /api/schedule/cleanup
  * Removes orphaned schedules (channels that exist in schedule.json but not in channels.json)
  */
 export async function POST() {
   try {
+    const scheduleFile = await getLocalScheduleFilePath();
+    const channelsFile = await getLocalChannelsFilePath();
+    
     // Read channels.json to get valid channel IDs
-    const channelsRaw = await fs.readFile(CHANNELS_FILE, "utf8");
+    const channelsRaw = await fs.readFile(channelsFile, "utf8");
     const channelsData = JSON.parse(channelsRaw);
     const validChannelIds = new Set(
       Array.isArray(channelsData.channels)
@@ -23,7 +23,7 @@ export async function POST() {
     );
 
     // Read schedule.json
-    const scheduleRaw = await fs.readFile(SCHEDULE_FILE, "utf8");
+    const scheduleRaw = await fs.readFile(scheduleFile, "utf8");
     const scheduleData = JSON.parse(scheduleRaw);
 
     if (!scheduleData.channels || typeof scheduleData.channels !== "object") {
@@ -53,7 +53,7 @@ export async function POST() {
 
     // Save cleaned schedule
     await fs.writeFile(
-      SCHEDULE_FILE,
+      scheduleFile,
       JSON.stringify(scheduleData, null, 2),
       "utf8"
     );
@@ -75,8 +75,11 @@ export async function POST() {
  */
 export async function GET() {
   try {
+    const scheduleFile = await getLocalScheduleFilePath();
+    const channelsFile = await getLocalChannelsFilePath();
+    
     // Read channels.json to get valid channel IDs
-    const channelsRaw = await fs.readFile(CHANNELS_FILE, "utf8");
+    const channelsRaw = await fs.readFile(channelsFile, "utf8");
     const channelsData = JSON.parse(channelsRaw);
     const validChannelIds = new Set(
       Array.isArray(channelsData.channels)
@@ -85,7 +88,7 @@ export async function GET() {
     );
 
     // Read schedule.json
-    const scheduleRaw = await fs.readFile(SCHEDULE_FILE, "utf8");
+    const scheduleRaw = await fs.readFile(scheduleFile, "utf8");
     const scheduleData = JSON.parse(scheduleRaw);
 
     if (!scheduleData.channels || typeof scheduleData.channels !== "object") {
@@ -112,4 +115,3 @@ export async function GET() {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

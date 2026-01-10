@@ -16,17 +16,67 @@ import {
   slotDurationSeconds,
   effectiveEndSeconds,
 } from "@/lib/schedule";
+import {
+  loadConfig,
+  getEffectiveMediaRoot,
+  getDataFolderForMediaRoot,
+  getDefaultMediaRoot,
+} from "@/lib/config";
 
 const execFileAsync = promisify(execFile);
 
-// Hard-coded to the local project's media folder (./media relative to cwd).
-const MEDIA_ROOT = path.resolve(path.join(process.cwd(), "media"));
-const DATA_ROOT = path.join(process.cwd(), "data");
+// Default paths (used when no custom folder is set)
+const DEFAULT_MEDIA_ROOT = path.resolve(path.join(process.cwd(), "media"));
+const DEFAULT_DATA_ROOT = path.join(process.cwd(), "data", "local");
 
-// Source-specific paths
-const LOCAL_SCHEDULE_FILE = path.join(DATA_ROOT, "local", "schedule.json");
-const LOCAL_CHANNELS_FILE = path.join(DATA_ROOT, "local", "channels.json");
-const LOCAL_MEDIA_INDEX_FILE = path.join(DATA_ROOT, "local", "media-index.json");
+// Cached paths - updated when config changes
+let cachedMediaRoot: string | null = null;
+let cachedDataRoot: string | null = null;
+
+/**
+ * Get the current media root, checking config for custom folder.
+ */
+async function resolveMediaRoot(): Promise<string> {
+  const config = await loadConfig();
+  if (config.mediaRoot) {
+    cachedMediaRoot = config.mediaRoot;
+    return config.mediaRoot;
+  }
+  cachedMediaRoot = null;
+  return getDefaultMediaRoot();
+}
+
+/**
+ * Get the data folder path based on current config.
+ * If custom folder is set: <mediaRoot>/.remote-viewer/
+ * Otherwise: ./data/local/
+ */
+async function resolveDataRoot(): Promise<string> {
+  const config = await loadConfig();
+  if (config.mediaRoot) {
+    const dataRoot = getDataFolderForMediaRoot(config.mediaRoot);
+    cachedDataRoot = dataRoot;
+    return dataRoot;
+  }
+  cachedDataRoot = null;
+  return DEFAULT_DATA_ROOT;
+}
+
+// Dynamic path helpers
+async function getScheduleFilePath(): Promise<string> {
+  const dataRoot = await resolveDataRoot();
+  return path.join(dataRoot, "schedule.json");
+}
+
+async function getChannelsFilePath(): Promise<string> {
+  const dataRoot = await resolveDataRoot();
+  return path.join(dataRoot, "channels.json");
+}
+
+async function getMediaIndexFilePath(): Promise<string> {
+  const dataRoot = await resolveDataRoot();
+  return path.join(dataRoot, "media-index.json");
+}
 
 const ALLOWED_EXTENSIONS = [
   ".mp4",
@@ -61,6 +111,7 @@ export type ScheduledItem = {
   format: string;
   supported: boolean;
   supportedViaCompanion: boolean;
+  audioCodec?: string;
 };
 
 export type NowPlaying = {
@@ -82,10 +133,34 @@ const durationCache = new Map<string, ProbeInfo>();
 let localScheduleCache: {
   mtimeMs: number | null;
   schedule: Schedule | null;
-} = { mtimeMs: null, schedule: null };
+  path: string | null;
+} = { mtimeMs: null, schedule: null, path: null };
 
+/**
+ * Get the media root path. Uses config if custom folder is set.
+ * For sync access, returns cached value or default.
+ */
 export function getMediaRoot(): string {
-  return MEDIA_ROOT;
+  // Return cached if available, otherwise default
+  return cachedMediaRoot ?? DEFAULT_MEDIA_ROOT;
+}
+
+/**
+ * Async version that checks config.
+ */
+export async function getMediaRootAsync(): Promise<string> {
+  return resolveMediaRoot();
+}
+
+/**
+ * Clear all caches - call when media root changes.
+ */
+export function clearMediaCaches(): void {
+  scheduleCache.clear();
+  durationCache.clear();
+  localScheduleCache = { mtimeMs: null, schedule: null, path: null };
+  cachedMediaRoot = null;
+  cachedDataRoot = null;
 }
 
 export function buildMediaUrl(relPath: string): string {
@@ -103,10 +178,11 @@ export async function getNowPlaying(
 }
 
 export async function resolveMediaPath(relPath: string): Promise<string> {
+  const mediaRoot = await resolveMediaRoot();
   const safeRel = path.normalize(relPath).replace(/^(\.\.(\/|\\|$))+/, "");
-  const absPath = path.join(MEDIA_ROOT, safeRel);
+  const absPath = path.join(mediaRoot, safeRel);
 
-  if (!absPath.startsWith(MEDIA_ROOT)) {
+  if (!absPath.startsWith(mediaRoot)) {
     throw new Error("Invalid media path");
   }
 
@@ -133,16 +209,22 @@ export async function loadFullSchedule(
 }
 
 async function loadLocalFullSchedule(): Promise<Schedule> {
+  const scheduleFile = await getScheduleFilePath();
   try {
-    const stat = await fs.stat(LOCAL_SCHEDULE_FILE);
-    if (localScheduleCache.mtimeMs === stat.mtimeMs && localScheduleCache.schedule) {
+    const stat = await fs.stat(scheduleFile);
+    // Check cache is for same path and same mtime
+    if (
+      localScheduleCache.path === scheduleFile &&
+      localScheduleCache.mtimeMs === stat.mtimeMs &&
+      localScheduleCache.schedule
+    ) {
       return localScheduleCache.schedule;
     }
 
-    const raw = await fs.readFile(LOCAL_SCHEDULE_FILE, "utf8");
+    const raw = await fs.readFile(scheduleFile, "utf8");
     const parsed = JSON.parse(raw) as Schedule;
     validateSchedule(parsed);
-    localScheduleCache = { mtimeMs: stat.mtimeMs, schedule: parsed };
+    localScheduleCache = { mtimeMs: stat.mtimeMs, schedule: parsed, path: scheduleFile };
     return parsed;
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
@@ -176,26 +258,27 @@ async function loadRemoteFullSchedule(): Promise<Schedule> {
 
 // Save the full schedule file
 export async function saveFullSchedule(schedule: Schedule): Promise<Schedule> {
+  const scheduleFile = await getScheduleFilePath();
   validateSchedule(schedule);
-  await fs.mkdir(path.dirname(LOCAL_SCHEDULE_FILE), { recursive: true });
-  await fs.writeFile(LOCAL_SCHEDULE_FILE, JSON.stringify(schedule, null, 2), {
+  await fs.mkdir(path.dirname(scheduleFile), { recursive: true });
+  await fs.writeFile(scheduleFile, JSON.stringify(schedule, null, 2), {
     encoding: "utf8",
   });
-  localScheduleCache = { mtimeMs: null, schedule };
+  localScheduleCache = { mtimeMs: null, schedule, path: scheduleFile };
   return schedule;
 }
 
-// Export path helpers for use by API routes
-export function getLocalScheduleFilePath(): string {
-  return LOCAL_SCHEDULE_FILE;
+// Export path helpers for use by API routes (async versions)
+export async function getLocalScheduleFilePath(): Promise<string> {
+  return getScheduleFilePath();
 }
 
-export function getLocalChannelsFilePath(): string {
-  return LOCAL_CHANNELS_FILE;
+export async function getLocalChannelsFilePath(): Promise<string> {
+  return getChannelsFilePath();
 }
 
-export function getLocalMediaIndexFilePath(): string {
-  return LOCAL_MEDIA_INDEX_FILE;
+export async function getLocalMediaIndexFilePath(): Promise<string> {
+  return getMediaIndexFilePath();
 }
 
 // Save a channel's schedule (updates the full schedule file)
@@ -397,6 +480,7 @@ export async function getScheduleItems(options?: { refresh?: boolean }): Promise
       supported,
       supportedViaCompanion,
       title: titleFromPath(file.relPath),
+      audioCodec: probeInfo?.audioCodec,
     });
   }
 
@@ -405,12 +489,13 @@ export async function getScheduleItems(options?: { refresh?: boolean }): Promise
 }
 
 async function listMediaFiles(): Promise<MediaFile[]> {
-  const exists = await existsSafe(MEDIA_ROOT);
+  const mediaRoot = await resolveMediaRoot();
+  const exists = await existsSafe(mediaRoot);
   if (!exists) {
     return [];
   }
 
-  const collected = await walkMediaFiles(MEDIA_ROOT, MEDIA_ROOT);
+  const collected = await walkMediaFiles(mediaRoot, mediaRoot);
   collected.sort((a, b) => a.relPath.localeCompare(b.relPath));
   return collected;
 }
