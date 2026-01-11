@@ -104,7 +104,12 @@ async function resolveFfprobePath(): Promise<string> {
     }
   }
 
-  const common = ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"];
+  const common = [
+    "/opt/homebrew/bin/ffprobe",       // macOS Homebrew
+    "/usr/local/bin/ffprobe",          // macOS/Linux manual install
+    "/usr/bin/ffprobe",                // Linux system install
+    "/app/vendor/ffmpeg/bin/ffprobe",  // Heroku buildpack location
+  ];
   for (const c of common) {
     try {
       await fs.access(c);
