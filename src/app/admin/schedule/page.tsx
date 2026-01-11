@@ -71,6 +71,7 @@ function ScheduleAdminContent() {
   const pendingSlotsRef = useRef<ScheduleSlot[] | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedSlotsRef = useRef<string>("");
+  const lastSavedChannelRef = useRef<string | null>(null); // track which channel lastSavedSlotsRef belongs to
   const lastUrlChannelRef = useRef<string | null>(searchParams.get("channel"));
   const lastSuggestedEndRef = useRef<string>(""); // track auto-suggested end time
 
@@ -206,6 +207,8 @@ function ScheduleAdminContent() {
     // Don't load if no channel is selected
     if (!channel) {
       setSlots([]);
+      lastSavedSlotsRef.current = "[]";
+      lastSavedChannelRef.current = null;
       setLoading(false);
       return;
     }
@@ -214,6 +217,13 @@ function ScheduleAdminContent() {
     setLoading(true);
     setMessage(null);
     setError(null);
+    
+    // Clear any pending auto-save for the previous channel
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+    setAutoSaveStatus("idle");
 
     const loadSchedule = async () => {
       try {
@@ -223,7 +233,12 @@ function ScheduleAdminContent() {
         const schedJson = await res.json();
         if (!cancelled) {
           const savedSlots = schedJson?.schedule?.slots ?? [];
-          setSlots(Array.isArray(savedSlots) ? savedSlots : []);
+          const normalizedSlots = Array.isArray(savedSlots) ? savedSlots : [];
+          setSlots(normalizedSlots);
+          // CRITICAL: Update lastSavedSlotsRef and channel immediately to prevent
+          // auto-save from firing when switching channels
+          lastSavedSlotsRef.current = JSON.stringify(normalizedSlots);
+          lastSavedChannelRef.current = channel;
         }
       } catch {
         if (!cancelled) {
@@ -460,7 +475,9 @@ function ScheduleAdminContent() {
     if (!confirmed) return;
 
     const previousSaved = lastSavedSlotsRef.current;
+    const previousChannel = lastSavedChannelRef.current;
     lastSavedSlotsRef.current = JSON.stringify([]);
+    lastSavedChannelRef.current = channel;
 
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
@@ -479,6 +496,7 @@ function ScheduleAdminContent() {
       setTimeout(() => setAutoSaveStatus("idle"), 1500);
     } else {
       lastSavedSlotsRef.current = previousSaved;
+      lastSavedChannelRef.current = previousChannel;
       setError("Failed to clear schedule");
       setAutoSaveStatus("idle");
     }
@@ -511,6 +529,7 @@ function ScheduleAdminContent() {
       );
       if (!res.ok) return false;
       lastSavedSlotsRef.current = JSON.stringify(normalized);
+      lastSavedChannelRef.current = channel;
 
       // If remote source is active, push schedule to remote
       if (mediaSource === "remote") {
@@ -534,9 +553,19 @@ function ScheduleAdminContent() {
 
     const currentSlots = JSON.stringify(slots);
     
-    // Skip if no changes since last save
-    if (currentSlots === lastSavedSlotsRef.current) {
+    // Skip if no changes since last save for THIS channel
+    // This prevents cross-channel data leaks when switching channels
+    if (
+      currentSlots === lastSavedSlotsRef.current &&
+      channel === lastSavedChannelRef.current
+    ) {
       setAutoSaveStatus("idle");
+      return;
+    }
+    
+    // If channel changed but refs weren't updated yet, skip auto-save
+    // (the loadSchedule effect will update the refs)
+    if (channel !== lastSavedChannelRef.current) {
       return;
     }
 
@@ -569,12 +598,8 @@ function ScheduleAdminContent() {
     };
   }, [slots, channel, mediaSource, loading, doSave]);
 
-  // Update lastSavedSlotsRef when schedule is loaded
-  useEffect(() => {
-    if (!loading && slots.length >= 0) {
-      lastSavedSlotsRef.current = JSON.stringify(slots);
-    }
-  }, [loading]);
+  // Note: lastSavedSlotsRef is now updated in the loadSchedule effect
+  // to prevent race conditions with the auto-save effect
 
   const removeSlot = (index: number) => {
     setSlots((prev) => prev.filter((_, i) => i !== index));

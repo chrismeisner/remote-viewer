@@ -154,6 +154,12 @@ video:-moz-full-screen {
   border-radius: 18px;
 }
 
+.player-frame,
+.player-frame.crt-frame,
+.player-frame.crt {
+  border-radius: 0 !important;
+}
+
 .crt-frame::before,
 .crt::before {
   content: "";

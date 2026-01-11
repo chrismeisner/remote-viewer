@@ -857,8 +857,8 @@ export default function Home() {
             }
           >
             <div
-              className={`relative overflow-hidden bg-black ${
-                isChromeless ? "h-full w-full" : "rounded-lg border border-white/10"
+              className={`player-frame relative overflow-hidden bg-black ${
+                isChromeless ? "h-full w-full" : "border border-white/10"
               } ${crtEnabled ? "crt-frame" : ""}`}
             >
               {/* Blue screen fallback when channel is selected but video is loading or nothing scheduled */}
