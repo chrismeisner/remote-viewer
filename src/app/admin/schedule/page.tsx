@@ -10,6 +10,14 @@ import {
 } from "@/constants/media";
 import { DailySchedule, ScheduleSlot, validateDailySchedule } from "@/lib/schedule";
 
+type ScheduleConflict = {
+  slotAIndex: number;
+  slotBIndex: number;
+  slotA: ScheduleSlot;
+  slotB: ScheduleSlot;
+  overlapSeconds: number;
+};
+
 type MediaFile = {
   relPath: string;
   title: string;
@@ -17,6 +25,7 @@ type MediaFile = {
   format: string;
   supported: boolean;
   supportedViaCompanion: boolean;
+  audioCodec?: string;
 };
 
 type ChannelInfo = {
@@ -46,6 +55,10 @@ function ScheduleAdminContent() {
   const [modalFile, setModalFile] = useState<string>("");
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const [copiedCommand, setCopiedCommand] = useState(false);
+  const [showFillModal, setShowFillModal] = useState(false);
+  const [fillSelectedFiles, setFillSelectedFiles] = useState<string[]>([]);
+  const [fillMediaFilter, setFillMediaFilter] = useState("");
+  const [fillSupportedFilter, setFillSupportedFilter] = useState<"all" | "supported" | "unsupported">("supported");
   const [channel, setChannel] = useState<string | null>(
     () => searchParams.get("channel") || null,
   );
@@ -54,6 +67,7 @@ function ScheduleAdminContent() {
   const [mediaSource, setMediaSource] = useState<MediaSource>("local");
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "pending" | "saving" | "saved">("idle");
   const [mediaFilter, setMediaFilter] = useState("");
+  const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported">("supported");
   const pendingSlotsRef = useRef<ScheduleSlot[] | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedSlotsRef = useRef<string>("");
@@ -236,19 +250,48 @@ function ScheduleAdminContent() {
 
   // Only supported files for schedule dropdowns
   const supportedFiles = useMemo(
-    () => sortedFiles.filter((f) => f.supported || f.supportedViaCompanion),
+    () => sortedFiles.filter((file) => isBrowserSupported(file)),
     [sortedFiles],
   );
 
-  const filteredSupportedFiles = useMemo(() => {
+  const filteredModalFiles = useMemo(() => {
     const query = mediaFilter.trim().toLowerCase();
-    if (!query) return supportedFiles;
-    const terms = query.split(/\s+/).filter(Boolean);
-    return supportedFiles.filter((file) => {
+    const terms = query ? query.split(/\s+/).filter(Boolean) : [];
+    return sortedFiles.filter((file) => {
+      const browserSupported = isBrowserSupported(file);
+      if (supportedFilter === "supported" && !browserSupported) return false;
+      if (supportedFilter === "unsupported" && browserSupported) return false;
+      if (!terms.length) return true;
       const haystack = `${file.relPath} ${file.title || ""}`.toLowerCase();
       return terms.every((term) => haystack.includes(term));
     });
-  }, [mediaFilter, supportedFiles]);
+  }, [mediaFilter, sortedFiles, supportedFilter]);
+
+  const modalPoolSize = useMemo(() => {
+    if (supportedFilter === "supported") return supportedFiles.length;
+    if (supportedFilter === "unsupported") return Math.max(0, sortedFiles.length - supportedFiles.length);
+    return sortedFiles.length;
+  }, [supportedFilter, supportedFiles.length, sortedFiles.length]);
+
+  // Fill modal filtered files
+  const filteredFillModalFiles = useMemo(() => {
+    const query = fillMediaFilter.trim().toLowerCase();
+    const terms = query ? query.split(/\s+/).filter(Boolean) : [];
+    return sortedFiles.filter((file) => {
+      const browserSupported = isBrowserSupported(file);
+      if (fillSupportedFilter === "supported" && !browserSupported) return false;
+      if (fillSupportedFilter === "unsupported" && browserSupported) return false;
+      if (!terms.length) return true;
+      const haystack = `${file.relPath} ${file.title || ""}`.toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
+  }, [fillMediaFilter, sortedFiles, fillSupportedFilter]);
+
+  const fillModalPoolSize = useMemo(() => {
+    if (fillSupportedFilter === "supported") return supportedFiles.length;
+    if (fillSupportedFilter === "unsupported") return Math.max(0, sortedFiles.length - supportedFiles.length);
+    return sortedFiles.length;
+  }, [fillSupportedFilter, supportedFiles.length, sortedFiles.length]);
 
   const fileByRel = useMemo(() => {
     const map = new Map<string, MediaFile>();
@@ -256,10 +299,128 @@ function ScheduleAdminContent() {
     return map;
   }, [sortedFiles]);
 
-  const totalDurationSeconds = useMemo(
-    () => sortedFiles.reduce((sum, f) => sum + (f.durationSeconds || 0), 0),
-    [sortedFiles],
-  );
+  // Detect schedule conflicts (overlapping slots)
+  const scheduleConflicts = useMemo(() => {
+    return detectScheduleConflicts(slots);
+  }, [slots]);
+
+  // Set of slot indices that have conflicts (for highlighting)
+  const conflictingSlotIndices = useMemo(() => {
+    const indices = new Set<number>();
+    for (const conflict of scheduleConflicts) {
+      indices.add(conflict.slotAIndex);
+      indices.add(conflict.slotBIndex);
+    }
+    return indices;
+  }, [scheduleConflicts]);
+
+  // Calculate total duration of selected files for fill modal
+  const fillTotalDuration = useMemo(() => {
+    return fillSelectedFiles.reduce((total, relPath) => {
+      const file = fileByRel.get(relPath);
+      return total + (file?.durationSeconds || 0);
+    }, 0);
+  }, [fillSelectedFiles, fileByRel]);
+
+  // Calculate how much of 24h will be filled after looping
+  const fillLoopedInfo = useMemo(() => {
+    if (fillTotalDuration <= 0) return { filledSeconds: 0, itemCount: 0, leftoverSeconds: 0 };
+    
+    const validFiles = fillSelectedFiles
+      .map((relPath) => fileByRel.get(relPath))
+      .filter((f) => f && f.durationSeconds > 0) as MediaFile[];
+    
+    if (validFiles.length === 0) return { filledSeconds: 0, itemCount: 0, leftoverSeconds: 0 };
+
+    let currentSeconds = 0;
+    let itemCount = 0;
+    let fileIndex = 0;
+
+    // Fill until the next item wouldn't fit before midnight
+    while (itemCount < 1000) {
+      const file = validFiles[fileIndex % validFiles.length];
+      // Stop if this item would extend past midnight
+      if (currentSeconds + file.durationSeconds > 86400) break;
+      
+      currentSeconds += file.durationSeconds;
+      itemCount++;
+      fileIndex++;
+    }
+
+    const leftoverSeconds = 86400 - currentSeconds;
+
+    return {
+      filledSeconds: currentSeconds,
+      itemCount,
+      leftoverSeconds,
+    };
+  }, [fillSelectedFiles, fillTotalDuration, fileByRel]);
+
+  // Get selected files in order with their details
+  const fillSelectedFilesOrdered = useMemo(() => {
+    return fillSelectedFiles
+      .map((relPath) => fileByRel.get(relPath))
+      .filter(Boolean) as MediaFile[];
+  }, [fillSelectedFiles, fileByRel]);
+
+  const toggleFillFileSelection = useCallback((relPath: string) => {
+    setFillSelectedFiles((prev) => {
+      if (prev.includes(relPath)) {
+        return prev.filter((p) => p !== relPath);
+      }
+      return [...prev, relPath];
+    });
+  }, []);
+
+  const openFillModal = useCallback(() => {
+    setFillSelectedFiles([]);
+    setFillMediaFilter("");
+    setFillSupportedFilter("supported");
+    setShowFillModal(true);
+  }, []);
+
+  const executeFillSchedule = useCallback(async () => {
+    if (!channel || fillSelectedFiles.length === 0) return;
+
+    // Get files with valid durations
+    const validFiles = fillSelectedFiles
+      .map((relPath) => {
+        const file = fileByRel.get(relPath);
+        return file && file.durationSeconds > 0 ? file : null;
+      })
+      .filter(Boolean) as MediaFile[];
+
+    if (validFiles.length === 0) return;
+
+    // Build slots starting at 00:00:00, looping until next item wouldn't fit
+    const newSlots: ScheduleSlot[] = [];
+    let currentSeconds = 0;
+    let fileIndex = 0;
+
+    while (newSlots.length < 1000) {
+      const file = validFiles[fileIndex % validFiles.length];
+      const duration = file.durationSeconds;
+
+      // Stop if this item would extend past midnight
+      if (currentSeconds + duration > 86400) break;
+
+      const startTime = secondsToTime(currentSeconds);
+      const endTime = secondsToTime(currentSeconds + duration);
+
+      newSlots.push({
+        start: startTime,
+        end: endTime,
+        file: file.relPath,
+      });
+
+      currentSeconds += duration;
+      fileIndex++;
+    }
+
+    // Replace the schedule with the new slots
+    setSlots(newSlots);
+    setShowFillModal(false);
+  }, [channel, fillSelectedFiles, fileByRel]);
 
   const addSlot = () => {
     const defaultFile = supportedFiles[0]?.relPath || "";
@@ -269,7 +430,7 @@ function ScheduleAdminContent() {
         : "00:00:00";
     setModalFile(defaultFile);
     setModalStart(nextStart);
-    setModalEnd(computeEndTime(nextStart, defaultFile, supportedFiles));
+    setModalEnd(computeEndTime(nextStart, defaultFile, sortedFiles));
     setShowSlotModal(true);
   };
 
@@ -280,11 +441,11 @@ function ScheduleAdminContent() {
   const setModalStartWithSuggestedTime = useCallback(
     (startValue: string) => {
       setModalStart(startValue);
-      const suggestedEnd = computeEndTime(startValue, modalFile, supportedFiles);
+      const suggestedEnd = computeEndTime(startValue, modalFile, sortedFiles);
       lastSuggestedEndRef.current = suggestedEnd;
       setModalEnd(suggestedEnd);
     },
-    [modalFile, supportedFiles],
+    [modalFile, sortedFiles],
   );
 
   const updateSlot = (index: number, slot: ScheduleSlot) => {
@@ -427,14 +588,14 @@ function ScheduleAdminContent() {
       : supportedFiles[0]?.relPath || "";
     setModalFile(file);
     setModalStart(nextStart);
-    setModalEnd(computeEndTime(nextStart, file, supportedFiles));
+    setModalEnd(computeEndTime(nextStart, file, sortedFiles));
     setShowSlotModal(true);
   };
 
   // Keep end time in sync when file, start time, or durations change.
   // Only overwrite if the current end matches the previous suggestion or is invalid.
   useEffect(() => {
-    const suggested = computeEndTime(modalStart, modalFile, supportedFiles);
+    const suggested = computeEndTime(modalStart, modalFile, sortedFiles);
     const shouldUpdate =
       !isValidTime(modalEnd) || modalEnd === lastSuggestedEndRef.current;
     if (shouldUpdate && suggested !== modalEnd) {
@@ -443,7 +604,7 @@ function ScheduleAdminContent() {
     } else {
       lastSuggestedEndRef.current = suggested;
     }
-  }, [modalStart, modalFile, supportedFiles, modalEnd]);
+  }, [modalStart, modalFile, sortedFiles, modalEnd]);
 
   return (
     <div className="flex flex-col gap-6 text-neutral-100">
@@ -487,6 +648,14 @@ function ScheduleAdminContent() {
             + Add schedule item
           </button>
           <button
+            onClick={openFillModal}
+            className="rounded-md border border-indigo-400/60 bg-indigo-500/20 px-3 py-1 text-sm font-semibold text-indigo-50 transition hover:border-indigo-300 hover:bg-indigo-500/30 disabled:opacity-50"
+            disabled={loading || autoSaveStatus === "saving" || !channel || sortedFiles.length === 0}
+            title="Select multiple files to fill a 24-hour schedule"
+          >
+            Fill 24
+          </button>
+          <button
             onClick={() => void clearSchedule()}
             className="rounded-md border border-red-400/60 bg-red-500/20 px-3 py-1 text-sm font-semibold text-red-50 transition hover:border-red-300 hover:bg-red-500/30 disabled:opacity-50"
             disabled={
@@ -527,6 +696,44 @@ function ScheduleAdminContent() {
           <p className="text-sm text-neutral-300">Loading…</p>
         ) : (
           <div className="space-y-4">
+            {/* Conflict warnings */}
+            {scheduleConflicts.length > 0 && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-amber-300 text-lg">⚠️</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-amber-200">
+                      {scheduleConflicts.length} schedule conflict{scheduleConflicts.length !== 1 ? "s" : ""} detected
+                    </p>
+                    <p className="text-xs text-amber-300/80 mt-1">
+                      Some time slots overlap. This may cause unexpected playback behavior.
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {scheduleConflicts.slice(0, 5).map((conflict, idx) => (
+                        <div key={idx} className="text-xs text-amber-100 bg-amber-500/10 rounded-md px-3 py-2">
+                          <span className="font-mono">
+                            {conflict.slotA.start}–{conflict.slotA.end}
+                          </span>
+                          {" "}overlaps with{" "}
+                          <span className="font-mono">
+                            {conflict.slotB.start}–{conflict.slotB.end}
+                          </span>
+                          <span className="text-amber-300/70 ml-2">
+                            ({formatDuration(conflict.overlapSeconds)} overlap)
+                          </span>
+                        </div>
+                      ))}
+                      {scheduleConflicts.length > 5 && (
+                        <p className="text-xs text-amber-300/70">
+                          ...and {scheduleConflicts.length - 5} more conflict{scheduleConflicts.length - 5 !== 1 ? "s" : ""}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
               {slots.length === 0 ? (
                 <p className="text-sm text-neutral-300">
@@ -556,11 +763,20 @@ function ScheduleAdminContent() {
                             timeToSeconds(a.slot.start) - timeToSeconds(b.slot.start),
                         )
                         .map(({ slot, idx }) => {
-                          const duration = fileByRel.get(slot.file)?.durationSeconds || 0;
+                          const slotFileMeta = fileByRel.get(slot.file);
+                          const slotIsSupported = slotFileMeta ? isBrowserSupported(slotFileMeta) : false;
+                          const duration = slotFileMeta?.durationSeconds || 0;
                           const isMidnightCrossing = crossesMidnight(slot.start, slot.end);
                           const slotWindow = slotDurationSeconds(slot.start, slot.end);
+                          const hasConflict = conflictingSlotIndices.has(idx);
                           return (
-                            <tr key={idx} className={`text-neutral-100 ${isMidnightCrossing ? "bg-indigo-950/40" : "bg-neutral-950/60"}`}>
+                            <tr key={idx} className={`text-neutral-100 ${
+                              hasConflict 
+                                ? "bg-amber-950/40 border-l-2 border-l-amber-500" 
+                                : isMidnightCrossing 
+                                  ? "bg-indigo-950/40" 
+                                  : "bg-neutral-950/60"
+                            }`}>
                               <td className="px-3 py-2">
                                 <div className="flex items-center gap-2">
                                   <input
@@ -596,9 +812,7 @@ function ScheduleAdminContent() {
                               <td className="px-3 py-2">
                                 <select
                                   className={`w-full rounded-md bg-neutral-900 border px-2 py-1 text-sm ${
-                                    !fileByRel.get(slot.file)?.supported && !fileByRel.get(slot.file)?.supportedViaCompanion
-                                      ? "border-amber-500/50"
-                                      : "border-white/10"
+                                    slotIsSupported ? "border-white/10" : "border-amber-500/50"
                                   }`}
                                   value={slot.file}
                                   onChange={(e) =>
@@ -686,7 +900,7 @@ function ScheduleAdminContent() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-sm text-neutral-300">Media</label>
-                  <div className="flex items-center gap-2 text-xs text-neutral-400">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400">
                     <input
                       type="text"
                       placeholder="Filter media…"
@@ -694,8 +908,22 @@ function ScheduleAdminContent() {
                       onChange={(e) => setMediaFilter(e.target.value)}
                       className="w-48 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm focus:border-white/30 focus:outline-none"
                     />
+                    <div className="flex items-center gap-1 text-neutral-400">
+                      <span>Supported</span>
+                      <select
+                        value={supportedFilter}
+                        onChange={(e) =>
+                          setSupportedFilter(e.target.value as "all" | "supported" | "unsupported")
+                        }
+                        className="rounded-md border border-white/10 bg-neutral-900 px-2 py-1 text-xs text-neutral-100"
+                      >
+                        <option value="supported">Supported</option>
+                        <option value="unsupported">Unsupported</option>
+                        <option value="all">All</option>
+                      </select>
+                    </div>
                     <span className="text-neutral-500">
-                      {filteredSupportedFiles.length}/{supportedFiles.length}
+                      {filteredModalFiles.length}/{modalPoolSize}
                     </span>
                   </div>
                 </div>
@@ -711,20 +939,37 @@ function ScheduleAdminContent() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {filteredSupportedFiles.length === 0 ? (
+                        {filteredModalFiles.length === 0 ? (
                           <tr>
                             <td
                               colSpan={3}
                               className="px-3 py-3 text-center text-neutral-400"
                             >
-                              {supportedFiles.length === 0
-                                ? "No supported files in library"
+                              {modalPoolSize === 0
+                                ? supportedFilter === "supported"
+                                  ? "No supported files in library"
+                                  : supportedFilter === "unsupported"
+                                    ? "No unsupported files in library"
+                                    : "No media files in library"
                                 : "No matches — adjust filter"}
                             </td>
                           </tr>
                         ) : (
-                          filteredSupportedFiles.map((file) => {
+                          filteredModalFiles.map((file) => {
                             const selected = modalFile === file.relPath;
+                            const browserSupported = isBrowserSupported(file);
+                            const supportLabel = browserSupported
+                              ? file.supportedViaCompanion
+                                ? "Companion"
+                                : "Direct"
+                              : hasUnsupportedAudio(file)
+                                ? "Unsupported (audio)"
+                                : "Unsupported";
+                            const supportClass = browserSupported
+                              ? file.supportedViaCompanion
+                                ? "bg-blue-500/20 text-blue-100"
+                                : "bg-emerald-500/20 text-emerald-100"
+                              : "bg-amber-500/20 text-amber-100";
                             return (
                               <tr
                                 key={file.relPath}
@@ -758,13 +1003,9 @@ function ScheduleAdminContent() {
                                 </td>
                                 <td className="px-3 py-2 text-right">
                                   <span
-                                    className={`rounded-full px-2 py-1 text-[11px] ${
-                                      file.supportedViaCompanion
-                                        ? "bg-blue-500/20 text-blue-100"
-                                        : "bg-emerald-500/20 text-emerald-100"
-                                    }`}
+                                    className={`rounded-full px-2 py-1 text-[11px] ${supportClass}`}
                                   >
-                                    {file.supportedViaCompanion ? "Companion" : "Direct"}
+                                    {supportLabel}
                                   </span>
                                 </td>
                               </tr>
@@ -827,7 +1068,7 @@ function ScheduleAdminContent() {
                 <div className="text-xs text-neutral-300">
                   Suggested end
                   {(() => {
-                    const suggested = computeEndTimeWithIndicator(modalStart, modalFile, supportedFiles);
+                    const suggested = computeEndTimeWithIndicator(modalStart, modalFile, sortedFiles);
                     return (
                       <div className="mt-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-neutral-100 flex items-center gap-2">
                         {suggested.time}
@@ -928,25 +1169,33 @@ function ScheduleAdminContent() {
                 <span className="rounded-full bg-white/10 px-3 py-1 text-neutral-100">
                   Format: {selectedFile.format || "—"}
                 </span>
-                <span
-                  className={`rounded-full px-3 py-1 font-semibold ${
-                    selectedFile.supported
-                      ? "bg-emerald-500/20 text-emerald-100"
-                      : "bg-amber-500/20 text-amber-100"
-                  }`}
-                >
-                  {selectedFile.supported
+                {(() => {
+                  const selectedSupported = isBrowserSupported(selectedFile);
+                  const supportLabel = selectedSupported
                     ? selectedFile.supportedViaCompanion
                       ? "Supported (companion)"
                       : "Supported"
-                    : "Not supported"}
-                </span>
+                    : hasUnsupportedAudio(selectedFile)
+                      ? "Unsupported (audio)"
+                      : "Not supported";
+                  return (
+                    <span
+                      className={`rounded-full px-3 py-1 font-semibold ${
+                        selectedSupported
+                          ? "bg-emerald-500/20 text-emerald-100"
+                          : "bg-amber-500/20 text-amber-100"
+                      }`}
+                    >
+                      {supportLabel}
+                    </span>
+                  );
+                })()}
                 <span className="rounded-full bg-white/10 px-3 py-1 text-neutral-100">
                   Duration: {formatDuration(selectedFile.durationSeconds)}
                 </span>
               </div>
 
-              {selectedFile.supported || selectedFile.supportedViaCompanion ? (
+              {isBrowserSupported(selectedFile) ? (
                 <div className="mt-3 space-y-2">
                   <p className="text-xs text-neutral-300">Quick preview (muted):</p>
                   <video
@@ -995,6 +1244,280 @@ function ScheduleAdminContent() {
           </div>
         </div>
       )}
+
+      {showFillModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={() => setShowFillModal(false)}
+        >
+          <div
+            className="w-full max-w-4xl rounded-xl border border-white/15 bg-neutral-900 p-5 shadow-2xl shadow-black/60"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-semibold text-neutral-100">
+                  Fill 24-hour schedule
+                </h4>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Select files in order. They'll <span className="text-indigo-300">loop</span> to fill 24 hours starting at midnight.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowFillModal(false)}
+                className="rounded-md bg-white/10 px-2 py-1 text-xs text-neutral-100 hover:bg-white/20"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 flex gap-4">
+              {/* Left side: Media picker */}
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm text-neutral-300">Available Media</label>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400">
+                    <button
+                      onClick={() => {
+                        const filesToAdd = filteredFillModalFiles
+                          .map((f) => f.relPath)
+                          .filter((p) => !fillSelectedFiles.includes(p));
+                        if (filesToAdd.length > 0) {
+                          setFillSelectedFiles((prev) => [...prev, ...filesToAdd]);
+                        }
+                      }}
+                      disabled={filteredFillModalFiles.length === 0}
+                      className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-white/10 disabled:opacity-50"
+                    >
+                      Select all
+                    </button>
+                    <input
+                      type="text"
+                      placeholder="Filter media…"
+                      value={fillMediaFilter}
+                      onChange={(e) => setFillMediaFilter(e.target.value)}
+                      className="w-48 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm focus:border-white/30 focus:outline-none"
+                    />
+                    <select
+                      value={fillSupportedFilter}
+                      onChange={(e) =>
+                        setFillSupportedFilter(e.target.value as "all" | "supported" | "unsupported")
+                      }
+                      className="rounded-md border border-white/10 bg-neutral-900 px-2 py-1 text-xs text-neutral-100"
+                    >
+                      <option value="supported">Supported</option>
+                      <option value="unsupported">Unsupported</option>
+                      <option value="all">All</option>
+                    </select>
+                    <span className="text-neutral-500">
+                      {filteredFillModalFiles.length}/{fillModalPoolSize}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-lg border border-white/10 bg-neutral-950/80">
+                  <div className="max-h-80 overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white/5 text-neutral-200 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-semibold w-10"></th>
+                          <th className="px-3 py-2 text-left font-semibold">File</th>
+                          <th className="px-3 py-2 text-right font-semibold w-20">Duration</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {filteredFillModalFiles.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-3 py-3 text-center text-neutral-400"
+                            >
+                              {fillModalPoolSize === 0
+                                ? "No media files available"
+                                : "No matches — adjust filter"}
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredFillModalFiles.map((file) => {
+                            const selected = fillSelectedFiles.includes(file.relPath);
+                            const selectionIndex = fillSelectedFiles.indexOf(file.relPath);
+                            return (
+                              <tr
+                                key={file.relPath}
+                                className={`cursor-pointer transition ${
+                                  selected ? "bg-indigo-500/20" : "hover:bg-white/5"
+                                }`}
+                                onClick={() => toggleFillFileSelection(file.relPath)}
+                              >
+                                <td className="px-3 py-2">
+                                  <div className="flex items-center justify-center">
+                                    {selected ? (
+                                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-500 text-[10px] font-bold text-white">
+                                        {selectionIndex + 1}
+                                      </span>
+                                    ) : (
+                                      <span className="h-5 w-5 rounded border border-white/20 bg-white/5" />
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <p className="font-mono text-xs break-all text-neutral-100">
+                                    {file.relPath}
+                                  </p>
+                                  {file.title && file.title !== file.relPath && (
+                                    <p className="text-[11px] text-neutral-400">
+                                      {file.title}
+                                    </p>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right text-neutral-300">
+                                  {formatDuration(file.durationSeconds)}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right side: Selected files preview */}
+              <div className="w-72 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-neutral-300">Selection Order</label>
+                  {fillSelectedFiles.length > 0 && (
+                    <button
+                      onClick={() => setFillSelectedFiles([])}
+                      className="text-xs text-red-300 hover:text-red-200"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-white/10 bg-neutral-950/80 p-3">
+                  {fillSelectedFiles.length === 0 ? (
+                    <p className="text-xs text-neutral-500 text-center py-4">
+                      Click files to add them to your schedule
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-64 overflow-auto">
+                      {fillSelectedFilesOrdered.map((file, idx) => {
+                        // Calculate start time for this file
+                        const offsetSeconds = fillSelectedFilesOrdered
+                          .slice(0, idx)
+                          .reduce((acc, f) => acc + (f.durationSeconds || 0), 0);
+                        const startTime = secondsToTime(offsetSeconds % 86400);
+                        const startsAfter24 = offsetSeconds >= 86400;
+                        
+                        return (
+                          <div
+                            key={file.relPath}
+                            className={`flex items-start gap-2 rounded-md p-2 text-xs ${
+                              startsAfter24 ? "bg-amber-500/10 opacity-60" : "bg-white/5"
+                            }`}
+                          >
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-[10px] font-bold text-white">
+                              {idx + 1}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-mono text-[11px] text-neutral-100 truncate">
+                                {file.relPath}
+                              </p>
+                              <p className="text-[10px] text-neutral-400">
+                                {startsAfter24 ? (
+                                  <span className="text-amber-300">Exceeds 24h</span>
+                                ) : (
+                                  <>
+                                    Starts: {startTime} • {formatDuration(file.durationSeconds)}
+                                  </>
+                                )}
+                              </p>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFillFileSelection(file.relPath);
+                              }}
+                              className="text-neutral-500 hover:text-red-300"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Summary */}
+                <div className="rounded-lg border border-white/10 bg-neutral-950/80 p-3 space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-neutral-400">Files selected</span>
+                    <span className="text-neutral-100">{fillSelectedFiles.length}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-neutral-400">Playlist duration</span>
+                    <span className="text-neutral-100">{formatDuration(fillTotalDuration)}</span>
+                  </div>
+                  {fillTotalDuration > 0 && (
+                    <>
+                      <div className="border-t border-white/10 pt-2 mt-2">
+                        <p className="text-[10px] text-neutral-400 mb-1">After looping to fill 24h:</p>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-neutral-400">Total slots</span>
+                        <span className="text-neutral-100">{fillLoopedInfo.itemCount}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-neutral-400">Scheduled time</span>
+                        <span className="text-neutral-100">{formatDuration(fillLoopedInfo.filledSeconds)}</span>
+                      </div>
+                      {fillLoopedInfo.leftoverSeconds > 0 && (
+                        <p className="text-[10px] text-neutral-400 mt-1">
+                          {formatDuration(fillLoopedInfo.leftoverSeconds)} of empty time before loop resets
+                        </p>
+                      )}
+                      {fillLoopedInfo.leftoverSeconds === 0 && (
+                        <p className="text-[10px] text-emerald-300 mt-1">
+                          ✓ Fills exactly 24 hours
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-xs text-neutral-500">
+                {slots.length > 0 && (
+                  <span className="text-amber-300">
+                    ⚠️ This will replace the current {slots.length} scheduled item{slots.length !== 1 ? "s" : ""}.
+                  </span>
+                )}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowFillModal(false)}
+                  className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => void executeFillSchedule()}
+                  disabled={fillSelectedFiles.length === 0}
+                  className="rounded-md border border-indigo-300/50 bg-indigo-500/20 px-4 py-2 text-xs font-semibold text-indigo-50 transition hover:border-indigo-200 hover:bg-indigo-500/30 disabled:opacity-50"
+                >
+                  Fill schedule
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1005,6 +1528,78 @@ function timeToSeconds(value: string): number {
   const m = parts[1] || 0;
   const s = parts[2] || 0;
   return ((h * 60 + m) * 60 + s) % 86400;
+}
+
+/**
+ * Detect overlapping slots in a schedule.
+ * Handles midnight-crossing slots correctly.
+ */
+function detectScheduleConflicts(slots: ScheduleSlot[]): ScheduleConflict[] {
+  const conflicts: ScheduleConflict[] = [];
+  if (slots.length < 2) return conflicts;
+
+  // Sort slots by start time for consistent ordering
+  const sortedSlots = slots
+    .map((slot, idx) => ({ slot, originalIndex: idx }))
+    .sort((a, b) => timeToSeconds(a.slot.start) - timeToSeconds(b.slot.start));
+
+  for (let i = 0; i < sortedSlots.length; i++) {
+    for (let j = i + 1; j < sortedSlots.length; j++) {
+      const a = sortedSlots[i];
+      const b = sortedSlots[j];
+      const overlap = calculateOverlap(a.slot, b.slot);
+      
+      if (overlap > 0) {
+        conflicts.push({
+          slotAIndex: a.originalIndex,
+          slotBIndex: b.originalIndex,
+          slotA: a.slot,
+          slotB: b.slot,
+          overlapSeconds: overlap,
+        });
+      }
+    }
+  }
+
+  return conflicts;
+}
+
+/**
+ * Calculate overlap in seconds between two slots.
+ * Returns 0 if no overlap.
+ */
+function calculateOverlap(slotA: ScheduleSlot, slotB: ScheduleSlot): number {
+  const aStart = timeToSeconds(slotA.start);
+  const aEnd = timeToSeconds(slotA.end);
+  const bStart = timeToSeconds(slotB.start);
+  const bEnd = timeToSeconds(slotB.end);
+
+  const aCrosses = aEnd <= aStart; // crosses midnight
+  const bCrosses = bEnd <= bStart; // crosses midnight
+
+  // Convert to ranges on a 48-hour timeline for easier comparison
+  // This handles midnight crossing by extending into "next day" (86400+)
+  const aRanges = aCrosses
+    ? [[aStart, 86400], [0, aEnd]] // Split into two ranges
+    : [[aStart, aEnd]];
+  
+  const bRanges = bCrosses
+    ? [[bStart, 86400], [0, bEnd]]
+    : [[bStart, bEnd]];
+
+  let totalOverlap = 0;
+
+  for (const [aS, aE] of aRanges) {
+    for (const [bS, bE] of bRanges) {
+      const overlapStart = Math.max(aS, bS);
+      const overlapEnd = Math.min(aE, bE);
+      if (overlapEnd > overlapStart) {
+        totalOverlap += overlapEnd - overlapStart;
+      }
+    }
+  }
+
+  return totalOverlap;
 }
 
 /**
@@ -1042,6 +1637,30 @@ function formatDuration(seconds: number): string {
     return `${h}h ${m}m`;
   }
   return `${minutes}m`;
+}
+
+const UNSUPPORTED_AUDIO_CODECS = [
+  "ac3",
+  "eac3",
+  "dts",
+  "truehd",
+  "dts-hd",
+  "dtshd",
+  "pcm_s16le",
+  "pcm_s24le",
+  "pcm_s32le",
+  "flac",
+];
+
+function hasUnsupportedAudio(file: MediaFile): boolean {
+  if (!file.audioCodec) return false;
+  const codec = file.audioCodec.toLowerCase();
+  return UNSUPPORTED_AUDIO_CODECS.some((unsupported) => codec.includes(unsupported));
+}
+
+function isBrowserSupported(file: MediaFile): boolean {
+  if (hasUnsupportedAudio(file)) return false;
+  return file.supported || file.supportedViaCompanion;
 }
 
 function shouldShowConvert(file: MediaFile): boolean {

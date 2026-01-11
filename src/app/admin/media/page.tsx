@@ -52,10 +52,12 @@ type ScanReport = {
 function MediaDetailModal({
   item,
   mediaSource,
+  mediaRoot,
   onClose,
 }: {
   item: MediaFile;
   mediaSource: MediaSource;
+  mediaRoot: string;
   onClose: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -318,16 +320,20 @@ function MediaDetailModal({
               <p className="text-xs text-neutral-500 mb-1">Playback</p>
               <span
                 className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  item.supported
-                    ? "bg-emerald-500/20 text-emerald-200"
-                    : "bg-amber-500/20 text-amber-200"
+                    isBrowserSupported(item)
+                      ? item.supportedViaCompanion
+                        ? "bg-blue-500/20 text-blue-200"
+                        : "bg-emerald-500/20 text-emerald-200"
+                      : "bg-amber-500/20 text-amber-200"
                 }`}
               >
-                {item.supported
-                  ? item.supportedViaCompanion
-                    ? "Companion"
-                    : "Native"
-                  : "Unsupported"}
+                  {isBrowserSupported(item)
+                    ? item.supportedViaCompanion
+                      ? "Companion"
+                      : "Native"
+                    : hasUnsupportedAudio(item)
+                      ? "Unsupported (audio)"
+                      : "Unsupported"}
               </span>
             </div>
             <div>
@@ -358,7 +364,7 @@ function MediaDetailModal({
               </p>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => copyConvertCommand(item, setCopiedCommand)}
+                  onClick={() => copyConvertCommand(item, mediaRoot, setCopiedCommand)}
                   className="rounded-md border border-white/20 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30"
                 >
                   {copiedCommand ? "Copied!" : "Copy conversion command"}
@@ -366,9 +372,11 @@ function MediaDetailModal({
                 <span className={`text-xs px-2 py-1 rounded-full ${
                   needsFullReencode(item)
                     ? "bg-amber-500/20 text-amber-200"
+                    : needsAudioOnlyConversion(item)
+                    ? "bg-emerald-500/20 text-emerald-200"
                     : "bg-blue-500/20 text-blue-200"
                 }`}>
-                  {needsFullReencode(item) ? "Full re-encode" : "Remux + audio"}
+                  {needsFullReencode(item) ? "Full re-encode" : needsAudioOnlyConversion(item) ? "Audio only" : "Remux + audio"}
                 </span>
               </div>
             </div>
@@ -666,6 +674,7 @@ export default function MediaAdminPage() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [manifestUpdatedAt, setManifestUpdatedAt] = useState<string | null>(null);
+  const [mediaRoot, setMediaRoot] = useState<string>("media");
 
   // Load media source preference from localStorage and stay in sync with other tabs/pages.
   useEffect(() => {
@@ -683,6 +692,20 @@ export default function MediaAdminPage() {
       window.removeEventListener("storage", syncSource);
       window.removeEventListener(MEDIA_SOURCE_EVENT, syncSource);
     };
+  }, []);
+
+  // Fetch the effective media root path for conversion commands
+  useEffect(() => {
+    fetch("/api/source")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.effectiveMediaRoot) {
+          setMediaRoot(data.effectiveMediaRoot);
+        }
+      })
+      .catch(() => {
+        // Keep default "media" if fetch fails
+      });
   }, []);
 
   // Load available media list
@@ -770,6 +793,12 @@ export default function MediaAdminPage() {
   }, [files]);
 
   const filteredFiles = useMemo(() => {
+    const terms = searchQuery
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
     return sortedFiles.filter((file) => {
       // Format filter
       if (formatFilter !== "all" && (file.format || "").toUpperCase() !== formatFilter) {
@@ -783,11 +812,15 @@ export default function MediaAdminPage() {
         return false;
       }
       // Support filter
-      if (supportedFilter === "supported" && !file.supported) return false;
-      if (supportedFilter === "unsupported" && file.supported) return false;
+      const browserSupported = isBrowserSupported(file);
+      if (supportedFilter === "supported" && !browserSupported) return false;
+      if (supportedFilter === "unsupported" && browserSupported) return false;
       // Search query
-      if (searchQuery && !file.relPath.toLowerCase().includes(searchQuery.toLowerCase())) {
-        return false;
+      if (terms.length > 0) {
+        const haystack = `${file.relPath} ${file.title || ""}`.toLowerCase();
+        if (!terms.every((term) => haystack.includes(term))) {
+          return false;
+        }
       }
       return true;
     });
@@ -887,7 +920,7 @@ export default function MediaAdminPage() {
         <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4">
           <p className="text-xs text-neutral-400 mb-1">Supported</p>
           <p className="text-2xl font-semibold text-emerald-300">
-            {sortedFiles.filter((f) => f.supported || f.supportedViaCompanion).length}
+            {sortedFiles.filter((f) => isBrowserSupported(f)).length}
           </p>
         </div>
         <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4">
@@ -912,6 +945,16 @@ export default function MediaAdminPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {mediaSource === "local" && (
+              <button
+                onClick={refreshMediaList}
+                disabled={loading}
+                className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
+                title="Refresh the local media library"
+              >
+                {loading ? "Refreshing…" : "Refresh"}
+              </button>
+            )}
             {mediaSource === "remote" && (
               <>
                 <button
@@ -1044,16 +1087,18 @@ export default function MediaAdminPage() {
                         <td className="px-3 py-2 text-left">
                           <span
                             className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                              file.supported
+                              isBrowserSupported(file)
                                 ? "bg-emerald-500/20 text-emerald-100"
                                 : "bg-amber-500/20 text-amber-100"
                             }`}
                           >
-                            {file.supported
+                            {isBrowserSupported(file)
                               ? file.supportedViaCompanion
                                 ? "Yes (companion)"
                                 : "Yes"
-                              : "No"}
+                              : hasUnsupportedAudio(file)
+                                ? "No (audio)"
+                                : "No"}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-right text-neutral-200">
@@ -1076,6 +1121,7 @@ export default function MediaAdminPage() {
         <MediaDetailModal
           item={selectedFile}
           mediaSource={mediaSource}
+          mediaRoot={mediaRoot}
           onClose={() => setSelectedFile(null)}
         />
       )}
@@ -1112,11 +1158,27 @@ function formatDateTime(value: string): string {
   });
 }
 
+// Audio codecs that browsers can't play natively
+const UNSUPPORTED_AUDIO_CODECS = ["ac3", "eac3", "dts", "truehd", "dts-hd", "dtshd", "pcm_s16le", "pcm_s24le", "pcm_s32le", "flac"];
+
+function hasUnsupportedAudio(file: MediaFile): boolean {
+  if (!file.audioCodec) return false;
+  const codec = file.audioCodec.toLowerCase();
+  return UNSUPPORTED_AUDIO_CODECS.some(unsupported => codec.includes(unsupported));
+}
+
+function isBrowserSupported(file: MediaFile): boolean {
+  if (hasUnsupportedAudio(file)) return false;
+  return file.supported || file.supportedViaCompanion;
+}
+
 function shouldShowConvert(file: MediaFile): boolean {
   if (file.supportedViaCompanion) return false;
   if (!file.supported) return true;
   const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
   if (ext === "mkv") return true;
+  // Show convert option for mp4/mov with unsupported audio (ac3, dts, etc.)
+  if (hasUnsupportedAudio(file)) return true;
   return false;
 }
 
@@ -1144,6 +1206,15 @@ function needsFullReencode(file: MediaFile): boolean {
   return isHevc;
 }
 
+function needsAudioOnlyConversion(file: MediaFile): boolean {
+  // Check if it's a compatible container with just bad audio
+  const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
+  const compatibleContainers = ["mp4", "m4v", "mov"];
+  if (!compatibleContainers.includes(ext)) return false;
+  if (needsFullReencode(file)) return false;
+  return hasUnsupportedAudio(file);
+}
+
 function getConversionDescription(file: MediaFile): string {
   const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
   const filename = file.relPath.toLowerCase();
@@ -1152,6 +1223,12 @@ function getConversionDescription(file: MediaFile): string {
                  filename.includes("h264") || 
                  filename.includes("h.264") ||
                  filename.includes("avc");
+  
+  // Check for audio-only conversion case first
+  if (needsAudioOnlyConversion(file)) {
+    const audioCodec = file.audioCodec?.toUpperCase() || "unknown";
+    return `${ext.toUpperCase()} has ${audioCodec} audio which browsers can't play. Video will be copied, audio converted to AAC.`;
+  }
   
   switch (ext) {
     case "avi":
@@ -1199,9 +1276,10 @@ function getConversionDescription(file: MediaFile): string {
 
 function copyConvertCommand(
   file: MediaFile,
+  mediaRoot: string,
   setCopied: (value: boolean) => void,
 ) {
-  const cmd = buildConvertCommand(file);
+  const cmd = buildConvertCommand(file, mediaRoot);
   if (navigator?.clipboard?.writeText) {
     navigator.clipboard
       .writeText(cmd)
@@ -1213,63 +1291,76 @@ function copyConvertCommand(
   }
 }
 
-function buildConvertCommand(file: MediaFile): string {
+function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
   const escapedIn = escapeDoubleQuotes(file.relPath);
   const base = file.relPath.replace(/\.[^/.]+$/, "");
-  const escapedOut = escapeDoubleQuotes(`${base}.mp4`);
-  const inputPath = `"media/${escapedIn}"`;
-  const outputPath = `"media/${escapedOut}"`;
-
   const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
   
+  // Add suffix when input is already mp4/m4v to avoid overwriting (FFmpeg cannot edit in-place)
+  let outName: string;
+  if (ext === "mp4" || ext === "m4v") {
+    if (needsFullReencode(file)) {
+      outName = `${base}_h264.mp4`;  // Re-encoded from HEVC to H.264
+    } else {
+      outName = `${base}_aac.mp4`;   // Audio-only conversion
+    }
+  } else {
+    outName = `${base}.mp4`;
+  }
+  const escapedOut = escapeDoubleQuotes(outName);
+  const escapedRoot = escapeDoubleQuotes(mediaRoot);
+  const inputPath = `"${escapedRoot}/${escapedIn}"`;
+  const outputPath = `"${escapedRoot}/${escapedOut}"`;
+  
+  // -n flag prevents overwriting existing files (never prompts, just exits if file exists)
   switch (ext) {
     case "avi":
       if (file.relPath.toLowerCase().includes("x264") || 
           file.relPath.toLowerCase().includes("h264") ||
           file.relPath.toLowerCase().includes("h.264")) {
-        return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+        return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
       }
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "wmv":
     case "asf":
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "flv":
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "mov":
-      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "mkv":
       if (file.format?.toLowerCase()?.includes("hevc") || 
           file.format?.toLowerCase()?.includes("x265") ||
           file.relPath.toLowerCase().includes("x265") ||
           file.relPath.toLowerCase().includes("hevc")) {
-        return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+        return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
       }
-      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "mpeg":
     case "mpg":
     case "vob":
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "ts":
     case "m2ts":
     case "mts":
-      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "webm":
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "ogv":
     case "ogg":
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "3gp":
     case "3g2":
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "mp4":
     case "m4v":
@@ -1277,12 +1368,12 @@ function buildConvertCommand(file: MediaFile): string {
           file.format?.toLowerCase()?.includes("x265") ||
           file.relPath.toLowerCase().includes("x265") ||
           file.relPath.toLowerCase().includes("hevc")) {
-        return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+        return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
       }
-      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     default:
-      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
   }
 }
 

@@ -7,6 +7,8 @@ import {
   type MediaSource,
   REMOTE_MEDIA_BASE,
 } from "@/constants/media";
+import { PasswordModal, isAuthenticated } from "@/components/PasswordModal";
+import { Modal, ModalTitle, ModalFooter, ModalButton } from "@/components/Modal";
 
 const MUTED_PREF_KEY = "player-muted-default";
 const CRT_PREF_KEY = "player-crt-default";
@@ -54,6 +56,42 @@ export default function Home() {
   const [showHeader, setShowHeader] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showWelcome, setShowWelcome] = useState(true);
+  
+  // Password authentication state
+  const [isAuthed, setIsAuthed] = useState(false);
+  const [passwordRequired, setPasswordRequired] = useState<boolean | null>(null);
+  
+  // Check authentication status on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      // First check if already authenticated this session
+      if (isAuthenticated()) {
+        setIsAuthed(true);
+        setPasswordRequired(false);
+        return;
+      }
+      
+      // Check if password is required
+      try {
+        const res = await fetch("/api/auth/verify");
+        const data = await res.json();
+        setPasswordRequired(data.passwordRequired);
+        if (!data.passwordRequired) {
+          setIsAuthed(true);
+        }
+      } catch {
+        // If we can't check, assume no password required
+        setIsAuthed(true);
+        setPasswordRequired(false);
+      }
+    };
+    checkAuth();
+  }, []);
+  
+  const handleAuthSuccess = () => {
+    setIsAuthed(true);
+    setPasswordRequired(false);
+  };
   
   // Channel overlay state for CRT-style display
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
@@ -766,6 +804,24 @@ export default function Home() {
     </div>
   );
 
+  // Show loading state while checking auth
+  if (passwordRequired === null) {
+    return (
+      <div className="bg-black text-neutral-100 min-h-screen flex items-center justify-center">
+        <div className="text-neutral-400">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show password modal if authentication is required
+  if (!isAuthed && passwordRequired) {
+    return (
+      <div className="bg-black text-neutral-100 min-h-screen">
+        <PasswordModal open={true} onSuccess={handleAuthSuccess} />
+      </div>
+    );
+  }
+
   return (
     <div
       className={`bg-black text-neutral-100 flex flex-col ${
@@ -854,141 +910,109 @@ export default function Home() {
         </div>
       </main>
 
-      {showChannelInfo && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-4"
-          onClick={(e) => {
-            if (e.target !== e.currentTarget) return;
-            closeChannelInfo();
-          }}
-        >
-          <div className="w-full max-w-lg rounded-xl border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur">
-            <h2 className="text-xl font-semibold text-neutral-50">Channel info</h2>
-            <p className="mt-2 text-sm text-neutral-300">
-              Select a channel and view current source and title.
-            </p>
-            <div className="mt-4 space-y-3 text-sm text-neutral-200">
-              <div className="flex items-center gap-3">
-                <label className="text-neutral-400">Channel</label>
-                {channels.length === 0 ? (
-                  <span className="text-neutral-500 italic">No channels available</span>
-                ) : (
-                  <select
-                    className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-neutral-100"
-                    value={channel ?? ""}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      if (next) {
-                        switchToChannel(next);
-                      }
-                    }}
-                    disabled={loadingChannels}
-                  >
-                    {channels.map((ch) => (
-                      <option key={ch.id} value={ch.id}>
-                        {ch.id}{ch.shortName ? ` - ${ch.shortName}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-neutral-400">Source:</span>
-                <span className="font-semibold text-neutral-100">
-                  {mediaSource === "remote" ? "Remote CDN" : "Local files"}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-neutral-400">Now playing:</span>
-                <span className="font-semibold text-neutral-100 truncate max-w-xs sm:max-w-sm">
-                  {nowPlayingLabel}
-                </span>
-              </div>
-            </div>
-            <div className="mt-5 flex justify-end">
-              <button
-                onClick={closeChannelInfo}
-                className="rounded-md border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/40 hover:bg-white/15"
+      <Modal open={showChannelInfo} onClose={closeChannelInfo} maxWidth="max-w-lg">
+        <h2 className="text-xl font-semibold text-neutral-50">Channel info</h2>
+        <p className="mt-2 text-sm text-neutral-300">
+          Select a channel and view current source and title.
+        </p>
+        <div className="mt-4 space-y-3 text-sm text-neutral-200">
+          <div className="flex items-center gap-3">
+            <label className="text-neutral-400">Channel</label>
+            {channels.length === 0 ? (
+              <span className="text-neutral-500 italic">No channels available</span>
+            ) : (
+              <select
+                className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-neutral-100"
+                value={channel ?? ""}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (next) {
+                    switchToChannel(next);
+                  }
+                }}
+                disabled={loadingChannels}
               >
-                Close
-              </button>
-            </div>
+                {channels.map((ch) => (
+                  <option key={ch.id} value={ch.id}>
+                    {ch.id}{ch.shortName ? ` - ${ch.shortName}` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-neutral-400">Source:</span>
+            <span className="font-semibold text-neutral-100">
+              {mediaSource === "remote" ? "Remote CDN" : "Local files"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-neutral-400">Now playing:</span>
+            <span className="font-semibold text-neutral-100 truncate max-w-xs sm:max-w-sm">
+              {nowPlayingLabel}
+            </span>
           </div>
         </div>
-      )}
+        <ModalFooter>
+          <ModalButton onClick={closeChannelInfo}>Close</ModalButton>
+        </ModalFooter>
+      </Modal>
 
-      {showWelcome && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
-          onClick={(e) => {
-            if (e.target !== e.currentTarget) return;
-            closeWelcome();
-          }}
-        >
-          <div className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur">
-            <h2 className="text-2xl font-semibold text-neutral-50 font-homevideo tracking-tight">
-              Remote Viewer
-            </h2>
-            <div className="hidden sm:block">
-              <p className="mt-3 text-sm font-semibold text-neutral-200">Keyboard shortcuts</p>
-              <ul className="mt-3 space-y-2 text-sm text-neutral-200">
-                <li className="flex justify-between gap-4"><span>Show helper</span><span className="font-mono text-neutral-100">/</span></li>
-                <li className="flex justify-between gap-4"><span>Show remote</span><span className="font-mono text-neutral-100">r</span></li>
-                <li className="flex justify-between gap-4"><span>Channel up</span><span className="font-mono text-neutral-100">↑</span></li>
-                <li className="flex justify-between gap-4"><span>Channel down</span><span className="font-mono text-neutral-100">↓</span></li>
-                <li className="flex justify-between gap-4"><span>Mute</span><span className="font-mono text-neutral-100">m</span></li>
-                <li className="flex justify-between gap-4"><span>CRT Effect</span><span className="font-mono text-neutral-100">c</span></li>
-                <li className="flex justify-between gap-4"><span>Fullscreen</span><span className="font-mono text-neutral-100">f</span></li>
-              </ul>
-            </div>
-            <p className="mt-4 text-sm font-semibold text-neutral-200">Launch preferences</p>
-            <div className="mt-2 flex items-center gap-2 text-sm text-neutral-200">
-              <input
-                id="welcome-mute"
-                type="checkbox"
-                className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
-                checked={muted}
-                onChange={(e) => setMuted(e.target.checked)}
-              />
-              <label htmlFor="welcome-mute" className="select-none">
-                Mute
-              </label>
-            </div>
-            <div className="mt-3 flex items-center gap-2 text-sm text-neutral-200">
-              <input
-                id="welcome-crt"
-                type="checkbox"
-                className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
-                checked={crtEnabled}
-                onChange={(e) => setCrtEnabled(e.target.checked)}
-              />
-              <label htmlFor="welcome-crt" className="select-none">
-                CRT Effect
-              </label>
-            </div>
-            <div className="mt-3 flex items-center gap-2 text-sm text-neutral-200">
-              <input
-                id="welcome-remote"
-                type="checkbox"
-                className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
-                checked={showControls}
-                onChange={(e) => setShowControls(e.target.checked)}
-              />
-              <label htmlFor="welcome-remote" className="select-none">
-                Show Remote
-              </label>
-            </div>
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={closeWelcome}
-                className="rounded-md border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/40 hover:bg-white/15"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
+      <Modal open={showWelcome} onClose={closeWelcome}>
+        <ModalTitle>Remote Viewer</ModalTitle>
+        <div className="hidden sm:block">
+          <p className="mt-3 text-sm font-semibold text-neutral-200">Keyboard shortcuts</p>
+          <ul className="mt-3 space-y-2 text-sm text-neutral-200">
+            <li className="flex justify-between gap-4"><span>Show helper</span><span className="font-mono text-neutral-100">/</span></li>
+            <li className="flex justify-between gap-4"><span>Show remote</span><span className="font-mono text-neutral-100">r</span></li>
+            <li className="flex justify-between gap-4"><span>Channel up</span><span className="font-mono text-neutral-100">↑</span></li>
+            <li className="flex justify-between gap-4"><span>Channel down</span><span className="font-mono text-neutral-100">↓</span></li>
+            <li className="flex justify-between gap-4"><span>Mute</span><span className="font-mono text-neutral-100">m</span></li>
+            <li className="flex justify-between gap-4"><span>CRT Effect</span><span className="font-mono text-neutral-100">c</span></li>
+            <li className="flex justify-between gap-4"><span>Fullscreen</span><span className="font-mono text-neutral-100">f</span></li>
+          </ul>
         </div>
-      )}
+        <p className="mt-4 text-sm font-semibold text-neutral-200">Launch preferences</p>
+        <div className="mt-2 flex items-center gap-2 text-sm text-neutral-200">
+          <input
+            id="welcome-mute"
+            type="checkbox"
+            className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
+            checked={muted}
+            onChange={(e) => setMuted(e.target.checked)}
+          />
+          <label htmlFor="welcome-mute" className="select-none">
+            Mute
+          </label>
+        </div>
+        <div className="mt-3 flex items-center gap-2 text-sm text-neutral-200">
+          <input
+            id="welcome-crt"
+            type="checkbox"
+            className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
+            checked={crtEnabled}
+            onChange={(e) => setCrtEnabled(e.target.checked)}
+          />
+          <label htmlFor="welcome-crt" className="select-none">
+            CRT Effect
+          </label>
+        </div>
+        <div className="mt-3 flex items-center gap-2 text-sm text-neutral-200">
+          <input
+            id="welcome-remote"
+            type="checkbox"
+            className="h-4 w-4 rounded border-white/30 bg-neutral-800 text-emerald-400 focus:ring-2 focus:ring-emerald-400/50"
+            checked={showControls}
+            onChange={(e) => setShowControls(e.target.checked)}
+          />
+          <label htmlFor="welcome-remote" className="select-none">
+            Show Remote
+          </label>
+        </div>
+        <ModalFooter>
+          <ModalButton onClick={closeWelcome}>Got it</ModalButton>
+        </ModalFooter>
+      </Modal>
     </div>
   );
 }

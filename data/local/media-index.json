@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-01-04T16:33:31.467Z",
+  "generatedAt": "2026-01-11T04:47:57.734Z",
   "items": [
     {
       "relPath": "A Clockwork Orange (1971) 40th Anniv (1080p BluRay x265 10bit Tigole).aac.mp4",
@@ -7,7 +7,8 @@
       "format": "mp4",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "A Clockwork Orange (1971) 40th Anniv (1080p BluRay x265 10bit Tigole).aac"
+      "title": "A Clockwork Orange (1971) 40th Anniv (1080p BluRay x265 10bit Tigole).aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "American Pie 1999 REMASTERED UNRATED 1080p BluRay HEVC x265 5.1 BONE.mkv",
@@ -15,7 +16,8 @@
       "format": "mkv",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "American Pie 1999 REMASTERED UNRATED 1080p BluRay HEVC x265 5.1 BONE"
+      "title": "American Pie 1999 REMASTERED UNRATED 1080p BluRay HEVC x265 5.1 BONE",
+      "audioCodec": "aac"
     },
     {
       "relPath": "American Pie 2 2001 REMASTERED 1080p BluRay HEVC x265 5.1 BONE.mkv",
@@ -23,7 +25,8 @@
       "format": "mkv",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "American Pie 2 2001 REMASTERED 1080p BluRay HEVC x265 5.1 BONE"
+      "title": "American Pie 2 2001 REMASTERED 1080p BluRay HEVC x265 5.1 BONE",
+      "audioCodec": "aac"
     },
     {
       "relPath": "American Pie Reunion 2012 UNRATED 1080p BluRay HEVC x265 5.1 BONE.mkv",
@@ -31,7 +34,8 @@
       "format": "mkv",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "American Pie Reunion 2012 UNRATED 1080p BluRay HEVC x265 5.1 BONE"
+      "title": "American Pie Reunion 2012 UNRATED 1080p BluRay HEVC x265 5.1 BONE",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Caddyshack.1980.1080p.BRrip.x264.YIFY.mp4",
@@ -39,7 +43,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Caddyshack.1980.1080p.BRrip.x264.YIFY"
+      "title": "Caddyshack.1980.1080p.BRrip.x264.YIFY",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Chasing.Amy.1997.1080p.BluRay.x264.YIFY.mp4",
@@ -47,7 +52,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Chasing.Amy.1997.1080p.BluRay.x264.YIFY"
+      "title": "Chasing.Amy.1997.1080p.BluRay.x264.YIFY",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Clerks 1994 EXTENDED 1080p BluRay x265-RARBG.mkv",
@@ -55,7 +61,8 @@
       "format": "mkv",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "Clerks 1994 EXTENDED 1080p BluRay x265-RARBG"
+      "title": "Clerks 1994 EXTENDED 1080p BluRay x265-RARBG",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Eddie.Murphy.Delirious.1983.DVDRiP.XViD.AC3-FraMeSToR.avi",
@@ -63,7 +70,17 @@
       "format": "avi",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "Eddie.Murphy.Delirious.1983.DVDRiP.XViD.AC3-FraMeSToR"
+      "title": "Eddie.Murphy.Delirious.1983.DVDRiP.XViD.AC3-FraMeSToR",
+      "audioCodec": "ac3"
+    },
+    {
+      "relPath": "Eddie.Murphy.Raw.1987.1080p.WebRip,AC3.Plex.[SN].aac.mp4",
+      "durationSeconds": 5424,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Eddie.Murphy.Raw.1987.1080p.WebRip,AC3.Plex.[SN].aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Eddie.Murphy.Raw.1987.1080p.WebRip,AC3.Plex.[SN].mkv",
@@ -71,7 +88,8 @@
       "format": "mkv",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Eddie.Murphy.Raw.1987.1080p.WebRip,AC3.Plex.[SN]"
+      "title": "Eddie.Murphy.Raw.1987.1080p.WebRip,AC3.Plex.[SN]",
+      "audioCodec": "ac3"
     },
     {
       "relPath": "Empire.Records.1995.1080p.BluRay.x264.YIFY.mp4",
@@ -79,7 +97,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Empire.Records.1995.1080p.BluRay.x264.YIFY"
+      "title": "Empire.Records.1995.1080p.BluRay.x264.YIFY",
+      "audioCodec": "aac"
     },
     {
       "relPath": "EuroTrip 2004 UNRATED 1080p BluRay HEVC x265 5.1 BONE.aac.mp4",
@@ -87,7 +106,8 @@
       "format": "mp4",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "EuroTrip 2004 UNRATED 1080p BluRay HEVC x265 5.1 BONE.aac"
+      "title": "EuroTrip 2004 UNRATED 1080p BluRay HEVC x265 5.1 BONE.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Eyes.Wide.Shut.1999.1080p.BluRay.x264.YIFY.mp4",
@@ -95,7 +115,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Eyes.Wide.Shut.1999.1080p.BluRay.x264.YIFY"
+      "title": "Eyes.Wide.Shut.1999.1080p.BluRay.x264.YIFY",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Happiness[1998]DVDRIP[Eng].aac.mp4",
@@ -103,7 +124,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Happiness[1998]DVDRIP[Eng].aac"
+      "title": "Happiness[1998]DVDRIP[Eng].aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Jay.and.Silent.Bob.Strike.Back.2001.1080p.BrRip.x264.BOKUTOX.YIFY.mp4",
@@ -111,7 +133,17 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Jay.and.Silent.Bob.Strike.Back.2001.1080p.BrRip.x264.BOKUTOX.YIFY"
+      "title": "Jay.and.Silent.Bob.Strike.Back.2001.1080p.BrRip.x264.BOKUTOX.YIFY",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "Jodorowskys.Dune.2013.1080p.BluRay.x264.YIFY.mp4",
+      "durationSeconds": 5414,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Jodorowskys.Dune.2013.1080p.BluRay.x264.YIFY",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Machete.Kills.2013.1080p.BluRay.x264.YIFY.mp4",
@@ -119,15 +151,17 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Machete.Kills.2013.1080p.BluRay.x264.YIFY"
+      "title": "Machete.Kills.2013.1080p.BluRay.x264.YIFY",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Making Nightcrawler.mkv",
       "durationSeconds": 316,
       "format": "mkv",
-      "supported": true,
+      "supported": false,
       "supportedViaCompanion": false,
-      "title": "Making Nightcrawler"
+      "title": "Making Nightcrawler",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Mallrats.1995.1080p.BluRay.x264.YIFY.mp4",
@@ -135,7 +169,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Mallrats.1995.1080p.BluRay.x264.YIFY"
+      "title": "Mallrats.1995.1080p.BluRay.x264.YIFY",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Mission.Impossible.1996.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.aac.mp4",
@@ -143,7 +178,8 @@
       "format": "mp4",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "Mission.Impossible.1996.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.aac"
+      "title": "Mission.Impossible.1996.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Mission.Impossible.1996.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.mkv",
@@ -151,7 +187,8 @@
       "format": "mkv",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "Mission.Impossible.1996.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265"
+      "title": "Mission.Impossible.1996.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265",
+      "audioCodec": "eac3"
     },
     {
       "relPath": "Nightcrawler (2014) (1080p BluRay x265 afm72).mkv",
@@ -159,7 +196,8 @@
       "format": "mkv",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "Nightcrawler (2014) (1080p BluRay x265 afm72)"
+      "title": "Nightcrawler (2014) (1080p BluRay x265 afm72)",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Persistence of  Vision Bonus Disk (disk 2).mp4",
@@ -167,7 +205,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Persistence of  Vision Bonus Disk (disk 2)"
+      "title": "Persistence of  Vision Bonus Disk (disk 2)",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Persistence of Vision.mp4",
@@ -175,7 +214,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "Persistence of Vision"
+      "title": "Persistence of Vision",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Phantoms 1998 Remastered 1080p BluRay HEVC x265 5.1 BONE.mkv",
@@ -183,7 +223,17 @@
       "format": "mkv",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "Phantoms 1998 Remastered 1080p BluRay HEVC x265 5.1 BONE"
+      "title": "Phantoms 1998 Remastered 1080p BluRay HEVC x265 5.1 BONE",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "Phantoms 1998 Remastered 1080p BluRay HEVC x265 5.1 BONE.mp4",
+      "durationSeconds": 5770,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Phantoms 1998 Remastered 1080p BluRay HEVC x265 5.1 BONE",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Road Trip 2000 Unrated BluRay 1080p HEVC x265 5.1 BONE.mkv",
@@ -191,7 +241,8 @@
       "format": "mkv",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "Road Trip 2000 Unrated BluRay 1080p HEVC x265 5.1 BONE"
+      "title": "Road Trip 2000 Unrated BluRay 1080p HEVC x265 5.1 BONE",
+      "audioCodec": "aac"
     },
     {
       "relPath": "S01E01 - Poo Cocktail.mp4",
@@ -199,7 +250,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "S01E01 - Poo Cocktail"
+      "title": "S01E01 - Poo Cocktail",
+      "audioCodec": "aac"
     },
     {
       "relPath": "S01E02 - Blind Driver.mp4",
@@ -207,7 +259,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "S01E02 - Blind Driver"
+      "title": "S01E02 - Blind Driver",
+      "audioCodec": "aac"
     },
     {
       "relPath": "S01E03 - Bam Kicking His Dad's Ass All Day Today.mp4",
@@ -215,7 +268,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "S01E03 - Bam Kicking His Dad's Ass All Day Today"
+      "title": "S01E03 - Bam Kicking His Dad's Ass All Day Today",
+      "audioCodec": "aac"
     },
     {
       "relPath": "S01E04 - Poo Poo Platter.mp4",
@@ -223,7 +277,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "S01E04 - Poo Poo Platter"
+      "title": "S01E04 - Poo Poo Platter",
+      "audioCodec": "aac"
     },
     {
       "relPath": "S01E05 - Mianus.mp4",
@@ -231,7 +286,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "S01E05 - Mianus"
+      "title": "S01E05 - Mianus",
+      "audioCodec": "aac"
     },
     {
       "relPath": "S01E06 - Poo Joust.mp4",
@@ -239,7 +295,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "S01E06 - Poo Joust"
+      "title": "S01E06 - Poo Joust",
+      "audioCodec": "aac"
     },
     {
       "relPath": "S01E07 - Casket.mp4",
@@ -247,7 +304,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "S01E07 - Casket"
+      "title": "S01E07 - Casket",
+      "audioCodec": "aac"
     },
     {
       "relPath": "S01E08 - Santa Colonic.mp4",
@@ -255,7 +313,80 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "S01E08 - Santa Colonic"
+      "title": "S01E08 - Santa Colonic",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "S02E01 - Cup Test.mp4",
+      "durationSeconds": 1291,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "S02E01 - Cup Test",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "S02E02 - Jai Alai.mp4",
+      "durationSeconds": 1291,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "S02E02 - Jai Alai",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "S02E03 - The Loop.mp4",
+      "durationSeconds": 1290,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "S02E03 - The Loop",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "S02E04 - Wakeboarding.mp4",
+      "durationSeconds": 1291,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "S02E04 - Wakeboarding",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "S02E05 - Donut.mp4",
+      "durationSeconds": 1292,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "S02E05 - Donut",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "S02E06 - Slingshot.mp4",
+      "durationSeconds": 1290,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "S02E06 - Slingshot",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "S02E07 - Eddie's Auto.mp4",
+      "durationSeconds": 1291,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "S02E07 - Eddie's Auto",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "S02E08 - The Matador.mp4",
+      "durationSeconds": 1293,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "S02E08 - The Matador",
+      "audioCodec": "aac"
     },
     {
       "relPath": "Saving.Silverman.2001.720p.BluRay.999MB.HQ.x265.10bit-GalaxyRG.mkv",
@@ -263,15 +394,44 @@
       "format": "mkv",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "Saving.Silverman.2001.720p.BluRay.999MB.HQ.x265.10bit-GalaxyRG"
+      "title": "Saving.Silverman.2001.720p.BluRay.999MB.HQ.x265.10bit-GalaxyRG",
+      "audioCodec": "aac"
     },
     {
-      "relPath": "Sin.City.2005.EXTENDED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.aac.mp4",
+      "relPath": "Saving.Silverman.2001.720p.BluRay.999MB.HQ.x265.10bit-GalaxyRG.mp4",
+      "durationSeconds": 5781,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "Saving.Silverman.2001.720p.BluRay.999MB.HQ.x265.10bit-GalaxyRG",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "Sin.City.2005.EXTENDED.1080p.BluRay.DDP5.1.x265.mp4",
       "durationSeconds": 8505,
       "format": "mp4",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "Sin.City.2005.EXTENDED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265.aac"
+      "title": "Sin.City.2005.EXTENDED.1080p.BluRay.DDP5.1.x265",
+      "audioCodec": "aac"
+    },
+    {
+      "relPath": "sprinter-30f30jrtb2010.avi",
+      "durationSeconds": 3079,
+      "format": "avi",
+      "supported": false,
+      "supportedViaCompanion": false,
+      "title": "sprinter-30f30jrtb2010",
+      "audioCodec": "mp3"
+    },
+    {
+      "relPath": "sprinter-30f30jrtb2010.mp4",
+      "durationSeconds": 3079,
+      "format": "mp4",
+      "supported": true,
+      "supportedViaCompanion": false,
+      "title": "sprinter-30f30jrtb2010",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Last Temptation Of Christ 1988 BDRip 1080p x264 AC3 English Latino URBiN4HD Eng Spa Subs.mkv",
@@ -279,7 +439,8 @@
       "format": "mkv",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Last Temptation Of Christ 1988 BDRip 1080p x264 AC3 English Latino URBiN4HD Eng Spa Subs"
+      "title": "The Last Temptation Of Christ 1988 BDRip 1080p x264 AC3 English Latino URBiN4HD Eng Spa Subs",
+      "audioCodec": "ac3"
     },
     {
       "relPath": "The Simpsons S02E01 Bart Gets an F.mp4",
@@ -287,7 +448,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E01 Bart Gets an F"
+      "title": "The Simpsons S02E01 Bart Gets an F",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E02 Simpson and Delilah.mp4",
@@ -295,7 +457,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E02 Simpson and Delilah"
+      "title": "The Simpsons S02E02 Simpson and Delilah",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E03 Treehouse of Horror.mp4",
@@ -303,7 +466,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E03 Treehouse of Horror"
+      "title": "The Simpsons S02E03 Treehouse of Horror",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E04 Two Cars in Every Garage and Three Eyes on Every Fish.mp4",
@@ -311,7 +475,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E04 Two Cars in Every Garage and Three Eyes on Every Fish"
+      "title": "The Simpsons S02E04 Two Cars in Every Garage and Three Eyes on Every Fish",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E05 Dancin' Homer.mp4",
@@ -319,7 +484,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E05 Dancin' Homer"
+      "title": "The Simpsons S02E05 Dancin' Homer",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E06 Dead Putting Society.mp4",
@@ -327,7 +493,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E06 Dead Putting Society"
+      "title": "The Simpsons S02E06 Dead Putting Society",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E07 Bart vs. Thanksgiving.mp4",
@@ -335,7 +502,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E07 Bart vs. Thanksgiving"
+      "title": "The Simpsons S02E07 Bart vs. Thanksgiving",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E08 Bart the Daredevil.mp4",
@@ -343,7 +511,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E08 Bart the Daredevil"
+      "title": "The Simpsons S02E08 Bart the Daredevil",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E09 Itchy & Scratchy & Marge.mp4",
@@ -351,7 +520,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E09 Itchy & Scratchy & Marge"
+      "title": "The Simpsons S02E09 Itchy & Scratchy & Marge",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E10 Bart Gets Hit by a Car.mp4",
@@ -359,7 +529,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E10 Bart Gets Hit by a Car"
+      "title": "The Simpsons S02E10 Bart Gets Hit by a Car",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E11 One Fish, Two Fish, Blowfish, Blue Fish.mp4",
@@ -367,7 +538,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E11 One Fish, Two Fish, Blowfish, Blue Fish"
+      "title": "The Simpsons S02E11 One Fish, Two Fish, Blowfish, Blue Fish",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E12 The Way We Was.mp4",
@@ -375,7 +547,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E12 The Way We Was"
+      "title": "The Simpsons S02E12 The Way We Was",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E13 Homer vs. Lisa and the Eighth Commandment.mp4",
@@ -383,7 +556,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E13 Homer vs. Lisa and the Eighth Commandment"
+      "title": "The Simpsons S02E13 Homer vs. Lisa and the Eighth Commandment",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E14 Principal Charming.mp4",
@@ -391,7 +565,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E14 Principal Charming"
+      "title": "The Simpsons S02E14 Principal Charming",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E15 Oh Brother, Where Art Thou.mp4",
@@ -399,7 +574,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E15 Oh Brother, Where Art Thou"
+      "title": "The Simpsons S02E15 Oh Brother, Where Art Thou",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E16 Bart's Dog Gets an F.mp4",
@@ -407,7 +583,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E16 Bart's Dog Gets an F"
+      "title": "The Simpsons S02E16 Bart's Dog Gets an F",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E17 Old Money.mp4",
@@ -415,7 +592,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E17 Old Money"
+      "title": "The Simpsons S02E17 Old Money",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E18 Brush With Greatness.mp4",
@@ -423,7 +601,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E18 Brush With Greatness"
+      "title": "The Simpsons S02E18 Brush With Greatness",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E19 Lisa's Substitute.mp4",
@@ -431,7 +610,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E19 Lisa's Substitute"
+      "title": "The Simpsons S02E19 Lisa's Substitute",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E20 The War of the Simpsons.mp4",
@@ -439,7 +619,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E20 The War of the Simpsons"
+      "title": "The Simpsons S02E20 The War of the Simpsons",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E21 Three Men and a Comic Book.mp4",
@@ -447,7 +628,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E21 Three Men and a Comic Book"
+      "title": "The Simpsons S02E21 Three Men and a Comic Book",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S02E22 Blood Feud.mp4",
@@ -455,7 +637,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S02E22 Blood Feud"
+      "title": "The Simpsons S02E22 Blood Feud",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E01 Stark Raving Dad.mp4",
@@ -463,7 +646,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E01 Stark Raving Dad"
+      "title": "The Simpsons S03E01 Stark Raving Dad",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E02 Mr. Lisa Goes to Washington.mp4",
@@ -471,7 +655,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E02 Mr. Lisa Goes to Washington"
+      "title": "The Simpsons S03E02 Mr. Lisa Goes to Washington",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E03 When Flanders Failed.mp4",
@@ -479,7 +664,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E03 When Flanders Failed"
+      "title": "The Simpsons S03E03 When Flanders Failed",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E04 Bart the Murderer.mp4",
@@ -487,7 +673,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E04 Bart the Murderer"
+      "title": "The Simpsons S03E04 Bart the Murderer",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E05 Homer Defined.mp4",
@@ -495,7 +682,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E05 Homer Defined"
+      "title": "The Simpsons S03E05 Homer Defined",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E06 Like Father Like Clown.mp4",
@@ -503,7 +691,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E06 Like Father Like Clown"
+      "title": "The Simpsons S03E06 Like Father Like Clown",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E07 Treehouse of Horror II.mp4",
@@ -511,7 +700,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E07 Treehouse of Horror II"
+      "title": "The Simpsons S03E07 Treehouse of Horror II",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E08 Lisa's Pony.mp4",
@@ -519,7 +709,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E08 Lisa's Pony"
+      "title": "The Simpsons S03E08 Lisa's Pony",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E09 Saturdays of Thunder.mp4",
@@ -527,7 +718,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E09 Saturdays of Thunder"
+      "title": "The Simpsons S03E09 Saturdays of Thunder",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E10 Flaming Moe's.mp4",
@@ -535,7 +727,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E10 Flaming Moe's"
+      "title": "The Simpsons S03E10 Flaming Moe's",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E11 Burns Verkaufen der Kraftwerk.mp4",
@@ -543,7 +736,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E11 Burns Verkaufen der Kraftwerk"
+      "title": "The Simpsons S03E11 Burns Verkaufen der Kraftwerk",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E12 I Married Marge.mp4",
@@ -551,7 +745,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E12 I Married Marge"
+      "title": "The Simpsons S03E12 I Married Marge",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E13 Radio Bart.mp4",
@@ -559,7 +754,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E13 Radio Bart"
+      "title": "The Simpsons S03E13 Radio Bart",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E14 Lisa the Greek.mp4",
@@ -567,7 +763,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E14 Lisa the Greek"
+      "title": "The Simpsons S03E14 Lisa the Greek",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E15 Homer Alone.mp4",
@@ -575,7 +772,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E15 Homer Alone"
+      "title": "The Simpsons S03E15 Homer Alone",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E16 Bart the Lover.mp4",
@@ -583,7 +781,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E16 Bart the Lover"
+      "title": "The Simpsons S03E16 Bart the Lover",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E17 Homer at the Bat.mp4",
@@ -591,7 +790,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E17 Homer at the Bat"
+      "title": "The Simpsons S03E17 Homer at the Bat",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E18 Separate Vocations.mp4",
@@ -599,7 +799,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E18 Separate Vocations"
+      "title": "The Simpsons S03E18 Separate Vocations",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E19 Dog of Death.mp4",
@@ -607,7 +808,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E19 Dog of Death"
+      "title": "The Simpsons S03E19 Dog of Death",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E20 Colonel Homer.mp4",
@@ -615,7 +817,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E20 Colonel Homer"
+      "title": "The Simpsons S03E20 Colonel Homer",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E21 Black Widower.mp4",
@@ -623,7 +826,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E21 Black Widower"
+      "title": "The Simpsons S03E21 Black Widower",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E22 The Otto Show.mp4",
@@ -631,7 +835,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E22 The Otto Show"
+      "title": "The Simpsons S03E22 The Otto Show",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E23 Bart's Friend Falls in Love.mp4",
@@ -639,7 +844,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E23 Bart's Friend Falls in Love"
+      "title": "The Simpsons S03E23 Bart's Friend Falls in Love",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Simpsons S03E24 Brother, Can You Spare Two Dimes.mp4",
@@ -647,7 +853,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Simpsons S03E24 Brother, Can You Spare Two Dimes"
+      "title": "The Simpsons S03E24 Brother, Can You Spare Two Dimes",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The Time Machine 2002 BDRip 1080p x264 DTS-HighCode.mkv",
@@ -655,7 +862,8 @@
       "format": "mkv",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The Time Machine 2002 BDRip 1080p x264 DTS-HighCode"
+      "title": "The Time Machine 2002 BDRip 1080p x264 DTS-HighCode",
+      "audioCodec": "dts"
     },
     {
       "relPath": "The.Beatles.Anthology.S01E01.1080p.HEVC.x265-MeGusta.mkv",
@@ -663,7 +871,8 @@
       "format": "mkv",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "The.Beatles.Anthology.S01E01.1080p.HEVC.x265-MeGusta"
+      "title": "The.Beatles.Anthology.S01E01.1080p.HEVC.x265-MeGusta",
+      "audioCodec": "eac3"
     },
     {
       "relPath": "The.Beatles.Anthology.S01E02.1080p.WEB.h264-GRACE[EZTVx.to].mkv",
@@ -671,7 +880,8 @@
       "format": "mkv",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The.Beatles.Anthology.S01E02.1080p.WEB.h264-GRACE[EZTVx.to]"
+      "title": "The.Beatles.Anthology.S01E02.1080p.WEB.h264-GRACE[EZTVx.to]",
+      "audioCodec": "eac3"
     },
     {
       "relPath": "The.Beatles.Anthology.S01E03.1080p.WEB.h264-GRACE[EZTVx.to].mkv",
@@ -679,7 +889,8 @@
       "format": "mkv",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The.Beatles.Anthology.S01E03.1080p.WEB.h264-GRACE[EZTVx.to]"
+      "title": "The.Beatles.Anthology.S01E03.1080p.WEB.h264-GRACE[EZTVx.to]",
+      "audioCodec": "eac3"
     },
     {
       "relPath": "The.Beatles.Anthology.S01E04.1080p.WEB.h264-GRACE.aac.mp4",
@@ -687,7 +898,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The.Beatles.Anthology.S01E04.1080p.WEB.h264-GRACE.aac"
+      "title": "The.Beatles.Anthology.S01E04.1080p.WEB.h264-GRACE.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE.aac.mp4",
@@ -695,7 +907,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE.aac"
+      "title": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE.mkv",
@@ -703,7 +916,8 @@
       "format": "mkv",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE"
+      "title": "The.Beatles.Anthology.S01E05.1080p.WEB.h264-GRACE",
+      "audioCodec": "eac3"
     },
     {
       "relPath": "The.Beatles.Anthology.S01E08.1080p.WEB.h264-GRACE.mkv",
@@ -711,7 +925,8 @@
       "format": "mkv",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The.Beatles.Anthology.S01E08.1080p.WEB.h264-GRACE"
+      "title": "The.Beatles.Anthology.S01E08.1080p.WEB.h264-GRACE",
+      "audioCodec": "eac3"
     },
     {
       "relPath": "The.Holy.Mountain.1973.REMASTERED.1080p.BluRay.H264.AAC-LAMA.mp4",
@@ -719,7 +934,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The.Holy.Mountain.1973.REMASTERED.1080p.BluRay.H264.AAC-LAMA"
+      "title": "The.Holy.Mountain.1973.REMASTERED.1080p.BluRay.H264.AAC-LAMA",
+      "audioCodec": "aac"
     },
     {
       "relPath": "The.Matrix.1999.1080p.BrRip.x264.YIFY.mp4",
@@ -727,7 +943,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "The.Matrix.1999.1080p.BrRip.x264.YIFY"
+      "title": "The.Matrix.1999.1080p.BrRip.x264.YIFY",
+      "audioCodec": "aac"
     },
     {
       "relPath": "viva.la.bam.s01e01.phils.hell.day.dvdrip.xvid-fqm.aac.mp4",
@@ -735,7 +952,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e01.phils.hell.day.dvdrip.xvid-fqm.aac"
+      "title": "viva.la.bam.s01e01.phils.hell.day.dvdrip.xvid-fqm.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "viva.la.bam.s01e01.phils.hell.day.dvdrip.xvid-fqm.avi",
@@ -743,7 +961,8 @@
       "format": "avi",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e01.phils.hell.day.dvdrip.xvid-fqm"
+      "title": "viva.la.bam.s01e01.phils.hell.day.dvdrip.xvid-fqm",
+      "audioCodec": "mp3"
     },
     {
       "relPath": "viva.la.bam.s01e02.bam.hosts.a.concert.dvdrip.xvid-fqm.aac.mp4",
@@ -751,7 +970,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e02.bam.hosts.a.concert.dvdrip.xvid-fqm.aac"
+      "title": "viva.la.bam.s01e02.bam.hosts.a.concert.dvdrip.xvid-fqm.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "viva.la.bam.s01e02.bam.hosts.a.concert.dvdrip.xvid-fqm.avi",
@@ -759,7 +979,8 @@
       "format": "avi",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e02.bam.hosts.a.concert.dvdrip.xvid-fqm"
+      "title": "viva.la.bam.s01e02.bam.hosts.a.concert.dvdrip.xvid-fqm",
+      "audioCodec": "mp3"
     },
     {
       "relPath": "viva.la.bam.s01e03.the.family.reunion.dvdrip.xvid-fqm.aac.mp4",
@@ -767,7 +988,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e03.the.family.reunion.dvdrip.xvid-fqm.aac"
+      "title": "viva.la.bam.s01e03.the.family.reunion.dvdrip.xvid-fqm.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "viva.la.bam.s01e03.the.family.reunion.dvdrip.xvid-fqm.avi",
@@ -775,7 +997,8 @@
       "format": "avi",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e03.the.family.reunion.dvdrip.xvid-fqm"
+      "title": "viva.la.bam.s01e03.the.family.reunion.dvdrip.xvid-fqm",
+      "audioCodec": "mp3"
     },
     {
       "relPath": "viva.la.bam.s01e04.were.going.to.vegas.dvdrip.xvid-fqm.aac.mp4",
@@ -783,7 +1006,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e04.were.going.to.vegas.dvdrip.xvid-fqm.aac"
+      "title": "viva.la.bam.s01e04.were.going.to.vegas.dvdrip.xvid-fqm.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "viva.la.bam.s01e04.were.going.to.vegas.dvdrip.xvid-fqm.avi",
@@ -791,7 +1015,8 @@
       "format": "avi",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e04.were.going.to.vegas.dvdrip.xvid-fqm"
+      "title": "viva.la.bam.s01e04.were.going.to.vegas.dvdrip.xvid-fqm",
+      "audioCodec": "mp3"
     },
     {
       "relPath": "viva.la.bam.s01e05.three-day.weekend.dvdrip.xvid-fqm.aac.mp4",
@@ -799,7 +1024,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e05.three-day.weekend.dvdrip.xvid-fqm.aac"
+      "title": "viva.la.bam.s01e05.three-day.weekend.dvdrip.xvid-fqm.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "viva.la.bam.s01e05.three-day.weekend.dvdrip.xvid-fqm.avi",
@@ -807,7 +1033,8 @@
       "format": "avi",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e05.three-day.weekend.dvdrip.xvid-fqm"
+      "title": "viva.la.bam.s01e05.three-day.weekend.dvdrip.xvid-fqm",
+      "audioCodec": "mp3"
     },
     {
       "relPath": "viva.la.bam.s01e06.the.christmas.episode.dvdrip.xvid-fqm.aac.mp4",
@@ -815,7 +1042,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e06.the.christmas.episode.dvdrip.xvid-fqm.aac"
+      "title": "viva.la.bam.s01e06.the.christmas.episode.dvdrip.xvid-fqm.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "viva.la.bam.s01e06.the.christmas.episode.dvdrip.xvid-fqm.avi",
@@ -823,7 +1051,8 @@
       "format": "avi",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e06.the.christmas.episode.dvdrip.xvid-fqm"
+      "title": "viva.la.bam.s01e06.the.christmas.episode.dvdrip.xvid-fqm",
+      "audioCodec": "mp3"
     },
     {
       "relPath": "viva.la.bam.s01e07.april.gets.revenge.dvdrip.xvid-fqm.aac.mp4",
@@ -831,7 +1060,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e07.april.gets.revenge.dvdrip.xvid-fqm.aac"
+      "title": "viva.la.bam.s01e07.april.gets.revenge.dvdrip.xvid-fqm.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "viva.la.bam.s01e07.april.gets.revenge.dvdrip.xvid-fqm.avi",
@@ -839,7 +1069,8 @@
       "format": "avi",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e07.april.gets.revenge.dvdrip.xvid-fqm"
+      "title": "viva.la.bam.s01e07.april.gets.revenge.dvdrip.xvid-fqm",
+      "audioCodec": "mp3"
     },
     {
       "relPath": "viva.la.bam.s01e08.the.scavenger.hunt.dvdrip.xvid-fqm.aac.mp4",
@@ -847,7 +1078,8 @@
       "format": "mp4",
       "supported": true,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e08.the.scavenger.hunt.dvdrip.xvid-fqm.aac"
+      "title": "viva.la.bam.s01e08.the.scavenger.hunt.dvdrip.xvid-fqm.aac",
+      "audioCodec": "aac"
     },
     {
       "relPath": "viva.la.bam.s01e08.the.scavenger.hunt.dvdrip.xvid-fqm.avi",
@@ -855,7 +1087,8 @@
       "format": "avi",
       "supported": false,
       "supportedViaCompanion": false,
-      "title": "viva.la.bam.s01e08.the.scavenger.hunt.dvdrip.xvid-fqm"
+      "title": "viva.la.bam.s01e08.the.scavenger.hunt.dvdrip.xvid-fqm",
+      "audioCodec": "mp3"
     }
   ]
 }

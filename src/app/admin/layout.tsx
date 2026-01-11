@@ -9,6 +9,7 @@ const navLinks = [
   { href: "/admin/channels", label: "Channels" },
   { href: "/admin/ftp-test", label: "FTP Test" },
   { href: "/admin/styling", label: "Styling" },
+  { href: "/admin/agent", label: "Agent" },
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
