@@ -663,7 +663,6 @@ export default function MediaAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [mediaSource, setMediaSource] = useState<MediaSource>("local");
   const [mediaRefreshToken, setMediaRefreshToken] = useState(0);
-  const [pushingManifest, setPushingManifest] = useState(false);
   const [scanningRemote, setScanningRemote] = useState(false);
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const [scanReport, setScanReport] = useState<ScanReport | null>(null);
@@ -835,25 +834,6 @@ export default function MediaAdminPage() {
     setMediaRefreshToken((token) => token + 1);
   };
 
-  const pushRemoteManifest = async () => {
-    setPushingManifest(true);
-    setMessage(null);
-    setError(null);
-    try {
-      const res = await fetch("/api/media-index/push", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.message || "Upload failed");
-      }
-      setMessage(data.message || "Uploaded media-index.json");
-      refreshMediaList();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setPushingManifest(false);
-    }
-  };
-
   const scanRemoteMedia = async () => {
     setScanningRemote(true);
     setMessage(null);
@@ -956,24 +936,14 @@ export default function MediaAdminPage() {
               </button>
             )}
             {mediaSource === "remote" && (
-              <>
-                <button
-                  onClick={() => void pushRemoteManifest()}
-                  disabled={loading || pushingManifest}
-                  className="rounded-md border border-blue-300/50 bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30 disabled:opacity-50"
-                  title="Rebuild and upload media-index.json to the remote server"
-                >
-                  {pushingManifest ? "Updating JSON…" : "Update JSON"}
-                </button>
-                <button
-                  onClick={() => void scanRemoteMedia()}
-                  disabled={loading || scanningRemote}
-                  className="rounded-md border border-blue-300/50 bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30 disabled:opacity-50"
-                  title="Scan remote folder via FTP and regenerate media-index.json"
-                >
-                  {scanningRemote ? "Scanning…" : "Rescan Remote"}
-                </button>
-              </>
+              <button
+                onClick={() => void scanRemoteMedia()}
+                disabled={loading || scanningRemote}
+                className="rounded-md border border-blue-300/50 bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30 disabled:opacity-50"
+                title="Scan remote FTP folder, analyze all media files, and update the remote media-index.json"
+              >
+                {scanningRemote ? "Syncing…" : "Scan & Sync Remote"}
+              </button>
             )}
           </div>
         </div>

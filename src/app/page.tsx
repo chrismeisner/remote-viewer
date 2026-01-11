@@ -60,6 +60,7 @@ export default function Home() {
   // Password authentication state
   const [isAuthed, setIsAuthed] = useState(false);
   const [passwordRequired, setPasswordRequired] = useState<boolean | null>(null);
+  const [authCheckError, setAuthCheckError] = useState<string | null>(null);
   
   // Check authentication status on mount
   useEffect(() => {
@@ -71,18 +72,31 @@ export default function Home() {
         return;
       }
       
-      // Check if password is required
+      // Check if password is required and if already authenticated via cookie
       try {
         const res = await fetch("/api/auth/verify");
-        const data = await res.json();
-        setPasswordRequired(data.passwordRequired);
-        if (!data.passwordRequired) {
-          setIsAuthed(true);
+        if (!res.ok) {
+          throw new Error(`Auth check failed: ${res.status}`);
         }
-      } catch {
-        // If we can't check, assume no password required
-        setIsAuthed(true);
-        setPasswordRequired(false);
+        const data = await res.json();
+        
+        console.log("[auth] check result:", data);
+        
+        setPasswordRequired(data.passwordRequired);
+        
+        // If authenticated via cookie or no password required, allow access
+        if (data.isAuthenticated) {
+          setIsAuthed(true);
+          // Also set sessionStorage to keep consistent state
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("remote-viewer-auth", "true");
+          }
+        }
+      } catch (error) {
+        console.error("[auth] check error:", error);
+        setAuthCheckError(error instanceof Error ? error.message : "Auth check failed");
+        // On error, require authentication to be safe
+        setPasswordRequired(true);
       }
     };
     checkAuth();
@@ -808,7 +822,12 @@ export default function Home() {
   if (passwordRequired === null) {
     return (
       <div className="bg-black text-neutral-100 min-h-screen flex items-center justify-center">
-        <div className="text-neutral-400">Loading...</div>
+        <div className="text-center space-y-2">
+          <div className="text-neutral-400">Checking authentication...</div>
+          {authCheckError && (
+            <div className="text-sm text-red-400">{authCheckError}</div>
+          )}
+        </div>
       </div>
     );
   }

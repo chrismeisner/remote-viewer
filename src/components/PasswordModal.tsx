@@ -21,24 +21,29 @@ export function PasswordModal({ open, onSuccess }: PasswordModalProps) {
     setLoading(true);
 
     try {
+      console.log("[auth] attempting login...");
       const res = await fetch("/api/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
 
+      console.log("[auth] login response status:", res.status);
       const data = await res.json();
+      console.log("[auth] login response data:", data);
 
       if (data.success) {
         // Store auth state in sessionStorage so it persists during the session
         sessionStorage.setItem(AUTH_STORAGE_KEY, "true");
+        console.log("[auth] login successful");
         onSuccess();
       } else {
         setError(data.error || "Invalid password");
         setPassword("");
       }
-    } catch {
-      setError("Unable to verify password");
+    } catch (error) {
+      console.error("[auth] login error:", error);
+      setError("Unable to verify password. Please check your connection.");
     } finally {
       setLoading(false);
     }
