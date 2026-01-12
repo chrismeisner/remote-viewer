@@ -171,16 +171,52 @@ type ProbeResult = {
 
 async function probeRemoteDuration(url: string): Promise<ProbeResult> {
   try {
+    // First, do a quick HEAD request to verify the URL is accessible
+    // This helps identify network/access issues before the longer ffprobe call
+    try {
+      const headRes = await fetch(url, { 
+        method: "HEAD",
+        signal: AbortSignal.timeout(10000), // 10 second timeout for HEAD
+      });
+      if (!headRes.ok) {
+        return { 
+          durationSeconds: 0, 
+          success: false, 
+          error: `HTTP ${headRes.status}: ${headRes.statusText}` 
+        };
+      }
+    } catch (fetchErr) {
+      const fetchErrMsg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+      console.warn("HEAD request failed for", url, fetchErrMsg);
+      // Continue anyway - some servers don't support HEAD but work with GET
+    }
+
     const ffprobePath = await resolveFfprobePath();
-    const { stdout } = await execFileAsync(ffprobePath, [
+    const { stdout, stderr } = await execFileAsync(ffprobePath, [
       "-v",
-      "quiet",
+      "error",                    // Show errors for debugging
+      "-probesize",
+      "10000000",                 // Limit to 10MB of data to probe (enough for metadata)
+      "-analyzeduration",
+      "10000000",                 // Limit analysis duration
+      "-fflags",
+      "+genpts",                  // Generate presentation timestamps
+      "-reconnect",
+      "1",                        // Reconnect on connection lost
+      "-reconnect_streamed",
+      "1",                        // Reconnect for streamed content
+      "-reconnect_delay_max",
+      "5",                        // Max reconnect delay in seconds
       "-print_format",
       "json",
       "-show_format",
       "-show_streams",
       url,
-    ], { timeout: 30000 }); // 30 second timeout per file
+    ], { timeout: 90000 }); // 90 second timeout per file for slow connections
+
+    if (stderr) {
+      console.warn("ffprobe stderr for", url, ":", stderr);
+    }
 
     const parsed = JSON.parse(stdout);
     const duration = extractDurationSeconds(parsed);
@@ -191,8 +227,12 @@ async function probeRemoteDuration(url: string): Promise<ProbeResult> {
     return { durationSeconds: 0, success: false, error: "No duration found in metadata" };
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    console.warn("ffprobe failed for remote URL", url, errMsg);
-    return { durationSeconds: 0, success: false, error: errMsg };
+    // Include more details for debugging
+    const errorDetails = error instanceof Error && 'stderr' in error 
+      ? `${errMsg} | stderr: ${(error as { stderr?: string }).stderr}`
+      : errMsg;
+    console.warn("ffprobe failed for remote URL", url, errorDetails);
+    return { durationSeconds: 0, success: false, error: errorDetails };
   }
 }
 
@@ -268,10 +308,15 @@ export async function POST() {
     // Probe each file for duration (in parallel with concurrency limit)
     const items: MediaItem[] = [];
     const fileResults: FileResult[] = [];
-    const CONCURRENCY = 3; // Limit concurrent ffprobe calls
+    const CONCURRENCY = 2; // Limit concurrent ffprobe calls (reduced for remote reliability)
     
     for (let i = 0; i < mediaFiles.length; i += CONCURRENCY) {
       const batch = mediaFiles.slice(i, i + CONCURRENCY);
+      
+      // Add a small delay between batches to avoid overwhelming the remote server
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
       const batchResults = await Promise.all(
         batch.map(async (f) => {
           const format = getFormat(f.name);
