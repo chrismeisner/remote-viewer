@@ -45,14 +45,39 @@ async function resolveMediaRoot(): Promise<string | null> {
  * Returns null if no media root is configured.
  */
 async function resolveDataRoot(): Promise<string | null> {
+  // Reuse cached value when available
+  if (cachedDataRoot) return cachedDataRoot;
+
+  // Prefer configured media root when it is writable
   const mediaRoot = await getEffectiveMediaRoot();
-  if (!mediaRoot) {
+  if (mediaRoot) {
+    const dataRoot = getDataFolderForMediaRoot(mediaRoot);
+    try {
+      // Ensure the directory exists and is writable
+      await fs.mkdir(dataRoot, { recursive: true });
+      cachedDataRoot = dataRoot;
+      return dataRoot;
+    } catch (error) {
+      // If the configured path is invalid or not writable (common in cloud/runtime envs),
+      // fall back to the bundled data folder so schedule operations still work.
+      console.warn(
+        "Media data path is not writable; falling back to app data folder:",
+        error,
+      );
+    }
+  }
+
+  // Fallback to repository data folder (works in ephemeral/cloud environments)
+  const fallbackRoot = path.join(process.cwd(), "data", "local");
+  try {
+    await fs.mkdir(fallbackRoot, { recursive: true });
+    cachedDataRoot = fallbackRoot;
+    return fallbackRoot;
+  } catch (error) {
+    console.warn("Failed to create fallback data folder", error);
     cachedDataRoot = null;
     return null;
   }
-  const dataRoot = getDataFolderForMediaRoot(mediaRoot);
-  cachedDataRoot = dataRoot;
-  return dataRoot;
 }
 
 // Dynamic path helpers - return null if no folder configured
