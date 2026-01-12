@@ -469,10 +469,6 @@ function ScheduleAdminContent() {
     [modalFile, sortedFiles],
   );
 
-  const updateSlot = (index: number, slot: ScheduleSlot) => {
-    setSlots((prev) => prev.map((s, i) => (i === index ? slot : s)));
-  };
-
   const clearSchedule = async () => {
     if (!channel) return;
     const confirmed = window.confirm(
@@ -622,22 +618,6 @@ function ScheduleAdminContent() {
 
   // Note: lastSavedSlotsRef is now updated in the loadSchedule effect
   // to prevent race conditions with the auto-save effect
-
-  const removeSlot = (index: number) => {
-    setSlots((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const scheduleNext = (slot: ScheduleSlot) => {
-    const nextStart = incrementTime(slot.end, 1);
-    // Use the previous file if it's supported, otherwise default to first supported file
-    const file = supportedFiles.find((f) => f.relPath === slot.file)
-      ? slot.file
-      : supportedFiles[0]?.relPath || "";
-    setModalFile(file);
-    setModalStart(nextStart);
-    setModalEnd(computeEndTime(nextStart, file, sortedFiles));
-    setShowSlotModal(true);
-  };
 
   // Keep end time in sync when file, start time, or durations change.
   // Only overwrite if the current end matches the previous suggestion or is invalid.
@@ -797,9 +777,6 @@ function ScheduleAdminContent() {
                         <th className="px-3 py-2 text-right font-semibold w-28">
                           Duration
                         </th>
-                        <th className="px-3 py-2 text-right font-semibold w-20">
-                          Actions
-                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
@@ -825,62 +802,36 @@ function ScheduleAdminContent() {
                                   : "bg-neutral-950/60"
                             }`}>
                               <td className="px-3 py-2">
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="time"
-                                    step="1"
-                                    className="w-24 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
-                                    value={slot.start}
-                                    onChange={(e) =>
-                                      updateSlot(idx, { ...slot, start: e.target.value })
-                                    }
-                                  />
+                                <div className="flex items-center gap-2 text-sm font-mono text-neutral-100">
+                                  <span>{slot.start}</span>
                                   {isMidnightCrossing && (
                                     <span className="text-[10px] text-indigo-300" title="Crosses midnight">🌙</span>
                                   )}
                                 </div>
                               </td>
                               <td className="px-3 py-2">
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="time"
-                                    step="1"
-                                    className="w-24 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
-                                    value={slot.end}
-                                    onChange={(e) =>
-                                      updateSlot(idx, { ...slot, end: e.target.value })
-                                    }
-                                  />
+                                <div className="flex items-center gap-2 text-sm font-mono text-neutral-100">
+                                  <span>{slot.end}</span>
                                   {isMidnightCrossing && (
                                     <span className="text-[10px] text-indigo-300" title="Next day">+1d</span>
                                   )}
                                 </div>
                               </td>
                               <td className="px-3 py-2">
-                                <select
-                                  className={`w-full rounded-md bg-neutral-900 border px-2 py-1 text-sm ${
-                                    slotIsSupported ? "border-white/10" : "border-amber-500/50"
-                                  }`}
-                                  value={slot.file}
-                                  onChange={(e) =>
-                                    updateSlot(idx, { ...slot, file: e.target.value })
-                                  }
-                                >
-                                  {/* Show current file if it's unsupported (so it doesn't disappear from dropdown) */}
-                                  {slot.file && !supportedFiles.some(f => f.relPath === slot.file) && fileByRel.get(slot.file) && (
-                                    <option key={slot.file} value={slot.file} className="text-amber-300">
-                                      ⚠️ {slot.file} ({formatDuration(fileByRel.get(slot.file)?.durationSeconds || 0)}) - UNSUPPORTED
-                                    </option>
+                                <div className="flex flex-col gap-1">
+                                  <span
+                                    className={`font-mono text-sm break-all ${
+                                      slotIsSupported ? "text-neutral-100" : "text-amber-200"
+                                    }`}
+                                  >
+                                    {slot.file || "—"}
+                                  </span>
+                                  {!slotIsSupported && slot.file && (
+                                    <span className="text-[11px] text-amber-300">
+                                      Unsupported in browser
+                                    </span>
                                   )}
-                                  {supportedFiles.map((file) => (
-                                    <option key={file.relPath} value={file.relPath}>
-                                      {file.relPath} ({formatDuration(file.durationSeconds)})
-                                    </option>
-                                  ))}
-                                  {supportedFiles.length === 0 && (
-                                    <option value="">No supported files in library</option>
-                                  )}
-                                </select>
+                                </div>
                               </td>
                               <td className="px-3 py-2 text-right text-neutral-300">
                                 <div className="flex flex-col items-end text-xs">
@@ -890,22 +841,6 @@ function ScheduleAdminContent() {
                                       ({formatDuration(slotWindow)} window)
                                     </span>
                                   )}
-                                </div>
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                <div className="flex justify-end gap-2">
-                                  <button
-                                    onClick={() => scheduleNext(slot)}
-                                    className="rounded-md border border-white/20 bg-white/10 px-2 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/40 hover:bg-white/15"
-                                  >
-                                    Schedule next
-                                  </button>
-                                  <button
-                                    onClick={() => removeSlot(idx)}
-                                    className="rounded-md border border-red-400/50 bg-red-500/20 px-2 py-1 text-xs font-semibold text-red-100 transition hover:border-red-300 hover:bg-red-500/30"
-                                  >
-                                    Remove
-                                  </button>
                                 </div>
                               </td>
                             </tr>
