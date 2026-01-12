@@ -171,48 +171,20 @@ type ProbeResult = {
 
 async function probeRemoteDuration(url: string): Promise<ProbeResult> {
   try {
-    // First, do a quick HEAD request to verify the URL is accessible
-    // This helps identify network/access issues before the longer ffprobe call
-    try {
-      const headRes = await fetch(url, { 
-        method: "HEAD",
-        signal: AbortSignal.timeout(10000), // 10 second timeout for HEAD
-      });
-      if (!headRes.ok) {
-        return { 
-          durationSeconds: 0, 
-          success: false, 
-          error: `HTTP ${headRes.status}: ${headRes.statusText}` 
-        };
-      }
-    } catch (fetchErr) {
-      const fetchErrMsg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-      console.warn("HEAD request failed for", url, fetchErrMsg);
-      // Continue anyway - some servers don't support HEAD but work with GET
-    }
-
     const ffprobePath = await resolveFfprobePath();
     const { stdout, stderr } = await execFileAsync(ffprobePath, [
       "-v",
       "error",                    // Show errors for debugging
       "-probesize",
-      "10000000",                 // Limit to 10MB of data to probe (enough for metadata)
+      "5000000",                  // Limit to 5MB of data to probe
       "-analyzeduration",
-      "10000000",                 // Limit analysis duration
-      "-fflags",
-      "+genpts",                  // Generate presentation timestamps
-      "-reconnect",
-      "1",                        // Reconnect on connection lost
-      "-reconnect_streamed",
-      "1",                        // Reconnect for streamed content
-      "-reconnect_delay_max",
-      "5",                        // Max reconnect delay in seconds
+      "3000000",                  // Limit analysis to 3 seconds
       "-print_format",
       "json",
       "-show_format",
       "-show_streams",
       url,
-    ], { timeout: 90000 }); // 90 second timeout per file for slow connections
+    ], { timeout: 8000 }); // 8 second timeout - must be fast for Heroku's 30s limit
 
     if (stderr) {
       console.warn("ffprobe stderr for", url, ":", stderr);
@@ -277,7 +249,8 @@ export async function POST() {
     }
 
     // Connect to FTP and list files
-    const client = new Client(30000);
+    // Use shorter timeout to stay within Heroku's 30s request limit
+    const client = new Client(10000);
     let fileList: FileInfo[] = [];
     
     try {
@@ -306,17 +279,13 @@ export async function POST() {
       : REMOTE_MEDIA_BASE + "/";
 
     // Probe each file for duration (in parallel with concurrency limit)
+    // IMPORTANT: Heroku has a 30-second request timeout, so we must be fast
     const items: MediaItem[] = [];
     const fileResults: FileResult[] = [];
-    const CONCURRENCY = 2; // Limit concurrent ffprobe calls (reduced for remote reliability)
+    const CONCURRENCY = 4; // Higher concurrency since each probe is fast (8s timeout)
     
     for (let i = 0; i < mediaFiles.length; i += CONCURRENCY) {
       const batch = mediaFiles.slice(i, i + CONCURRENCY);
-      
-      // Add a small delay between batches to avoid overwhelming the remote server
-      if (i > 0) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
       const batchResults = await Promise.all(
         batch.map(async (f) => {
           const format = getFormat(f.name);
@@ -392,7 +361,7 @@ export async function POST() {
     const body = JSON.stringify(payload, null, 2);
 
     // Upload new media-index.json to remote
-    const uploadClient = new Client(15000);
+    const uploadClient = new Client(8000);
     try {
       await uploadClient.access({ host, port, user, password, secure });
       const targetDir = path.posix.dirname(remotePath);
