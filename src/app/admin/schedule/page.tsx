@@ -73,7 +73,13 @@ function ScheduleAdminContent() {
   const lastSavedSlotsRef = useRef<string>("");
   const lastSavedChannelRef = useRef<string | null>(null); // track which channel lastSavedSlotsRef belongs to
   const lastUrlChannelRef = useRef<string | null>(searchParams.get("channel"));
+  const currentChannelRef = useRef<string | null>(null); // live ref for async operations
   const lastSuggestedEndRef = useRef<string>(""); // track auto-suggested end time
+
+  // Keep currentChannelRef in sync with channel state for async operations
+  useEffect(() => {
+    currentChannelRef.current = channel;
+  }, [channel]);
 
   const syncChannelParam = useCallback(
     (nextChannel: string | null) => {
@@ -489,7 +495,7 @@ function ScheduleAdminContent() {
     setSlots([]);
     setAutoSaveStatus("saving");
 
-    const success = await doSave([]);
+    const success = await doSave([], channel);
     if (success) {
       setMessage("Schedule cleared");
       setAutoSaveStatus("saved");
@@ -503,8 +509,9 @@ function ScheduleAdminContent() {
   };
 
   // Core save function - always saves to local, then pushes to remote if needed
-  const doSave = useCallback(async (slotsToPersist: ScheduleSlot[]) => {
-    if (!channel) return false;
+  // Takes targetChannel as parameter to avoid stale closure issues
+  const doSave = useCallback(async (slotsToPersist: ScheduleSlot[], targetChannel: string) => {
+    if (!targetChannel) return false;
 
     const normalized = [...slotsToPersist].sort(
       (a, b) => timeToSeconds(a.start) - timeToSeconds(b.start),
@@ -520,7 +527,7 @@ function ScheduleAdminContent() {
     try {
       // Always save to local first
       const res = await fetch(
-        `/api/schedule?channel=${encodeURIComponent(channel)}`,
+        `/api/schedule?channel=${encodeURIComponent(targetChannel)}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -528,8 +535,13 @@ function ScheduleAdminContent() {
         },
       );
       if (!res.ok) return false;
-      lastSavedSlotsRef.current = JSON.stringify(normalized);
-      lastSavedChannelRef.current = channel;
+      
+      // CRITICAL: Only update refs if we're still on the same channel
+      // This prevents race conditions when user switches channels during save
+      if (currentChannelRef.current === targetChannel) {
+        lastSavedSlotsRef.current = JSON.stringify(normalized);
+        lastSavedChannelRef.current = targetChannel;
+      }
 
       // If remote source is active, push schedule to remote
       if (mediaSource === "remote") {
@@ -544,7 +556,7 @@ function ScheduleAdminContent() {
     } catch {
       return false;
     }
-  }, [channel, mediaSource]);
+  }, [mediaSource]);
 
   // Auto-save effect with debouncing
   useEffect(() => {
@@ -578,15 +590,25 @@ function ScheduleAdminContent() {
     }
 
     // Debounce save by 800ms
+    // Capture channel at timeout creation time to avoid stale closures
+    const saveChannel = channel;
     autoSaveTimeoutRef.current = setTimeout(() => {
+      // Double-check we're still on the same channel when timeout fires
+      if (currentChannelRef.current !== saveChannel) {
+        setAutoSaveStatus("idle");
+        return;
+      }
       setAutoSaveStatus("saving");
-      void doSave(slots).then((success) => {
-        if (success) {
-          setAutoSaveStatus("saved");
-          // Reset to idle after showing "saved" briefly
-          setTimeout(() => setAutoSaveStatus("idle"), 1500);
-        } else {
-          setAutoSaveStatus("idle");
+      void doSave(slots, saveChannel).then((success) => {
+        // Only update status if still on the same channel
+        if (currentChannelRef.current === saveChannel) {
+          if (success) {
+            setAutoSaveStatus("saved");
+            // Reset to idle after showing "saved" briefly
+            setTimeout(() => setAutoSaveStatus("idle"), 1500);
+          } else {
+            setAutoSaveStatus("idle");
+          }
         }
       });
     }, 800);
