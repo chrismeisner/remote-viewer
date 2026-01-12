@@ -18,6 +18,20 @@ type MediaFile = {
   audioCodec?: string;
 };
 
+type MediaType = "film" | "tv" | "documentary" | "other";
+
+type MediaMetadata = {
+  title?: string | null;
+  year?: number | null;
+  director?: string | null;
+  category?: string | null;
+  makingOf?: string | null;
+  plot?: string | null;
+  type?: MediaType | null;
+  season?: number | null;
+  episode?: number | null;
+};
+
 type FileResult = {
   file: string;
   durationSeconds: number;
@@ -54,11 +68,13 @@ function MediaDetailModal({
   mediaSource,
   mediaRoot,
   onClose,
+  onMetadataUpdate,
 }: {
   item: MediaFile;
   mediaSource: MediaSource;
   mediaRoot: string;
   onClose: () => void;
+  onMetadataUpdate?: (relPath: string, metadata: MediaMetadata) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -69,6 +85,183 @@ function MediaDetailModal({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedCommand, setCopiedCommand] = useState(false);
+
+  // Metadata state
+  const [metadata, setMetadata] = useState<MediaMetadata>({});
+  const [metadataLoading, setMetadataLoading] = useState(true);
+  const [metadataSaving, setMetadataSaving] = useState(false);
+  const [metadataError, setMetadataError] = useState<string | null>(null);
+  const [editingMetadata, setEditingMetadata] = useState(false);
+  const [editTitle, setEditTitle] = useState<string>("");
+  const [editYear, setEditYear] = useState<string>("");
+  const [editDirector, setEditDirector] = useState<string>("");
+  const [editCategory, setEditCategory] = useState<string>("");
+  const [editMakingOf, setEditMakingOf] = useState<string>("");
+  const [editPlot, setEditPlot] = useState<string>("");
+  const [editType, setEditType] = useState<string>("");
+  const [editSeason, setEditSeason] = useState<string>("");
+  const [editEpisode, setEditEpisode] = useState<string>("");
+  
+  // AI lookup state
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [aiTokenLevel, setAiTokenLevel] = useState<"fast" | "balanced" | "detailed">("balanced");
+
+  // Check if AI is configured
+  useEffect(() => {
+    fetch("/api/media-metadata/ai-lookup")
+      .then((res) => res.json())
+      .then((data) => setAiConfigured(data.configured === true))
+      .catch(() => setAiConfigured(false));
+  }, []);
+
+  // Fetch metadata when modal opens
+  useEffect(() => {
+    let cancelled = false;
+    setMetadataLoading(true);
+    setMetadataError(null);
+
+    fetch(`/api/media-metadata?file=${encodeURIComponent(item.relPath)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.metadata) {
+          setMetadata(data.metadata);
+          setEditTitle(data.metadata.title ?? "");
+          setEditYear(data.metadata.year?.toString() ?? "");
+          setEditDirector(data.metadata.director ?? "");
+          setEditCategory(data.metadata.category ?? "");
+          setEditMakingOf(data.metadata.makingOf ?? "");
+          setEditPlot(data.metadata.plot ?? "");
+          setEditType(data.metadata.type ?? "");
+          setEditSeason(data.metadata.season?.toString() ?? "");
+          setEditEpisode(data.metadata.episode?.toString() ?? "");
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setMetadataError(err.message || "Failed to load metadata");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setMetadataLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [item.relPath]);
+
+  // AI lookup to fill metadata fields
+  const handleAiLookup = async () => {
+    setAiLoading(true);
+    setMetadataError(null);
+    try {
+      // Include existing metadata as context for AI
+      const existingMetadata: Record<string, unknown> = {};
+      if (metadata.title) existingMetadata.title = metadata.title;
+      if (metadata.year) existingMetadata.year = metadata.year;
+      if (metadata.director) existingMetadata.director = metadata.director;
+      if (metadata.category) existingMetadata.category = metadata.category;
+      if (metadata.makingOf) existingMetadata.makingOf = metadata.makingOf;
+      if (metadata.plot) existingMetadata.plot = metadata.plot;
+      if (metadata.type) existingMetadata.type = metadata.type;
+      if (metadata.season) existingMetadata.season = metadata.season;
+      if (metadata.episode) existingMetadata.episode = metadata.episode;
+
+      // Map token level to actual token count
+      const tokenMap = { fast: 256, balanced: 512, detailed: 1024 };
+      const maxTokens = tokenMap[aiTokenLevel];
+
+      const res = await fetch("/api/media-metadata/ai-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          filename: item.relPath,
+          existingMetadata: Object.keys(existingMetadata).length > 0 ? existingMetadata : undefined,
+          maxTokens,
+        }),
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || "AI lookup failed");
+      }
+      
+      // Fill in the edit fields with AI response
+      if (data.title) setEditTitle(data.title);
+      if (data.year) setEditYear(data.year.toString());
+      if (data.director) setEditDirector(data.director);
+      if (data.category) setEditCategory(data.category);
+      if (data.makingOf) setEditMakingOf(data.makingOf);
+      if (data.plot) setEditPlot(data.plot);
+      if (data.type) setEditType(data.type);
+      if (data.season) setEditSeason(data.season.toString());
+      if (data.episode) setEditEpisode(data.episode.toString());
+      
+      // Switch to edit mode to show the filled fields
+      setEditingMetadata(true);
+    } catch (err) {
+      setMetadataError(err instanceof Error ? err.message : "AI lookup failed");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSaveMetadata = async () => {
+    setMetadataSaving(true);
+    setMetadataError(null);
+    try {
+      const res = await fetch("/api/media-metadata", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file: item.relPath,
+          title: editTitle.trim() || null,
+          year: editYear ? parseInt(editYear, 10) : null,
+          director: editDirector.trim() || null,
+          category: editCategory.trim() || null,
+          makingOf: editMakingOf.trim() || null,
+          plot: editPlot.trim() || null,
+          type: editType || null,
+          season: editSeason ? parseInt(editSeason, 10) : null,
+          episode: editEpisode ? parseInt(editEpisode, 10) : null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to save");
+      }
+      setMetadata(data.metadata);
+      setEditingMetadata(false);
+      // Notify parent to update the table
+      onMetadataUpdate?.(item.relPath, data.metadata);
+    } catch (err) {
+      setMetadataError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setMetadataSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditTitle(metadata.title ?? "");
+    setEditYear(metadata.year?.toString() ?? "");
+    setEditDirector(metadata.director ?? "");
+    setEditCategory(metadata.category ?? "");
+    setEditMakingOf(metadata.makingOf ?? "");
+    setEditPlot(metadata.plot ?? "");
+    setEditType(metadata.type ?? "");
+    setEditSeason(metadata.season?.toString() ?? "");
+    setEditEpisode(metadata.episode?.toString() ?? "");
+    setEditingMetadata(false);
+    setMetadataError(null);
+  };
+
+  const handleMetadataKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !metadataSaving) {
+      e.preventDefault();
+      handleSaveMetadata();
+    }
+  };
 
   // Build the video URL based on media source
   const videoUrl =
@@ -382,6 +575,264 @@ function MediaDetailModal({
             </div>
           )}
         </div>
+
+        {/* Media Metadata Section */}
+        <div className="border-t border-white/10 bg-neutral-800/30 px-5 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs uppercase tracking-widest text-neutral-500">Media Metadata</h3>
+            {!metadataLoading && mediaSource === "local" && (
+              <div className="flex items-center gap-3">
+                {aiConfigured && (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={aiTokenLevel}
+                      onChange={(e) => setAiTokenLevel(e.target.value as "fast" | "balanced" | "detailed")}
+                      disabled={aiLoading}
+                      className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-300 disabled:opacity-50"
+                      title="AI detail level"
+                    >
+                      <option value="fast">Fast</option>
+                      <option value="balanced">Balanced</option>
+                      <option value="detailed">Detailed</option>
+                    </select>
+                    <button
+                      onClick={handleAiLookup}
+                      disabled={aiLoading}
+                      className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition disabled:opacity-50"
+                    >
+                      {aiLoading ? (
+                        <>
+                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Looking up...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Fill with AI
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+                {!editingMetadata && (
+                  <button
+                    onClick={() => setEditingMetadata(true)}
+                    className="text-xs text-emerald-400 hover:text-emerald-300 transition"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {metadataLoading ? (
+            <p className="text-sm text-neutral-400">Loading metadata...</p>
+          ) : editingMetadata ? (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Title</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onKeyDown={handleMetadataKeyDown}
+                  placeholder="e.g. The Matrix"
+                  className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                />
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1">Type</label>
+                  <select
+                    value={editType}
+                    onChange={(e) => setEditType(e.target.value)}
+                    className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-emerald-300 focus:bg-white/10"
+                  >
+                    <option value="">Select...</option>
+                    <option value="film">Film</option>
+                    <option value="tv">TV Show</option>
+                    <option value="documentary">Documentary</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1">Year</label>
+                  <input
+                    type="number"
+                    value={editYear}
+                    onChange={(e) => setEditYear(e.target.value)}
+                    onKeyDown={handleMetadataKeyDown}
+                    placeholder="e.g. 1999"
+                    min="1800"
+                    max="2100"
+                    className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1">Season</label>
+                  <input
+                    type="number"
+                    value={editSeason}
+                    onChange={(e) => setEditSeason(e.target.value)}
+                    onKeyDown={handleMetadataKeyDown}
+                    placeholder="e.g. 2"
+                    min="1"
+                    className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1">Episode</label>
+                  <input
+                    type="number"
+                    value={editEpisode}
+                    onChange={(e) => setEditEpisode(e.target.value)}
+                    onKeyDown={handleMetadataKeyDown}
+                    placeholder="e.g. 8"
+                    min="1"
+                    className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1">Director / Creator</label>
+                  <input
+                    type="text"
+                    value={editDirector}
+                    onChange={(e) => setEditDirector(e.target.value)}
+                    onKeyDown={handleMetadataKeyDown}
+                    placeholder="e.g. Stanley Kubrick"
+                    className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1">Category</label>
+                  <input
+                    type="text"
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    onKeyDown={handleMetadataKeyDown}
+                    placeholder="e.g. Sci-Fi, Comedy"
+                    className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Making Of <span className="text-neutral-600">(cast, crew, production facts)</span></label>
+                <textarea
+                  value={editMakingOf}
+                  onChange={(e) => setEditMakingOf(e.target.value)}
+                  placeholder="Main actors, who directed/produced it, filming locations, budget, awards..."
+                  rows={2}
+                  className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Plot <span className="text-neutral-600">(episode/movie specific)</span></label>
+                <textarea
+                  value={editPlot}
+                  onChange={(e) => setEditPlot(e.target.value)}
+                  placeholder="What happens in this specific episode or movie..."
+                  rows={2}
+                  className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10 resize-none"
+                />
+              </div>
+              {metadataError && (
+                <p className="text-xs text-amber-300">{metadataError}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSaveMetadata}
+                  disabled={metadataSaving}
+                  className="rounded-md bg-emerald-500 hover:bg-emerald-400 px-3 py-1.5 text-xs font-semibold text-neutral-900 transition disabled:opacity-50"
+                >
+                  {metadataSaving ? "Saving..." : "Save"}
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  disabled={metadataSaving}
+                  className="rounded-md border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <p className="text-xs text-neutral-500 mb-1">Title</p>
+                  <p className="text-sm font-medium text-neutral-200">
+                    {metadata.title ?? <span className="text-neutral-500 italic">Not set</span>}
+                  </p>
+                </div>
+                {metadata.type && (
+                  <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    metadata.type === "film" ? "bg-purple-500/20 text-purple-200" :
+                    metadata.type === "tv" ? "bg-blue-500/20 text-blue-200" :
+                    metadata.type === "documentary" ? "bg-amber-500/20 text-amber-200" :
+                    "bg-neutral-500/20 text-neutral-200"
+                  }`}>
+                    {metadata.type === "film" ? "Film" :
+                     metadata.type === "tv" ? "TV Show" :
+                     metadata.type === "documentary" ? "Documentary" :
+                     "Other"}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-xs text-neutral-500 mb-1">Year</p>
+                  <p className="text-sm font-medium text-neutral-200">
+                    {metadata.year ?? "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-neutral-500 mb-1">Season</p>
+                  <p className="text-sm font-medium text-neutral-200">
+                    {metadata.season ?? "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-neutral-500 mb-1">Episode</p>
+                  <p className="text-sm font-medium text-neutral-200">
+                    {metadata.episode ?? "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-neutral-500 mb-1">Category</p>
+                  <p className="text-sm font-medium text-neutral-200">
+                    {metadata.category ?? "—"}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Director / Creator</p>
+                <p className="text-sm font-medium text-neutral-200">
+                  {metadata.director ?? "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Making Of <span className="text-neutral-600">(cast, crew, production)</span></p>
+                <p className="text-sm text-neutral-300">
+                  {metadata.makingOf ?? <span className="text-neutral-500">—</span>}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Plot <span className="text-neutral-600">(episode/movie specific)</span></p>
+                <p className="text-sm text-neutral-300">
+                  {metadata.plot ?? <span className="text-neutral-500">—</span>}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -669,11 +1120,19 @@ export default function MediaAdminPage() {
   const [formatFilter, setFormatFilter] = useState<string>("all");
   const [audioFilter, setAudioFilter] = useState<string>("all");
   const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported">(
-    "all",
+    "supported",
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [manifestUpdatedAt, setManifestUpdatedAt] = useState<string | null>(null);
   const [mediaRoot, setMediaRoot] = useState<string>("media");
+  const [allMetadata, setAllMetadata] = useState<Record<string, MediaMetadata>>({});
+  
+  // Bulk AI fill state
+  const [bulkAiRunning, setBulkAiRunning] = useState(false);
+  const [bulkAiProgress, setBulkAiProgress] = useState({ current: 0, total: 0, currentFile: "" });
+  const bulkAiCancelledRef = useRef(false);
+  const [aiConfiguredGlobal, setAiConfiguredGlobal] = useState(false);
+  const [bulkAiSupportedOnly, setBulkAiSupportedOnly] = useState(true);
 
   // Load media source preference from localStorage and stay in sync with other tabs/pages.
   useEffect(() => {
@@ -706,6 +1165,153 @@ export default function MediaAdminPage() {
         // Keep default "media" if fetch fails
       });
   }, []);
+
+  // Fetch all metadata for table display
+  useEffect(() => {
+    if (mediaSource === "local") {
+      fetch("/api/media-metadata?withAutoYear=true")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.items) {
+            setAllMetadata(data.items);
+          }
+        })
+        .catch(() => {
+          // Ignore errors, metadata is optional
+        });
+    }
+  }, [mediaSource, mediaRefreshToken]);
+
+  // Check if AI is configured (for bulk fill button)
+  useEffect(() => {
+    fetch("/api/media-metadata/ai-lookup")
+      .then((res) => res.json())
+      .then((data) => setAiConfiguredGlobal(data.configured === true))
+      .catch(() => setAiConfiguredGlobal(false));
+  }, []);
+
+  // Bulk AI fill function
+  const handleBulkAiFill = async (onlyEmpty: boolean) => {
+    // Filter files to process
+    let filesToProcess = onlyEmpty
+      ? filteredFiles.filter((f) => {
+          const meta = allMetadata[f.relPath];
+          // Consider "empty" if no title is set
+          return !meta?.title;
+        })
+      : filteredFiles;
+    
+    // Apply supported-only filter if checked
+    if (bulkAiSupportedOnly) {
+      filesToProcess = filesToProcess.filter((f) => isBrowserSupported(f));
+    }
+
+    if (filesToProcess.length === 0) {
+      setError(onlyEmpty ? "All visible files already have metadata" : "No files to process");
+      return;
+    }
+
+    setBulkAiRunning(true);
+    bulkAiCancelledRef.current = false;
+    setBulkAiProgress({ current: 0, total: filesToProcess.length, currentFile: "" });
+
+    let successCount = 0;
+    let errorCount = 0;
+    let wasCancelled = false;
+
+    for (let i = 0; i < filesToProcess.length; i++) {
+      // Check if cancelled
+      if (bulkAiCancelledRef.current) {
+        wasCancelled = true;
+        break;
+      }
+
+      const file = filesToProcess[i];
+      setBulkAiProgress({ current: i + 1, total: filesToProcess.length, currentFile: file.relPath });
+
+      try {
+        // Get existing metadata for context
+        const existingMeta = allMetadata[file.relPath] || {};
+        const existingMetadata: Record<string, unknown> = {};
+        if (existingMeta.title) existingMetadata.title = existingMeta.title;
+        if (existingMeta.year) existingMetadata.year = existingMeta.year;
+        if (existingMeta.director) existingMetadata.director = existingMeta.director;
+        if (existingMeta.category) existingMetadata.category = existingMeta.category;
+        if (existingMeta.makingOf) existingMetadata.makingOf = existingMeta.makingOf;
+        if (existingMeta.plot) existingMetadata.plot = existingMeta.plot;
+        if (existingMeta.type) existingMetadata.type = existingMeta.type;
+        if (existingMeta.season) existingMetadata.season = existingMeta.season;
+        if (existingMeta.episode) existingMetadata.episode = existingMeta.episode;
+
+        // Call AI lookup with existing metadata context
+        const lookupRes = await fetch("/api/media-metadata/ai-lookup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            filename: file.relPath,
+            existingMetadata: Object.keys(existingMetadata).length > 0 ? existingMetadata : undefined,
+          }),
+        });
+        const lookupData = await lookupRes.json();
+
+        if (!lookupRes.ok) {
+          console.warn(`AI lookup failed for ${file.relPath}:`, lookupData.error);
+          errorCount++;
+          continue;
+        }
+
+        // Save the metadata
+        const saveRes = await fetch("/api/media-metadata", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            file: file.relPath,
+            title: lookupData.title || null,
+            year: lookupData.year || null,
+            director: lookupData.director || null,
+            category: lookupData.category || null,
+            makingOf: lookupData.makingOf || null,
+            plot: lookupData.plot || null,
+            type: lookupData.type || null,
+            season: lookupData.season || null,
+            episode: lookupData.episode || null,
+          }),
+        });
+        const saveData = await saveRes.json();
+
+        if (saveRes.ok) {
+          // Update local state
+          setAllMetadata((prev) => ({
+            ...prev,
+            [file.relPath]: saveData.metadata,
+          }));
+          successCount++;
+        } else {
+          console.warn(`Save failed for ${file.relPath}:`, saveData.error);
+          errorCount++;
+        }
+
+        // Small delay to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } catch (err) {
+        console.error(`Error processing ${file.relPath}:`, err);
+        errorCount++;
+      }
+    }
+
+    setBulkAiRunning(false);
+    setBulkAiProgress({ current: 0, total: 0, currentFile: "" });
+    
+    if (wasCancelled) {
+      setMessage(`Cancelled. Processed ${successCount} files before stopping.`);
+    } else {
+      setMessage(`Done! Filled ${successCount} files${errorCount > 0 ? `, ${errorCount} errors` : ""}.`);
+    }
+  };
+
+  const cancelBulkAiFill = () => {
+    bulkAiCancelledRef.current = true;
+  };
 
   // Load available media list
   useEffect(() => {
@@ -925,7 +1531,66 @@ export default function MediaAdminPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {mediaSource === "local" && (
+            {mediaSource === "local" && aiConfiguredGlobal && !bulkAiRunning && (
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={bulkAiSupportedOnly}
+                    onChange={(e) => setBulkAiSupportedOnly(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+                  />
+                  Supported only
+                </label>
+                <div className="relative group">
+                  <button
+                    onClick={() => handleBulkAiFill(true)}
+                    disabled={loading || filteredFiles.length === 0}
+                    className="flex items-center gap-1.5 rounded-md border border-blue-300/50 bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30 disabled:opacity-50"
+                    title="Use AI to fill metadata for files without titles"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Fill Empty with AI
+                  </button>
+                  {/* Dropdown for "Fill All" option */}
+                  <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-10">
+                    <button
+                      onClick={() => handleBulkAiFill(false)}
+                      disabled={loading || filteredFiles.length === 0}
+                      className="whitespace-nowrap rounded-md border border-amber-300/50 bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-50 transition hover:border-amber-200 hover:bg-amber-500/30 disabled:opacity-50"
+                      title="Re-fill ALL visible files with AI (overwrites existing)"
+                    >
+                      Fill All (overwrite)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {bulkAiRunning && (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-xs text-blue-300">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>
+                    {bulkAiProgress.current}/{bulkAiProgress.total}
+                  </span>
+                </div>
+                <div className="max-w-[200px] truncate text-xs text-neutral-400" title={bulkAiProgress.currentFile}>
+                  {bulkAiProgress.currentFile.split("/").pop()}
+                </div>
+                <button
+                  onClick={cancelBulkAiFill}
+                  className="rounded-md border border-red-300/50 bg-red-500/20 px-2 py-1 text-xs font-semibold text-red-50 transition hover:border-red-200 hover:bg-red-500/30"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {mediaSource === "local" && !bulkAiRunning && (
               <button
                 onClick={refreshMediaList}
                 disabled={loading}
@@ -1017,65 +1682,84 @@ export default function MediaAdminPage() {
                 No media files match the current filters.
               </p>
             ) : (
-              <div className="overflow-hidden rounded-lg border border-white/5">
+              <div className="overflow-x-auto rounded-lg border border-white/5">
                 <table className="min-w-full text-sm text-left">
                   <thead className="bg-white/5 text-neutral-200">
                     <tr>
                       <th className="px-3 py-2 font-semibold">File</th>
-                      <th className="px-3 py-2 font-semibold w-24 text-left">
+                      <th className="px-3 py-2 font-semibold min-w-[150px]">Title</th>
+                      <th className="px-3 py-2 font-semibold w-16 text-center">Year</th>
+                      <th className="px-3 py-2 font-semibold min-w-[120px]">Director</th>
+                      <th className="px-3 py-2 font-semibold min-w-[100px]">Category</th>
+                      <th className="px-3 py-2 font-semibold w-20 text-left">
                         Format
                       </th>
-                      <th className="px-3 py-2 font-semibold w-24 text-left">
+                      <th className="px-3 py-2 font-semibold w-20 text-left">
                         Audio
                       </th>
                       <th className="px-3 py-2 font-semibold w-28 text-left">
                         Supported
                       </th>
-                      <th className="px-3 py-2 font-semibold w-28 text-right">
+                      <th className="px-3 py-2 font-semibold w-24 text-right">
                         Duration
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5 bg-neutral-950/40 text-neutral-100">
-                    {filteredFiles.map((file) => (
-                      <tr key={file.relPath}>
-                        <td className="px-3 py-2">
-                          <button
-                            type="button"
-                            className="text-left underline decoration-dotted underline-offset-2 hover:text-emerald-200"
-                            onClick={() => setSelectedFile(file)}
-                          >
-                            {file.relPath}
-                          </button>
-                        </td>
-                        <td className="px-3 py-2 text-left text-neutral-200 uppercase">
-                          {file.format || "—"}
-                        </td>
-                        <td className="px-3 py-2 text-left text-neutral-200 uppercase">
-                          {file.audioCodec || "—"}
-                        </td>
-                        <td className="px-3 py-2 text-left">
-                          <span
-                            className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                              isBrowserSupported(file)
-                                ? "bg-emerald-500/20 text-emerald-100"
-                                : "bg-amber-500/20 text-amber-100"
-                            }`}
-                          >
-                            {isBrowserSupported(file)
-                              ? file.supportedViaCompanion
-                                ? "Yes (companion)"
-                                : "Yes"
-                              : hasUnsupportedAudio(file)
-                                ? "No (audio)"
-                                : "No"}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right text-neutral-200">
-                          {formatDuration(file.durationSeconds)}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredFiles.map((file) => {
+                      const meta = allMetadata[file.relPath] || {};
+                      return (
+                        <tr key={file.relPath}>
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              className="text-left underline decoration-dotted underline-offset-2 hover:text-emerald-200"
+                              onClick={() => setSelectedFile(file)}
+                            >
+                              {file.relPath}
+                            </button>
+                          </td>
+                          <td className="px-3 py-2 text-neutral-200">
+                            {meta.title || <span className="text-neutral-500">—</span>}
+                          </td>
+                          <td className="px-3 py-2 text-center text-neutral-200">
+                            {meta.year || <span className="text-neutral-500">—</span>}
+                          </td>
+                          <td className="px-3 py-2 text-neutral-200">
+                            {meta.director || <span className="text-neutral-500">—</span>}
+                          </td>
+                          <td className="px-3 py-2 text-neutral-200">
+                            {meta.category || <span className="text-neutral-500">—</span>}
+                          </td>
+                          <td className="px-3 py-2 text-left text-neutral-200 uppercase">
+                            {file.format || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-left text-neutral-200 uppercase">
+                            {file.audioCodec || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-left">
+                            <span
+                              className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                                isBrowserSupported(file)
+                                  ? "bg-emerald-500/20 text-emerald-100"
+                                  : "bg-amber-500/20 text-amber-100"
+                              }`}
+                            >
+                              {isBrowserSupported(file)
+                                ? file.supportedViaCompanion
+                                  ? "Yes (companion)"
+                                  : "Yes"
+                                : hasUnsupportedAudio(file)
+                                  ? "No (audio)"
+                                  : "No"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right text-neutral-200">
+                            {formatDuration(file.durationSeconds)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1093,6 +1777,12 @@ export default function MediaAdminPage() {
           mediaSource={mediaSource}
           mediaRoot={mediaRoot}
           onClose={() => setSelectedFile(null)}
+          onMetadataUpdate={(relPath, metadata) => {
+            setAllMetadata((prev) => ({
+              ...prev,
+              [relPath]: metadata,
+            }));
+          }}
         />
       )}
 

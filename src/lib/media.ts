@@ -74,6 +74,12 @@ async function getMediaIndexFilePath(): Promise<string | null> {
   return path.join(dataRoot, "media-index.json");
 }
 
+async function getMediaMetadataFilePath(): Promise<string | null> {
+  const dataRoot = await resolveDataRoot();
+  if (!dataRoot) return null;
+  return path.join(dataRoot, "media-metadata.json");
+}
+
 const ALLOWED_EXTENSIONS = [
   ".mp4",
   ".mkv",
@@ -108,6 +114,25 @@ export type ScheduledItem = {
   supported: boolean;
   supportedViaCompanion: boolean;
   audioCodec?: string;
+};
+
+// Media metadata types
+export type MediaType = "film" | "tv" | "documentary" | "other";
+
+export type MediaMetadataItem = {
+  title?: string | null;
+  year?: number | null;
+  director?: string | null;
+  category?: string | null;
+  makingOf?: string | null;
+  plot?: string | null;
+  type?: MediaType | null;
+  season?: number | null;
+  episode?: number | null;
+};
+
+export type MediaMetadataStore = {
+  items: Record<string, MediaMetadataItem>;
 };
 
 export type NowPlaying = {
@@ -1036,6 +1061,166 @@ function parseFps(value: string): number | null {
   const asNum = Number(value);
   return Number.isFinite(asNum) ? asNum : null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Media Metadata Functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Extract year from a filename using common patterns:
+ * - (1999) - parentheses
+ * - .1999. - dots
+ * - [1999] - brackets
+ * - 1999 - standalone 4-digit year (1920-2099)
+ */
+export function extractYearFromFilename(filename: string): number | null {
+  // Try parentheses pattern first: (1999)
+  const parenMatch = filename.match(/\((\d{4})\)/);
+  if (parenMatch) {
+    const year = parseInt(parenMatch[1], 10);
+    if (year >= 1920 && year <= 2099) return year;
+  }
+
+  // Try dot pattern: .1999.
+  const dotMatch = filename.match(/\.(\d{4})\./);
+  if (dotMatch) {
+    const year = parseInt(dotMatch[1], 10);
+    if (year >= 1920 && year <= 2099) return year;
+  }
+
+  // Try bracket pattern: [1999]
+  const bracketMatch = filename.match(/\[(\d{4})\]/);
+  if (bracketMatch) {
+    const year = parseInt(bracketMatch[1], 10);
+    if (year >= 1920 && year <= 2099) return year;
+  }
+
+  // Try space-separated pattern: Movie Title 1999 followed by resolution or word boundary
+  const spaceMatch = filename.match(/\s(\d{4})(?:\s|$|\.|\b)/);
+  if (spaceMatch) {
+    const year = parseInt(spaceMatch[1], 10);
+    if (year >= 1920 && year <= 2099) return year;
+  }
+
+  return null;
+}
+
+/**
+ * Load media metadata from the JSON file.
+ */
+export async function loadMediaMetadata(): Promise<MediaMetadataStore> {
+  const metadataFile = await getMediaMetadataFilePath();
+  
+  if (!metadataFile) {
+    return { items: {} };
+  }
+  
+  try {
+    const raw = await fs.readFile(metadataFile, "utf8");
+    const parsed = JSON.parse(raw) as MediaMetadataStore;
+    return parsed;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err?.code === "ENOENT") {
+      return { items: {} };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Save media metadata to the JSON file.
+ */
+export async function saveMediaMetadata(metadata: MediaMetadataStore): Promise<void> {
+  const metadataFile = await getMediaMetadataFilePath();
+  
+  if (!metadataFile) {
+    throw new Error("No media folder configured. Please configure a folder in Source settings.");
+  }
+  
+  await fs.mkdir(path.dirname(metadataFile), { recursive: true });
+  await fs.writeFile(metadataFile, JSON.stringify(metadata, null, 2), {
+    encoding: "utf8",
+  });
+}
+
+/**
+ * Get metadata for a specific media item.
+ * If no explicit metadata exists, attempts to extract year from filename.
+ */
+export async function getMediaItemMetadata(relPath: string): Promise<MediaMetadataItem> {
+  const store = await loadMediaMetadata();
+  const existing = store.items[relPath] || {};
+  
+  // If year is not set, try to extract from filename
+  if (existing.year === undefined) {
+    const extractedYear = extractYearFromFilename(relPath);
+    return {
+      ...existing,
+      year: extractedYear,
+    };
+  }
+  
+  return existing;
+}
+
+/**
+ * Update metadata for a specific media item.
+ * Pass null to explicitly clear a field, undefined to leave unchanged.
+ */
+export async function updateMediaItemMetadata(
+  relPath: string,
+  updates: Partial<MediaMetadataItem>,
+): Promise<MediaMetadataItem> {
+  const store = await loadMediaMetadata();
+  
+  const existing = store.items[relPath] || {};
+  const updated: MediaMetadataItem = { ...existing };
+  
+  // Apply updates (undefined means no change, null means clear)
+  if (updates.title !== undefined) updated.title = updates.title;
+  if (updates.year !== undefined) updated.year = updates.year;
+  if (updates.director !== undefined) updated.director = updates.director;
+  if (updates.category !== undefined) updated.category = updates.category;
+  if (updates.makingOf !== undefined) updated.makingOf = updates.makingOf;
+  if (updates.plot !== undefined) updated.plot = updates.plot;
+  if (updates.type !== undefined) updated.type = updates.type;
+  if (updates.season !== undefined) updated.season = updates.season;
+  if (updates.episode !== undefined) updated.episode = updates.episode;
+  
+  // Clean up null/undefined values for cleaner JSON
+  const cleaned: MediaMetadataItem = {};
+  if (updated.title != null) cleaned.title = updated.title;
+  if (updated.year != null) cleaned.year = updated.year;
+  if (updated.director != null) cleaned.director = updated.director;
+  if (updated.category != null) cleaned.category = updated.category;
+  if (updated.makingOf != null) cleaned.makingOf = updated.makingOf;
+  if (updated.plot != null) cleaned.plot = updated.plot;
+  if (updated.type != null) cleaned.type = updated.type;
+  if (updated.season != null) cleaned.season = updated.season;
+  if (updated.episode != null) cleaned.episode = updated.episode;
+  
+  // Only store if there's actual data
+  if (Object.keys(cleaned).length > 0) {
+    store.items[relPath] = cleaned;
+  } else {
+    delete store.items[relPath];
+  }
+  
+  await saveMediaMetadata(store);
+  return cleaned;
+}
+
+/**
+ * Get path to metadata file for external use.
+ */
+export async function getLocalMediaMetadataFilePath(): Promise<string | null> {
+  return getMediaMetadataFilePath();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FFprobe Functions
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function resolveFfprobePath(): Promise<string> {
   const envPath = process.env.FFPROBE_PATH;
