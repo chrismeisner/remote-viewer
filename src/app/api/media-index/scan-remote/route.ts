@@ -108,7 +108,7 @@ async function resolveFfprobePath(): Promise<string> {
     "/opt/homebrew/bin/ffprobe",       // macOS Homebrew
     "/usr/local/bin/ffprobe",          // macOS/Linux manual install
     "/usr/bin/ffprobe",                // Linux system install
-    "/app/vendor/ffmpeg/bin/ffprobe",  // Heroku buildpack location
+    "/app/vendor/ffmpeg/ffprobe",      // Heroku buildpack location
   ];
   for (const c of common) {
     try {
