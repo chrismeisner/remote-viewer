@@ -7,7 +7,6 @@ import {
   type MediaSource,
   REMOTE_MEDIA_BASE,
 } from "@/constants/media";
-import { PasswordModal, isAuthenticated } from "@/components/PasswordModal";
 import { Modal, ModalTitle, ModalFooter, ModalButton } from "@/components/Modal";
 
 const MUTED_PREF_KEY = "player-muted-default";
@@ -56,56 +55,6 @@ export default function Home() {
   const [showHeader, setShowHeader] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showWelcome, setShowWelcome] = useState(true);
-  
-  // Password authentication state
-  const [isAuthed, setIsAuthed] = useState(false);
-  const [passwordRequired, setPasswordRequired] = useState<boolean | null>(null);
-  const [authCheckError, setAuthCheckError] = useState<string | null>(null);
-  
-  // Check authentication status on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      // First check if already authenticated this session
-      if (isAuthenticated()) {
-        setIsAuthed(true);
-        setPasswordRequired(false);
-        return;
-      }
-      
-      // Check if password is required and if already authenticated via cookie
-      try {
-        const res = await fetch("/api/auth/verify");
-        if (!res.ok) {
-          throw new Error(`Auth check failed: ${res.status}`);
-        }
-        const data = await res.json();
-        
-        console.log("[auth] check result:", data);
-        
-        setPasswordRequired(data.passwordRequired);
-        
-        // If authenticated via cookie or no password required, allow access
-        if (data.isAuthenticated) {
-          setIsAuthed(true);
-          // Also set sessionStorage to keep consistent state
-          if (typeof window !== "undefined") {
-            sessionStorage.setItem("remote-viewer-auth", "true");
-          }
-        }
-      } catch (error) {
-        console.error("[auth] check error:", error);
-        setAuthCheckError(error instanceof Error ? error.message : "Auth check failed");
-        // On error, require authentication to be safe
-        setPasswordRequired(true);
-      }
-    };
-    checkAuth();
-  }, []);
-  
-  const handleAuthSuccess = () => {
-    setIsAuthed(true);
-    setPasswordRequired(false);
-  };
   
   // Channel overlay state for CRT-style display
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
@@ -746,15 +695,6 @@ export default function Home() {
     }
   };
 
-  const formatTimeRemaining = () => {
-    if (!nowPlaying) return "";
-    const msRemaining = nowPlaying.endsAt - Date.now();
-    const seconds = Math.max(0, Math.round(msRemaining / 1000));
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes}:${secs.toString().padStart(2, "0")}`;
-  };
-
   const nowPlayingLabel = nowPlaying?.title || nowPlaying?.relPath || "Waiting for schedule";
   const overlayChannelId = overlayChannel?.id
     ? overlayChannel.id.toString().padStart(2, "0")
@@ -818,29 +758,6 @@ export default function Home() {
     </div>
   );
 
-  // Show loading state while checking auth
-  if (passwordRequired === null) {
-    return (
-      <div className="bg-black text-neutral-100 min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-2">
-          <div className="text-neutral-400">Checking authentication...</div>
-          {authCheckError && (
-            <div className="text-sm text-red-400">{authCheckError}</div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Show password modal if authentication is required
-  if (!isAuthed && passwordRequired) {
-    return (
-      <div className="bg-black text-neutral-100 min-h-screen">
-        <PasswordModal open={true} onSuccess={handleAuthSuccess} />
-      </div>
-    );
-  }
-
   return (
     <div
       className={`bg-black text-neutral-100 flex flex-col ${
@@ -874,7 +791,10 @@ export default function Home() {
                 ref={videoRef}
                 // Avoid remounting between videos so browsers keep fullscreen active.
                 autoPlay
+                muted={muted}
                 playsInline
+                webkit-playsinline="true"
+                x-webkit-airplay="deny"
                 controls={false}
                 disablePictureInPicture
                 disableRemotePlayback
