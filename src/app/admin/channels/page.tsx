@@ -12,6 +12,7 @@ import {
 type Channel = {
   id: string;
   shortName?: string;
+  active?: boolean;
 };
 
 export default function ChannelAdminPage() {
@@ -199,6 +200,32 @@ export default function ChannelAdminPage() {
     }
   };
 
+  // Toggle channel active status
+  const handleToggleStatus = async (channel: Channel) => {
+    setSaving(channel.id);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(apiBase, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: channel.id,
+          active: !(channel.active !== false), // Toggle: treat undefined as true
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update status");
+      setChannels(data.channels);
+      const newStatus = data.channel?.active !== false ? "Active" : "Inactive";
+      setMessage(`Channel "${channel.id}" is now ${newStatus}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to toggle status");
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const openDeleteModal = (channel: Channel) => {
     setDeleteModal({ show: true, channel });
   };
@@ -339,6 +366,7 @@ export default function ChannelAdminPage() {
                 <tr>
                   <th className="w-24 px-3 py-2 text-left font-semibold">Number</th>
                   <th className="px-3 py-2 text-left font-semibold">Short Name</th>
+                  <th className="w-24 px-3 py-2 text-left font-semibold">Status</th>
                   <th className="w-48 px-3 py-2 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -350,6 +378,7 @@ export default function ChannelAdminPage() {
                     saving={saving === channel.id}
                     onEdit={() => openEditModal(channel)}
                     onDelete={() => openDeleteModal(channel)}
+                    onToggleStatus={() => handleToggleStatus(channel)}
                   />
                 ))}
               </tbody>
@@ -487,12 +516,16 @@ function ChannelRow({
   saving,
   onEdit,
   onDelete,
+  onToggleStatus,
 }: {
   channel: Channel;
   saving: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onToggleStatus: () => void;
 }) {
+  const isActive = channel.active !== false; // Treat undefined as active
+
   return (
     <tr className="text-neutral-100">
       <td className="px-3 py-2">
@@ -508,6 +541,19 @@ function ChannelRow({
         ) : (
           <span className="text-xs text-neutral-500">Not set</span>
         )}
+      </td>
+      <td className="px-3 py-2">
+        <button
+          onClick={onToggleStatus}
+          disabled={saving}
+          className={`rounded-full px-2 py-1 text-xs font-semibold transition disabled:opacity-50 ${
+            isActive
+              ? "bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"
+              : "bg-neutral-500/20 text-neutral-400 hover:bg-neutral-500/30"
+          }`}
+        >
+          {isActive ? "Active" : "Inactive"}
+        </button>
       </td>
       <td className="px-3 py-2 text-right">
         <div className="flex justify-end gap-2">

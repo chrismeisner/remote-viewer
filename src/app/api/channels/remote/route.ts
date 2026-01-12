@@ -9,6 +9,7 @@ export const runtime = "nodejs";
 type Channel = {
   id: string;
   shortName?: string;
+  active?: boolean;
 };
 
 type ChannelsData = {
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Channel already exists" }, { status: 400 });
     }
 
-    const newChannel: Channel = { id: normalizedId };
+    const newChannel: Channel = { id: normalizedId, active: true };
     if (shortName) newChannel.shortName = shortName;
 
     channels.push(newChannel);
@@ -131,6 +132,7 @@ export async function PATCH(request: NextRequest) {
     const id = typeof body?.id === "string" ? body.id.trim() : "";
     const newIdRaw = typeof body?.newId === "string" ? body.newId.trim() : "";
     const shortName = typeof body?.shortName === "string" ? body.shortName : undefined;
+    const active = typeof body?.active === "boolean" ? body.active : undefined;
 
     if (!id) {
       return NextResponse.json({ error: "Channel ID is required" }, { status: 400 });
@@ -159,6 +161,10 @@ export async function PATCH(request: NextRequest) {
       } else {
         delete channels[index].shortName;
       }
+    }
+
+    if (active !== undefined) {
+      channels[index].active = active;
     }
 
     channels.sort((a, b) => {

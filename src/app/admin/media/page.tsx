@@ -549,38 +549,44 @@ function MediaDetailModal({
             </div>
           )}
 
-          {/* Conversion Helper */}
-          {shouldShowConvert(item) && (
-            <div className="mt-4 pt-3 border-t border-white/5 space-y-2">
-              <p className="text-xs text-neutral-400">
-                {getConversionDescription(item)}
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => copyConvertCommand(item, mediaRoot, setCopiedCommand)}
-                  className="rounded-md border border-white/20 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30"
-                >
-                  {copiedCommand ? "Copied!" : "Copy conversion command"}
-                </button>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  needsFullReencode(item)
-                    ? "bg-amber-500/20 text-amber-200"
-                    : needsAudioOnlyConversion(item)
-                    ? "bg-emerald-500/20 text-emerald-200"
-                    : "bg-blue-500/20 text-blue-200"
-                }`}>
-                  {needsFullReencode(item) ? "Full re-encode" : needsAudioOnlyConversion(item) ? "Audio only" : "Remux + audio"}
-                </span>
-              </div>
+          {/* Conversion Helper - always show for all files */}
+          <div className="mt-4 pt-3 border-t border-white/5 space-y-2">
+            <p className="text-xs text-neutral-400">
+              {getConversionDescription(item)}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => copyConvertCommand(item, mediaRoot, setCopiedCommand)}
+                className="rounded-md border border-white/20 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30"
+              >
+                {copiedCommand ? "Copied!" : "Copy conversion command"}
+              </button>
+              <span className={`text-xs px-2 py-1 rounded-full ${
+                isAlreadyOptimal(item)
+                  ? "bg-emerald-500/20 text-emerald-200"
+                  : needsFullReencode(item)
+                  ? "bg-amber-500/20 text-amber-200"
+                  : needsAudioOnlyConversion(item)
+                  ? "bg-emerald-500/20 text-emerald-200"
+                  : "bg-blue-500/20 text-blue-200"
+              }`}>
+                {isAlreadyOptimal(item) 
+                  ? "Already optimal" 
+                  : needsFullReencode(item) 
+                  ? "Full re-encode" 
+                  : needsAudioOnlyConversion(item) 
+                  ? "Audio only" 
+                  : "Remux + audio"}
+              </span>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Media Metadata Section */}
         <div className="border-t border-white/10 bg-neutral-800/30 px-5 py-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-xs uppercase tracking-widest text-neutral-500">Media Metadata</h3>
-            {!metadataLoading && mediaSource === "local" && (
+            {!metadataLoading && (
               <div className="flex items-center gap-3">
                 {aiConfigured && (
                   <div className="flex items-center gap-2">
@@ -1166,21 +1172,19 @@ export default function MediaAdminPage() {
       });
   }, []);
 
-  // Fetch all metadata for table display
+  // Fetch all metadata for table display (works for both local and remote sources)
   useEffect(() => {
-    if (mediaSource === "local") {
-      fetch("/api/media-metadata?withAutoYear=true")
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.items) {
-            setAllMetadata(data.items);
-          }
-        })
-        .catch(() => {
-          // Ignore errors, metadata is optional
-        });
-    }
-  }, [mediaSource, mediaRefreshToken]);
+    fetch("/api/media-metadata?withAutoYear=true")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.items) {
+          setAllMetadata(data.items);
+        }
+      })
+      .catch(() => {
+        // Ignore errors, metadata is optional
+      });
+  }, [mediaRefreshToken]);
 
   // Check if AI is configured (for bulk fill button)
   useEffect(() => {
@@ -1531,7 +1535,7 @@ export default function MediaAdminPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {mediaSource === "local" && aiConfiguredGlobal && !bulkAiRunning && (
+            {aiConfiguredGlobal && !bulkAiRunning && (
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer select-none">
                   <input
@@ -1590,12 +1594,12 @@ export default function MediaAdminPage() {
                 </button>
               </div>
             )}
-            {mediaSource === "local" && !bulkAiRunning && (
+            {!bulkAiRunning && (
               <button
                 onClick={refreshMediaList}
                 disabled={loading}
                 className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
-                title="Refresh the local media library"
+                title="Refresh the media library"
               >
                 {loading ? "Refreshing…" : "Refresh"}
               </button>
@@ -1832,14 +1836,16 @@ function isBrowserSupported(file: MediaFile): boolean {
   return file.supported || file.supportedViaCompanion;
 }
 
-function shouldShowConvert(file: MediaFile): boolean {
-  if (file.supportedViaCompanion) return false;
-  if (!file.supported) return true;
+function isAlreadyOptimal(file: MediaFile): boolean {
   const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
-  if (ext === "mkv") return true;
-  // Show convert option for mp4/mov with unsupported audio (ac3, dts, etc.)
-  if (hasUnsupportedAudio(file)) return true;
-  return false;
+  // Optimal format: MP4 with H.264 video and AAC audio
+  if (ext !== "mp4" && ext !== "m4v") return false;
+  if (hasUnsupportedAudio(file)) return false;
+  if (needsFullReencode(file)) return false;
+  // Check if audio is already AAC
+  const audioCodec = file.audioCodec?.toLowerCase() || "";
+  if (audioCodec && audioCodec !== "aac") return false;
+  return file.supported && !file.supportedViaCompanion;
 }
 
 function needsFullReencode(file: MediaFile): boolean {
@@ -1884,6 +1890,11 @@ function getConversionDescription(file: MediaFile): string {
                  filename.includes("h.264") ||
                  filename.includes("avc");
   
+  // Check if already optimal
+  if (isAlreadyOptimal(file)) {
+    return "Already in optimal format (MP4 + H.264 + AAC). Re-running will create a copy with optimized streaming flags.";
+  }
+  
   // Check for audio-only conversion case first
   if (needsAudioOnlyConversion(file)) {
     const audioCodec = file.audioCodec?.toUpperCase() || "unknown";
@@ -1905,18 +1916,18 @@ function getConversionDescription(file: MediaFile): string {
       if (needsFullReencode(file)) {
         return "QuickTime with HEVC needs re-encoding to H.264.";
       }
-      return "QuickTime file - will remux with AAC audio.";
+      return "QuickTime file - will remux to MP4 with AAC audio for optimal compatibility.";
     case "mkv":
       if (needsFullReencode(file)) {
         return "MKV with HEVC/x265 needs re-encoding to H.264 for browser support.";
       }
-      return "MKV will be remuxed to MP4 with AAC audio (video stream copied). Most browsers support this natively.";
+      return "MKV will be remuxed to MP4 with AAC audio (video stream copied).";
     case "mpeg":
     case "mpg":
     case "vob":
       return "MPEG/DVD format needs full re-encoding to H.264.";
     case "webm":
-      return "WebM is browser-supported. Converting to MP4 for broader compatibility.";
+      return "WebM will be converted to MP4 with H.264 + AAC for broader compatibility.";
     case "ogv":
     case "ogg":
       return "Ogg/Theora needs full re-encoding to H.264.";
@@ -1928,9 +1939,13 @@ function getConversionDescription(file: MediaFile): string {
       if (needsFullReencode(file)) {
         return "MP4 with HEVC/x265 needs re-encoding to H.264 for browser support.";
       }
-      return "MP4 will be remuxed with AAC audio (if audio isn't already AAC).";
+      const audioCodec = file.audioCodec?.toLowerCase() || "";
+      if (audioCodec && audioCodec !== "aac") {
+        return `MP4 with ${audioCodec.toUpperCase()} audio - will convert audio to AAC (video copied).`;
+      }
+      return "MP4 will be optimized with faststart flag for better streaming.";
     default:
-      return "Will attempt to remux to MP4 with AAC audio. If playback fails, try full re-encode.";
+      return "Will convert to MP4 with H.264 video and AAC audio for optimal browser compatibility.";
   }
 }
 
@@ -1956,11 +1971,13 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
   const base = file.relPath.replace(/\.[^/.]+$/, "");
   const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
   
-  // Add suffix when input is already mp4/m4v to avoid overwriting (FFmpeg cannot edit in-place)
+  // Determine output filename suffix based on conversion type
   let outName: string;
   if (ext === "mp4" || ext === "m4v") {
     if (needsFullReencode(file)) {
       outName = `${base}_h264.mp4`;  // Re-encoded from HEVC to H.264
+    } else if (isAlreadyOptimal(file)) {
+      outName = `${base}_optimized.mp4`;  // Already optimal, just adding faststart
     } else {
       outName = `${base}_aac.mp4`;   // Audio-only conversion
     }
@@ -1973,6 +1990,12 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
   const outputPath = `"${escapedRoot}/${escapedOut}"`;
   
   // -n flag prevents overwriting existing files (never prompts, just exits if file exists)
+  
+  // Already optimal files - just copy with faststart for streaming optimization
+  if (isAlreadyOptimal(file)) {
+    return `ffmpeg -n -i ${inputPath} -c:v copy -c:a copy -movflags +faststart ${outputPath}`;
+  }
+  
   switch (ext) {
     case "avi":
       if (file.relPath.toLowerCase().includes("x264") || 
@@ -1990,13 +2013,13 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
       return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "mov":
+      if (needsFullReencode(file)) {
+        return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      }
       return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
     
     case "mkv":
-      if (file.format?.toLowerCase()?.includes("hevc") || 
-          file.format?.toLowerCase()?.includes("x265") ||
-          file.relPath.toLowerCase().includes("x265") ||
-          file.relPath.toLowerCase().includes("hevc")) {
+      if (needsFullReencode(file)) {
         return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
       }
       return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
@@ -2024,10 +2047,7 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
     
     case "mp4":
     case "m4v":
-      if (file.format?.toLowerCase()?.includes("hevc") || 
-          file.format?.toLowerCase()?.includes("x265") ||
-          file.relPath.toLowerCase().includes("x265") ||
-          file.relPath.toLowerCase().includes("hevc")) {
+      if (needsFullReencode(file)) {
         return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
       }
       return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
