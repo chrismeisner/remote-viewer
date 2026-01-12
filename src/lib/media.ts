@@ -20,14 +20,10 @@ import {
   loadConfig,
   getEffectiveMediaRoot,
   getDataFolderForMediaRoot,
-  getDefaultMediaRoot,
+  hasMediaRootConfigured,
 } from "@/lib/config";
 
 const execFileAsync = promisify(execFile);
-
-// Default paths (used when no custom folder is set)
-const DEFAULT_MEDIA_ROOT = path.resolve(path.join(process.cwd(), "media"));
-const DEFAULT_DATA_ROOT = path.join(process.cwd(), "data", "local");
 
 // Cached paths - updated when config changes
 let cachedMediaRoot: string | null = null;
@@ -35,46 +31,46 @@ let cachedDataRoot: string | null = null;
 
 /**
  * Get the current media root, checking config for custom folder.
+ * Returns null if no folder is configured.
  */
-async function resolveMediaRoot(): Promise<string> {
-  const config = await loadConfig();
-  if (config.mediaRoot) {
-    cachedMediaRoot = config.mediaRoot;
-    return config.mediaRoot;
-  }
-  cachedMediaRoot = null;
-  return getDefaultMediaRoot();
+async function resolveMediaRoot(): Promise<string | null> {
+  const mediaRoot = await getEffectiveMediaRoot();
+  cachedMediaRoot = mediaRoot;
+  return mediaRoot;
 }
 
 /**
  * Get the data folder path based on current config.
- * If custom folder is set: <mediaRoot>/.remote-viewer/
- * Otherwise: ./data/local/
+ * Always uses: <mediaRoot>/.remote-viewer/
+ * Returns null if no media root is configured.
  */
-async function resolveDataRoot(): Promise<string> {
-  const config = await loadConfig();
-  if (config.mediaRoot) {
-    const dataRoot = getDataFolderForMediaRoot(config.mediaRoot);
-    cachedDataRoot = dataRoot;
-    return dataRoot;
+async function resolveDataRoot(): Promise<string | null> {
+  const mediaRoot = await getEffectiveMediaRoot();
+  if (!mediaRoot) {
+    cachedDataRoot = null;
+    return null;
   }
-  cachedDataRoot = null;
-  return DEFAULT_DATA_ROOT;
+  const dataRoot = getDataFolderForMediaRoot(mediaRoot);
+  cachedDataRoot = dataRoot;
+  return dataRoot;
 }
 
-// Dynamic path helpers
-async function getScheduleFilePath(): Promise<string> {
+// Dynamic path helpers - return null if no folder configured
+async function getScheduleFilePath(): Promise<string | null> {
   const dataRoot = await resolveDataRoot();
+  if (!dataRoot) return null;
   return path.join(dataRoot, "schedule.json");
 }
 
-async function getChannelsFilePath(): Promise<string> {
+async function getChannelsFilePath(): Promise<string | null> {
   const dataRoot = await resolveDataRoot();
+  if (!dataRoot) return null;
   return path.join(dataRoot, "channels.json");
 }
 
-async function getMediaIndexFilePath(): Promise<string> {
+async function getMediaIndexFilePath(): Promise<string | null> {
   const dataRoot = await resolveDataRoot();
+  if (!dataRoot) return null;
   return path.join(dataRoot, "media-index.json");
 }
 
@@ -137,20 +133,25 @@ let localScheduleCache: {
 } = { mtimeMs: null, schedule: null, path: null };
 
 /**
- * Get the media root path. Uses config if custom folder is set.
- * For sync access, returns cached value or default.
+ * Get the media root path. Uses cached value.
+ * Returns null if no folder is configured.
  */
-export function getMediaRoot(): string {
-  // Return cached if available, otherwise default
-  return cachedMediaRoot ?? DEFAULT_MEDIA_ROOT;
+export function getMediaRoot(): string | null {
+  return cachedMediaRoot;
 }
 
 /**
  * Async version that checks config.
+ * Returns null if no folder is configured.
  */
-export async function getMediaRootAsync(): Promise<string> {
+export async function getMediaRootAsync(): Promise<string | null> {
   return resolveMediaRoot();
 }
+
+/**
+ * Check if a media folder is configured for local mode.
+ */
+export { hasMediaRootConfigured } from "@/lib/config";
 
 /**
  * Clear all caches - call when media root changes.
@@ -179,6 +180,11 @@ export async function getNowPlaying(
 
 export async function resolveMediaPath(relPath: string): Promise<string> {
   const mediaRoot = await resolveMediaRoot();
+  
+  if (!mediaRoot) {
+    throw new Error("No media folder configured");
+  }
+  
   const safeRel = path.normalize(relPath).replace(/^(\.\.(\/|\\|$))+/, "");
   const absPath = path.join(mediaRoot, safeRel);
 
@@ -210,6 +216,12 @@ export async function loadFullSchedule(
 
 async function loadLocalFullSchedule(): Promise<Schedule> {
   const scheduleFile = await getScheduleFilePath();
+  
+  // No folder configured - return empty schedule
+  if (!scheduleFile) {
+    return { channels: {} };
+  }
+  
   try {
     const stat = await fs.stat(scheduleFile);
     // Check cache is for same path and same mtime
@@ -259,6 +271,11 @@ async function loadRemoteFullSchedule(): Promise<Schedule> {
 // Save the full schedule file
 export async function saveFullSchedule(schedule: Schedule): Promise<Schedule> {
   const scheduleFile = await getScheduleFilePath();
+  
+  if (!scheduleFile) {
+    throw new Error("No media folder configured. Please configure a folder in Source settings.");
+  }
+  
   validateSchedule(schedule);
   await fs.mkdir(path.dirname(scheduleFile), { recursive: true });
   await fs.writeFile(scheduleFile, JSON.stringify(schedule, null, 2), {
@@ -269,15 +286,16 @@ export async function saveFullSchedule(schedule: Schedule): Promise<Schedule> {
 }
 
 // Export path helpers for use by API routes (async versions)
-export async function getLocalScheduleFilePath(): Promise<string> {
+// Returns null if no folder configured
+export async function getLocalScheduleFilePath(): Promise<string | null> {
   return getScheduleFilePath();
 }
 
-export async function getLocalChannelsFilePath(): Promise<string> {
+export async function getLocalChannelsFilePath(): Promise<string | null> {
   return getChannelsFilePath();
 }
 
-export async function getLocalMediaIndexFilePath(): Promise<string> {
+export async function getLocalMediaIndexFilePath(): Promise<string | null> {
   return getMediaIndexFilePath();
 }
 
@@ -490,6 +508,12 @@ export async function getScheduleItems(options?: { refresh?: boolean }): Promise
 
 async function listMediaFiles(): Promise<MediaFile[]> {
   const mediaRoot = await resolveMediaRoot();
+  
+  // No folder configured
+  if (!mediaRoot) {
+    return [];
+  }
+  
   const exists = await existsSafe(mediaRoot);
   if (!exists) {
     return [];

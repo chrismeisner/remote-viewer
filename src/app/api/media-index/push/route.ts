@@ -52,6 +52,17 @@ export async function POST() {
   try {
     const indexPath = await getLocalMediaIndexFilePath();
     
+    // No folder configured
+    if (!indexPath) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "No media folder configured. Please configure a folder in Source settings first.",
+        } satisfies PushResult,
+        { status: 400 },
+      );
+    }
+    
     // Read the local media-index.json (which has proper durations from ffprobe)
     let localIndex: { items?: MediaItem[]; generatedAt?: string } = { items: [] };
     try {
@@ -64,7 +75,7 @@ export async function POST() {
           {
             success: false,
             message:
-              "No local media-index.json found. Click 'Sync JSON' in local mode first to generate it.",
+              "No local media-index.json found. Click 'Scan Media' in local mode first to generate it.",
           } satisfies PushResult,
           { status: 400 },
         );

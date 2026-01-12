@@ -13,6 +13,13 @@ export async function POST() {
     const scheduleFile = await getLocalScheduleFilePath();
     const channelsFile = await getLocalChannelsFilePath();
     
+    // No folder configured
+    if (!scheduleFile || !channelsFile) {
+      return NextResponse.json({
+        error: "No media folder configured. Please configure a folder in Source settings.",
+      }, { status: 400 });
+    }
+    
     // Read channels.json to get valid channel IDs
     const channelsRaw = await fs.readFile(channelsFile, "utf8");
     const channelsData = JSON.parse(channelsRaw);
@@ -77,6 +84,18 @@ export async function GET() {
   try {
     const scheduleFile = await getLocalScheduleFilePath();
     const channelsFile = await getLocalChannelsFilePath();
+    
+    // No folder configured
+    if (!scheduleFile || !channelsFile) {
+      return NextResponse.json({
+        success: true,
+        orphanedChannels: [],
+        hasOrphans: false,
+        totalSchedules: 0,
+        validChannels: [],
+        message: "No media folder configured",
+      });
+    }
     
     // Read channels.json to get valid channel IDs
     const channelsRaw = await fs.readFile(channelsFile, "utf8");

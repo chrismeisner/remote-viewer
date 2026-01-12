@@ -4,7 +4,6 @@ import {
   isLocalMode,
   loadConfig,
   saveConfig,
-  getDefaultMediaRoot,
   getEffectiveMediaRoot,
   validateMediaPath,
   clearConfigCache,
@@ -15,10 +14,10 @@ export const runtime = "nodejs";
 
 export type SourceResponse = {
   mediaRoot: string | null;
-  effectiveMediaRoot: string;
-  defaultRoot: string;
+  effectiveMediaRoot: string | null; // null if no folder configured
   localMode: boolean;
   dataFolder: string | null;
+  configured: boolean; // true if a folder is configured for local mode
 };
 
 /**
@@ -30,19 +29,18 @@ export async function GET() {
     const localMode = isLocalMode();
     const config = await loadConfig();
     const effectiveMediaRoot = await getEffectiveMediaRoot();
-    const defaultRoot = getDefaultMediaRoot();
 
-    // Data folder is <mediaRoot>/.remote-viewer/ when custom folder is set
-    const dataFolder = config.mediaRoot
-      ? path.join(config.mediaRoot, ".remote-viewer")
+    // Data folder is <mediaRoot>/.remote-viewer/ when folder is set
+    const dataFolder = effectiveMediaRoot
+      ? path.join(effectiveMediaRoot, ".remote-viewer")
       : null;
 
     return NextResponse.json({
       mediaRoot: config.mediaRoot,
       effectiveMediaRoot,
-      defaultRoot,
       localMode,
       dataFolder,
+      configured: effectiveMediaRoot !== null,
     } satisfies SourceResponse);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load config";
@@ -57,14 +55,15 @@ export type SourceUpdateRequest = {
 export type SourceUpdateResponse = {
   success: boolean;
   mediaRoot: string | null;
-  effectiveMediaRoot: string;
+  effectiveMediaRoot: string | null;
   dataFolder: string | null;
+  configured: boolean;
   message?: string;
 };
 
 /**
  * PUT /api/source
- * Update the media root path. Set to null to use default.
+ * Update the media root path. Set to null to clear configuration.
  */
 export async function PUT(request: NextRequest) {
   try {
@@ -79,19 +78,19 @@ export async function PUT(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const mediaRoot = body.mediaRoot;
 
-    // Allow null to reset to default
+    // Allow null to clear the folder configuration
     if (mediaRoot === null || mediaRoot === "") {
       await saveConfig({ mediaRoot: null });
       clearConfigCache();
       clearMediaCaches();
       
-      const effectiveMediaRoot = await getEffectiveMediaRoot();
       return NextResponse.json({
         success: true,
         mediaRoot: null,
-        effectiveMediaRoot,
+        effectiveMediaRoot: null,
         dataFolder: null,
-        message: "Reset to default media folder",
+        configured: false,
+        message: "Media folder configuration cleared",
       } satisfies SourceUpdateResponse);
     }
 
@@ -125,6 +124,7 @@ export async function PUT(request: NextRequest) {
       mediaRoot: resolved,
       effectiveMediaRoot: resolved,
       dataFolder,
+      configured: true,
       message: `Media folder set to ${resolved}`,
     } satisfies SourceUpdateResponse);
   } catch (error) {

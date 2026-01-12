@@ -42,13 +42,11 @@ type RemoteStatus = {
 
 type SourceConfig = {
   mediaRoot: string | null;
-  effectiveMediaRoot: string;
-  defaultRoot: string;
+  effectiveMediaRoot: string | null;
   localMode: boolean;
   dataFolder: string | null;
+  configured: boolean;
 };
-
-type LocalSourceMode = "default" | "custom";
 
 export default function SourceAdminPage() {
   // Default to "remote" so fresh browsers work immediately with deployed apps
@@ -81,10 +79,9 @@ export default function SourceAdminPage() {
     loading: true,
   });
   
-  // Custom folder state
+  // Folder configuration state
   const [sourceConfig, setSourceConfig] = useState<SourceConfig | null>(null);
-  const [localSourceMode, setLocalSourceMode] = useState<LocalSourceMode>("default");
-  const [customFolderPath, setCustomFolderPath] = useState("");
+  const [folderPath, setFolderPath] = useState("");
   const [savingFolder, setSavingFolder] = useState(false);
   const [folderMessage, setFolderMessage] = useState<string | null>(null);
   const [folderError, setFolderError] = useState<string | null>(null);
@@ -203,21 +200,15 @@ export default function SourceAdminPage() {
     void loadRemoteStatus();
   }, []);
 
-  // Load source config (custom folder settings)
+  // Load source config (folder settings)
   const loadSourceConfig = async () => {
     try {
       const res = await fetch("/api/source", { cache: "no-store" });
       if (res.ok) {
         const config = await res.json() as SourceConfig;
         setSourceConfig(config);
-        // Set local source mode based on whether a custom folder is set
-        if (config.mediaRoot) {
-          setLocalSourceMode("custom");
-          setCustomFolderPath(config.mediaRoot);
-        } else {
-          setLocalSourceMode("default");
-          setCustomFolderPath("");
-        }
+        // Set folder path from config
+        setFolderPath(config.effectiveMediaRoot || "");
       }
     } catch (err) {
       console.warn("Failed to load source config:", err);
@@ -228,8 +219,13 @@ export default function SourceAdminPage() {
     void loadSourceConfig();
   }, []);
 
-  // Save custom folder path
-  const saveCustomFolder = async () => {
+  // Save folder path
+  const saveFolderPath = async () => {
+    if (!folderPath.trim()) {
+      setFolderError("Please enter a folder path");
+      return;
+    }
+    
     setSavingFolder(true);
     setFolderMessage(null);
     setFolderError(null);
@@ -237,7 +233,7 @@ export default function SourceAdminPage() {
       const res = await fetch("/api/source", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mediaRoot: customFolderPath || null }),
+        body: JSON.stringify({ mediaRoot: folderPath }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -254,8 +250,8 @@ export default function SourceAdminPage() {
     }
   };
 
-  // Reset to default folder
-  const resetToDefault = async () => {
+  // Clear folder configuration
+  const clearFolderConfig = async () => {
     setSavingFolder(true);
     setFolderMessage(null);
     setFolderError(null);
@@ -267,16 +263,15 @@ export default function SourceAdminPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to reset folder");
+        throw new Error(data.error || "Failed to clear folder");
       }
-      setFolderMessage("Reset to default folder");
-      setLocalSourceMode("default");
-      setCustomFolderPath("");
+      setFolderMessage("Folder configuration cleared");
+      setFolderPath("");
       // Reload config and status
       await loadSourceConfig();
       await loadLocalStatus();
     } catch (err) {
-      setFolderError(err instanceof Error ? err.message : "Failed to reset folder");
+      setFolderError(err instanceof Error ? err.message : "Failed to clear folder");
     } finally {
       setSavingFolder(false);
     }
@@ -307,9 +302,9 @@ export default function SourceAdminPage() {
   const openFolderBrowser = () => {
     setShowBrowser(true);
     setBrowserError(null);
-    // Start from current custom path or load roots
-    if (customFolderPath) {
-      void browseTo(customFolderPath);
+    // Start from current folder path or load roots
+    if (folderPath) {
+      void browseTo(folderPath);
     } else {
       void browseTo("");
     }
@@ -336,12 +331,6 @@ export default function SourceAdminPage() {
     } finally {
       setBrowserLoading(false);
     }
-  };
-
-  const selectBrowserFolder = (folderPath: string) => {
-    setCustomFolderPath(folderPath);
-    setLocalSourceMode("custom");
-    setShowBrowser(false);
   };
 
   const saveSource = () => {
@@ -523,15 +512,25 @@ export default function SourceAdminPage() {
                 onChange={() => setPendingSource("local")}
                 className="h-4 w-4 mt-0.5"
               />
-              <div>
-                <p className="font-semibold text-neutral-100">Local</p>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-neutral-100">Local</p>
+                  {sourceConfig?.localMode && !sourceConfig?.configured && (
+                    <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-200">
+                      Setup Required
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-neutral-400">
-                  Media from{" "}
-                  <code className="bg-white/10 px-1 rounded">
-                    {sourceConfig?.effectiveMediaRoot || "./media"}
-                  </code>
-                  {sourceConfig?.mediaRoot && (
-                    <span className="ml-1 text-emerald-400">(custom folder)</span>
+                  {sourceConfig?.configured ? (
+                    <>
+                      Media from{" "}
+                      <code className="bg-white/10 px-1 rounded">
+                        {sourceConfig.effectiveMediaRoot}
+                      </code>
+                    </>
+                  ) : (
+                    <>Point to a folder containing your media files</>
                   )}
                 </p>
               </div>
@@ -573,112 +572,89 @@ export default function SourceAdminPage() {
         )}
       </div>
 
-      {/* Custom Folder - Only shown in local mode */}
+      {/* Media Folder Configuration - Only shown in local mode */}
       {sourceConfig?.localMode && pendingSource === "local" && (
         <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
           <div className="mb-4">
             <div className="flex items-center gap-3">
               <h2 className="text-sm font-semibold text-neutral-100">Media Folder</h2>
-              <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-amber-500/20 text-amber-200">
-                Local Only
-              </span>
+              {sourceConfig.configured ? (
+                <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-emerald-500/20 text-emerald-200">
+                  Configured
+                </span>
+              ) : (
+                <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-amber-500/20 text-amber-200">
+                  Setup Required
+                </span>
+              )}
             </div>
             <p className="text-xs text-neutral-400 mt-1">
-              Choose where media files are stored. This can be an external drive or any folder on your system.
+              Point to the folder containing your media files. This can be an external drive or any folder on your system.
             </p>
           </div>
 
-          <div className="space-y-3">
-            {/* Default folder option */}
-            <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 cursor-pointer hover:bg-white/10 transition">
-              <input
-                type="radio"
-                name="local-source-mode"
-                value="default"
-                checked={localSourceMode === "default"}
-                onChange={() => {
-                  setLocalSourceMode("default");
-                  setCustomFolderPath("");
-                }}
-                className="h-4 w-4 mt-0.5"
-              />
-              <div>
-                <p className="font-semibold text-neutral-100">Default</p>
-                <p className="text-xs text-neutral-400">
-                  Use <code className="bg-white/10 px-1 rounded">{sourceConfig?.defaultRoot || "./media"}</code>
-                </p>
-              </div>
-            </label>
+          {/* Not configured state */}
+          {!sourceConfig.configured && (
+            <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 mb-4">
+              <p className="text-sm text-amber-100 font-medium mb-1">No folder configured</p>
+              <p className="text-xs text-amber-200/70">
+                Select a folder to get started with local mode. Your schedules and settings will be stored in a <code className="bg-black/20 px-1 rounded">.remote-viewer</code> subfolder.
+              </p>
+            </div>
+          )}
 
-            {/* Custom folder option */}
-            <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 cursor-pointer hover:bg-white/10 transition">
+          {/* Folder path input */}
+          <div className="space-y-2">
+            <div className="flex gap-2">
               <input
-                type="radio"
-                name="local-source-mode"
-                value="custom"
-                checked={localSourceMode === "custom"}
-                onChange={() => setLocalSourceMode("custom")}
-                className="h-4 w-4 mt-0.5"
+                type="text"
+                value={folderPath}
+                onChange={(e) => setFolderPath(e.target.value)}
+                placeholder="/Volumes/MyDrive/Media or ~/Movies"
+                className="flex-1 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-400/50 focus:outline-none focus:ring-1 focus:ring-emerald-400/30"
               />
-              <div className="flex-1">
-                <p className="font-semibold text-neutral-100">Custom Folder</p>
-                <p className="text-xs text-neutral-400 mb-2">
-                  Point to any folder (e.g., external drive like <code className="bg-white/10 px-1 rounded">/Volumes/MyDrive/Media</code>)
-                </p>
-                {localSourceMode === "custom" && (
-                  <div className="space-y-2">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={customFolderPath}
-                        onChange={(e) => setCustomFolderPath(e.target.value)}
-                        placeholder="/path/to/media/folder"
-                        className="flex-1 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-400/50 focus:outline-none focus:ring-1 focus:ring-emerald-400/30"
-                      />
-                      <button
-                        type="button"
-                        onClick={openFolderBrowser}
-                        className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
-                      >
-                        Browse
-                      </button>
-                    </div>
-                    <p className="text-xs text-neutral-500">
-                      Data files will be stored in <code className="bg-white/10 px-1 rounded">{customFolderPath || "/path"}/.remote-viewer/</code>
-                    </p>
-                  </div>
-                )}
-              </div>
-            </label>
+              <button
+                type="button"
+                onClick={openFolderBrowser}
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+              >
+                Browse
+              </button>
+            </div>
+            {folderPath && (
+              <p className="text-xs text-neutral-500">
+                Data files will be stored in <code className="bg-white/10 px-1 rounded">{folderPath}/.remote-viewer/</code>
+              </p>
+            )}
           </div>
 
           {/* Action buttons */}
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            {localSourceMode === "custom" && (
-              <button
-                onClick={() => void saveCustomFolder()}
-                disabled={savingFolder || !customFolderPath.trim()}
-                className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
-              >
-                {savingFolder ? "Saving…" : "Save Folder"}
-              </button>
-            )}
-            {localSourceMode === "default" && sourceConfig?.mediaRoot && (
-              <button
-                onClick={() => void resetToDefault()}
-                disabled={savingFolder}
-                className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
-              >
-                {savingFolder ? "Resetting…" : "Reset to Default"}
-              </button>
-            )}
             <button
-              onClick={() => void scanMediaFolder()}
-              disabled={scanning}
-              className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+              onClick={() => void saveFolderPath()}
+              disabled={savingFolder || !folderPath.trim()}
+              className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
             >
-              {scanning ? "Scanning…" : "Scan Media Folder"}
+              {savingFolder ? "Saving…" : sourceConfig.configured ? "Update Folder" : "Set Folder"}
             </button>
+            {sourceConfig.configured && (
+              <>
+                <button
+                  onClick={() => void scanMediaFolder()}
+                  disabled={scanning}
+                  className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+                >
+                  {scanning ? "Scanning…" : "Scan Media"}
+                </button>
+                <button
+                  onClick={() => void clearFolderConfig()}
+                  disabled={savingFolder}
+                  className="rounded-md border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-200 transition hover:border-red-300/50 hover:bg-red-500/20 disabled:opacity-50"
+                >
+                  Clear
+                </button>
+              </>
+            )}
           </div>
 
           {/* Folder status messages */}
@@ -694,17 +670,14 @@ export default function SourceAdminPage() {
             </div>
           )}
 
-          {/* Current config info */}
-          {sourceConfig && (
+          {/* Current config info - only show when configured */}
+          {sourceConfig.configured && sourceConfig.effectiveMediaRoot && (
             <div className="mt-4 rounded-lg border border-white/5 bg-neutral-950/50 p-3">
               <p className="text-xs text-neutral-500 mb-2">Current configuration:</p>
               <div className="space-y-1 font-mono text-xs text-neutral-300">
                 <p>
                   Media folder:{" "}
-                  <span className="text-neutral-100">
-                    {sourceConfig.effectiveMediaRoot}
-                  </span>
-                  {sourceConfig.mediaRoot && <span className="text-emerald-400 ml-1">(custom)</span>}
+                  <span className="text-neutral-100">{sourceConfig.effectiveMediaRoot}</span>
                 </p>
                 {sourceConfig.dataFolder && (
                   <p>
@@ -1210,7 +1183,7 @@ export default function SourceAdminPage() {
                 <button
                   onClick={() => {
                     if (browserPath) {
-                      setCustomFolderPath(browserPath);
+                      setFolderPath(browserPath);
                       setShowBrowser(false);
                     }
                   }}

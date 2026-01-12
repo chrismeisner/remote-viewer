@@ -23,6 +23,12 @@ function normalizeChannelId(value: string): string {
 // Read local channels from file
 async function readLocalChannels(): Promise<Channel[]> {
   const channelsFile = await getLocalChannelsFilePath();
+  
+  // No folder configured
+  if (!channelsFile) {
+    return [];
+  }
+  
   try {
     const raw = await fs.readFile(channelsFile, "utf8");
     const data: ChannelsData = JSON.parse(raw);
@@ -35,6 +41,11 @@ async function readLocalChannels(): Promise<Channel[]> {
 // Write local channels to file
 async function writeLocalChannels(channels: Channel[]): Promise<void> {
   const channelsFile = await getLocalChannelsFilePath();
+  
+  if (!channelsFile) {
+    throw new Error("No media folder configured. Please configure a folder in Source settings.");
+  }
+  
   await fs.mkdir(path.dirname(channelsFile), { recursive: true });
   const data: ChannelsData = { channels };
   await fs.writeFile(channelsFile, JSON.stringify(data, null, 2), "utf8");
@@ -42,6 +53,12 @@ async function writeLocalChannels(channels: Channel[]): Promise<void> {
 
 async function loadLocalSchedule(): Promise<Schedule> {
   const scheduleFile = await getLocalScheduleFilePath();
+  
+  // No folder configured
+  if (!scheduleFile) {
+    return { channels: {} };
+  }
+  
   try {
     const raw = await fs.readFile(scheduleFile, "utf8");
     const parsed = JSON.parse(raw) as Schedule;
@@ -60,6 +77,12 @@ async function updateScheduleForChannelChange(
   shortName?: string,
 ): Promise<void> {
   const scheduleFile = await getLocalScheduleFilePath();
+  
+  // No folder configured - skip schedule update
+  if (!scheduleFile) {
+    return;
+  }
+  
   const schedule = await loadLocalSchedule();
   const trimmedShortName = typeof shortName === "string" ? shortName.trim() : undefined;
   const targetId = newId || oldId;
@@ -243,22 +266,24 @@ export async function DELETE(request: NextRequest) {
     // Delete the channel from channels.json
     await writeLocalChannels(filtered);
 
-    // Also delete the channel's schedule from schedule.json
-    try {
-      const scheduleRaw = await fs.readFile(scheduleFile, "utf8");
-      const scheduleData = JSON.parse(scheduleRaw);
-      
-      // The schedule file has structure: { channels: { [channelId]: { slots: [...] } } }
-      if (scheduleData && scheduleData.channels && typeof scheduleData.channels === "object") {
-        if (scheduleData.channels[id]) {
-          delete scheduleData.channels[id];
-          await fs.writeFile(scheduleFile, JSON.stringify(scheduleData, null, 2), "utf8");
-          console.log(`Deleted schedule for channel ${id}`);
+    // Also delete the channel's schedule from schedule.json (if folder is configured)
+    if (scheduleFile) {
+      try {
+        const scheduleRaw = await fs.readFile(scheduleFile, "utf8");
+        const scheduleData = JSON.parse(scheduleRaw);
+        
+        // The schedule file has structure: { channels: { [channelId]: { slots: [...] } } }
+        if (scheduleData && scheduleData.channels && typeof scheduleData.channels === "object") {
+          if (scheduleData.channels[id]) {
+            delete scheduleData.channels[id];
+            await fs.writeFile(scheduleFile, JSON.stringify(scheduleData, null, 2), "utf8");
+            console.log(`Deleted schedule for channel ${id}`);
+          }
         }
+      } catch (scheduleErr) {
+        // If schedule deletion fails, log but don't fail the whole operation
+        console.warn(`Failed to delete schedule for channel ${id}:`, scheduleErr);
       }
-    } catch (scheduleErr) {
-      // If schedule deletion fails, log but don't fail the whole operation
-      console.warn(`Failed to delete schedule for channel ${id}:`, scheduleErr);
     }
 
     return NextResponse.json({ ok: true, channels: filtered, deletedSchedule: true });

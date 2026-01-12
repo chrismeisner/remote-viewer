@@ -11,13 +11,22 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const indexPath = await getLocalMediaIndexFilePath();
+    
+    // No folder configured
+    if (!indexPath) {
+      return NextResponse.json({ 
+        items: [], 
+        message: "No media folder configured. Please configure a folder in Source settings." 
+      });
+    }
+    
     const raw = await fs.readFile(indexPath, "utf8");
     const json = JSON.parse(raw);
     return NextResponse.json(json);
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err?.code === "ENOENT") {
-      return NextResponse.json({ items: [], message: "No local index found. Click 'Sync JSON' to create one." });
+      return NextResponse.json({ items: [], message: "No local index found. Click 'Scan Media' to create one." });
     }
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
@@ -30,6 +39,14 @@ export async function GET() {
 export async function POST() {
   try {
     const indexPath = await getLocalMediaIndexFilePath();
+    
+    // No folder configured
+    if (!indexPath) {
+      return NextResponse.json(
+        { success: false, message: "No media folder configured. Please configure a folder in Source settings." },
+        { status: 400 },
+      );
+    }
     
     // Scan media folder with refresh to get latest
     const items = await getScheduleItems({ refresh: true });

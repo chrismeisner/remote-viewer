@@ -2,11 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const CONFIG_FILE = path.join(process.cwd(), "data", "local", "config.json");
-const DEFAULT_MEDIA_ROOT = path.join(process.cwd(), "media");
 const DATA_SUBFOLDER = ".remote-viewer";
 
 export type AppConfig = {
-  mediaRoot: string | null;
+  mediaRoot: string | null; // Always required for local mode - no default
 };
 
 let configCache: { config: AppConfig; mtimeMs: number | null } | null = null;
@@ -62,9 +61,10 @@ export async function saveConfig(config: AppConfig): Promise<void> {
 
 /**
  * Get the effective media root path.
- * Priority: config.mediaRoot > env MEDIA_ROOT > default ./media
+ * Returns null if no folder is configured - local mode REQUIRES a configured folder.
+ * Priority: config.mediaRoot > env MEDIA_ROOT > null
  */
-export async function getEffectiveMediaRoot(): Promise<string> {
+export async function getEffectiveMediaRoot(): Promise<string | null> {
   const config = await loadConfig();
   if (config.mediaRoot) {
     return config.mediaRoot;
@@ -72,17 +72,16 @@ export async function getEffectiveMediaRoot(): Promise<string> {
   if (process.env.MEDIA_ROOT) {
     return path.resolve(process.env.MEDIA_ROOT);
   }
-  return DEFAULT_MEDIA_ROOT;
+  // No default - local mode requires explicit folder configuration
+  return null;
 }
 
 /**
- * Get the default media root (fallback when no custom folder is set).
+ * Check if a media root is configured for local mode.
  */
-export function getDefaultMediaRoot(): string {
-  if (process.env.MEDIA_ROOT) {
-    return path.resolve(process.env.MEDIA_ROOT);
-  }
-  return DEFAULT_MEDIA_ROOT;
+export async function hasMediaRootConfigured(): Promise<boolean> {
+  const root = await getEffectiveMediaRoot();
+  return root !== null;
 }
 
 /**
