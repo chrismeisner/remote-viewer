@@ -3,6 +3,18 @@ import OpenAI from "openai";
 
 export const runtime = "nodejs";
 
+type AiLookupResponse = {
+  title?: string;
+  year?: number | null;
+  director?: string | null;
+  category?: string | null;
+  makingOf?: string | null;
+  plot?: string | null;
+  type?: string | null;
+  season?: number | null;
+  episode?: number | null;
+};
+
 /**
  * POST /api/media-metadata/ai-lookup
  * 
@@ -139,7 +151,7 @@ ${existingFields.join("\n")}`;
     console.log(`[AI Lookup] Raw response: ${content}`);
 
     // Parse the JSON response
-    let parsed: { title?: string; year?: number | null; director?: string | null; category?: string | null };
+    let parsed: AiLookupResponse;
     try {
       // Clean up potential markdown code blocks
       const jsonString = content
