@@ -46,7 +46,9 @@ export default function Home() {
   const lastResolvedAtRef = useRef<number | null>(null);
   const lastRttMsRef = useRef<number>(0);
   const desiredOffsetRef = useRef<number | null>(null);
-  const [mediaSource, setMediaSource] = useState<MediaSource>("local");
+  // Default to "remote" so fresh browsers (incognito, new users) work immediately
+  // Users can switch to "local" via the admin panel if they have local media
+  const [mediaSource, setMediaSource] = useState<MediaSource>("remote");
   const [channel, setChannel] = useState<string | null>(null);
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
@@ -130,11 +132,13 @@ export default function Home() {
   }, [showHeader]);
 
   // Load media source preference from localStorage and stay in sync with other tabs/pages.
+  // Default to "remote" if nothing is stored (works better for deployed apps)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const syncSource = () => {
       const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
-      setMediaSource(stored === "remote" ? "remote" : "local");
+      // Only switch to "local" if explicitly set; otherwise keep "remote" as default
+      setMediaSource(stored === "local" ? "local" : "remote");
     };
     syncSource();
     window.addEventListener("storage", syncSource);

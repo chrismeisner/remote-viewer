@@ -51,8 +51,9 @@ type SourceConfig = {
 type LocalSourceMode = "default" | "custom";
 
 export default function SourceAdminPage() {
-  const [mediaSource, setMediaSource] = useState<MediaSource>("local");
-  const [pendingSource, setPendingSource] = useState<MediaSource>("local");
+  // Default to "remote" so fresh browsers work immediately with deployed apps
+  const [mediaSource, setMediaSource] = useState<MediaSource>("remote");
+  const [pendingSource, setPendingSource] = useState<MediaSource>("remote");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
