@@ -18,7 +18,7 @@ type MediaFile = {
   audioCodec?: string;
 };
 
-type MediaType = "film" | "tv" | "documentary" | "other";
+type MediaType = "film" | "tv" | "documentary" | "sports" | "concert" | "other";
 
 type MediaMetadata = {
   title?: string | null;
@@ -664,6 +664,8 @@ function MediaDetailModal({
                     <option value="film">Film</option>
                     <option value="tv">TV Show</option>
                     <option value="documentary">Documentary</option>
+                    <option value="sports">Sports</option>
+                    <option value="concert">Concert</option>
                     <option value="other">Other</option>
                   </select>
                 </div>
@@ -783,11 +785,15 @@ function MediaDetailModal({
                     metadata.type === "film" ? "bg-purple-500/20 text-purple-200" :
                     metadata.type === "tv" ? "bg-blue-500/20 text-blue-200" :
                     metadata.type === "documentary" ? "bg-amber-500/20 text-amber-200" :
+                    metadata.type === "sports" ? "bg-green-500/20 text-green-200" :
+                    metadata.type === "concert" ? "bg-pink-500/20 text-pink-200" :
                     "bg-neutral-500/20 text-neutral-200"
                   }`}>
                     {metadata.type === "film" ? "Film" :
                      metadata.type === "tv" ? "TV Show" :
                      metadata.type === "documentary" ? "Documentary" :
+                     metadata.type === "sports" ? "Sports" :
+                     metadata.type === "concert" ? "Concert" :
                      "Other"}
                   </span>
                 )}
@@ -1139,6 +1145,10 @@ export default function MediaAdminPage() {
   const bulkAiCancelledRef = useRef(false);
   const [aiConfiguredGlobal, setAiConfiguredGlobal] = useState(false);
   const [bulkAiSupportedOnly, setBulkAiSupportedOnly] = useState(true);
+  
+  // Bulk conversion command state
+  const [selectedForConversion, setSelectedForConversion] = useState<Set<string>>(new Set());
+  const [copiedBulkCommand, setCopiedBulkCommand] = useState(false);
 
   // Load media source preference from localStorage and stay in sync with other tabs/pages.
   useEffect(() => {
@@ -1315,6 +1325,54 @@ export default function MediaAdminPage() {
 
   const cancelBulkAiFill = () => {
     bulkAiCancelledRef.current = true;
+  };
+
+  // Toggle individual file selection for conversion
+  const toggleFileSelection = (relPath: string) => {
+    setSelectedForConversion((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(relPath)) {
+        newSet.delete(relPath);
+      } else {
+        newSet.add(relPath);
+      }
+      return newSet;
+    });
+    setCopiedBulkCommand(false);
+  };
+
+  // Toggle all visible files
+  const toggleAllVisible = () => {
+    if (selectedForConversion.size === filteredFiles.length) {
+      // All are selected, deselect all
+      setSelectedForConversion(new Set());
+    } else {
+      // Select all visible
+      setSelectedForConversion(new Set(filteredFiles.map((f) => f.relPath)));
+    }
+    setCopiedBulkCommand(false);
+  };
+
+  // Build and copy bulk conversion command
+  const copyBulkConversionCommand = () => {
+    const selectedFiles = filteredFiles.filter((f) => selectedForConversion.has(f.relPath));
+    if (selectedFiles.length === 0) return;
+
+    // Build individual commands for each file
+    const commands = selectedFiles.map((file) => buildConvertCommand(file, mediaRoot));
+
+    // Join with && to run sequentially (stops on error)
+    const bulkCommand = commands.join(" && ");
+
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(bulkCommand)
+        .then(() => setCopiedBulkCommand(true))
+        .catch(() => setCopiedBulkCommand(false));
+    } else {
+      setCopiedBulkCommand(false);
+      window.prompt("Copy this bulk command", bulkCommand);
+    }
   };
 
   // Load available media list
@@ -1617,6 +1675,32 @@ export default function MediaAdminPage() {
           </div>
         </div>
 
+        {/* Bulk Conversion Command Button */}
+        {selectedForConversion.size > 0 && (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-emerald-200">
+                {selectedForConversion.size} file{selectedForConversion.size === 1 ? "" : "s"} selected
+              </span>
+              <button
+                onClick={copyBulkConversionCommand}
+                className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30"
+              >
+                {copiedBulkCommand ? "Copied!" : "Copy conversion command"}
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedForConversion(new Set());
+                setCopiedBulkCommand(false);
+              }}
+              className="text-xs text-neutral-400 hover:text-neutral-200 transition"
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
+
         {/* Filters and Search */}
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
@@ -1690,6 +1774,15 @@ export default function MediaAdminPage() {
                 <table className="min-w-full text-sm text-left">
                   <thead className="bg-white/5 text-neutral-200">
                     <tr>
+                      <th className="px-3 py-2 font-semibold w-10">
+                        <input
+                          type="checkbox"
+                          checked={selectedForConversion.size === filteredFiles.length && filteredFiles.length > 0}
+                          onChange={toggleAllVisible}
+                          className="w-4 h-4 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 cursor-pointer"
+                          title="Select/deselect all visible files"
+                        />
+                      </th>
                       <th className="px-3 py-2 font-semibold">File</th>
                       <th className="px-3 py-2 font-semibold min-w-[150px]">Title</th>
                       <th className="px-3 py-2 font-semibold w-16 text-center">Year</th>
@@ -1712,8 +1805,17 @@ export default function MediaAdminPage() {
                   <tbody className="divide-y divide-white/5 bg-neutral-950/40 text-neutral-100">
                     {filteredFiles.map((file) => {
                       const meta = allMetadata[file.relPath] || {};
+                      const isSelected = selectedForConversion.has(file.relPath);
                       return (
-                        <tr key={file.relPath}>
+                        <tr key={file.relPath} className={isSelected ? "bg-emerald-500/5" : ""}>
+                          <td className="px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleFileSelection(file.relPath)}
+                              className="w-4 h-4 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 cursor-pointer"
+                            />
+                          </td>
                           <td className="px-3 py-2">
                             <button
                               type="button"

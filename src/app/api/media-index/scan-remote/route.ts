@@ -83,6 +83,38 @@ function getTitle(filename: string): string {
   return path.basename(filename, path.extname(filename));
 }
 
+/**
+ * Recursively list all media files in the current FTP directory and subdirectories
+ */
+async function listMediaFilesRecursive(
+  client: Client,
+  currentPath: string,
+): Promise<Array<{ name: string; relPath: string }>> {
+  const fileList = await client.list(currentPath || undefined);
+  const results: Array<{ name: string; relPath: string }> = [];
+  
+  for (const entry of fileList) {
+    // Skip hidden files/folders
+    if (entry.name.startsWith(".")) continue;
+    
+    const entryPath = currentPath ? path.posix.join(currentPath, entry.name) : entry.name;
+    
+    if (entry.isDirectory) {
+      // Recursively scan subdirectory
+      const subFiles = await listMediaFilesRecursive(client, entryPath);
+      results.push(...subFiles);
+    } else if (entry.isFile && isMediaFile(entry.name)) {
+      // Add media file with its relative path
+      results.push({
+        name: entry.name,
+        relPath: entryPath,
+      });
+    }
+  }
+  
+  return results;
+}
+
 async function resolveFfprobePath(): Promise<string> {
   const envPath = process.env.FFPROBE_PATH;
   if (envPath) {
@@ -248,10 +280,10 @@ export async function POST() {
       console.warn("Could not fetch existing remote index, will probe all files:", err);
     }
 
-    // Connect to FTP and list files
+    // Connect to FTP and list files recursively
     // Use shorter timeout to stay within Heroku's 30s request limit
     const client = new Client(10000);
-    let fileList: FileInfo[] = [];
+    let mediaFiles: Array<{ name: string; relPath: string }> = [];
     
     try {
       await client.access({ host, port, user, password, secure });
@@ -262,16 +294,11 @@ export async function POST() {
         await client.cd(remoteDir);
       }
       
-      // List all files
-      fileList = await client.list();
+      // Recursively list all media files
+      mediaFiles = await listMediaFilesRecursive(client, "");
     } finally {
       client.close();
     }
-
-    // Filter for media files and build items
-    const mediaFiles = fileList.filter(
-      (f) => f.isFile && isMediaFile(f.name)
-    );
 
     // Build base URL for probing remote files
     const baseUrl = REMOTE_MEDIA_BASE.endsWith("/")
@@ -292,7 +319,7 @@ export async function POST() {
           const supported = isSupported(format);
           
           // Check existing remote index for cached duration (only valid durations > 0 are cached)
-          const cachedDuration = existingDurations.get(f.name);
+          const cachedDuration = existingDurations.get(f.relPath);
           let durationSeconds = cachedDuration ?? 0;
           let probeSuccess = cachedDuration !== undefined && cachedDuration > 0;
           let probeError: string | undefined;
@@ -300,7 +327,10 @@ export async function POST() {
           
           // If no valid cached duration (new file or previously 0), probe the remote file
           if (durationSeconds === 0) {
-            const fileUrl = baseUrl + encodeURIComponent(f.name);
+            // Encode each path segment separately to handle subdirectories correctly
+            const pathParts = f.relPath.split('/');
+            const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
+            const fileUrl = baseUrl + encodedPath;
             console.log(`Probing remote file: ${fileUrl}`);
             const probeResult = await probeRemoteDuration(fileUrl);
             durationSeconds = probeResult.durationSeconds;
@@ -311,7 +341,7 @@ export async function POST() {
           
           // Record detailed file result
           fileResults.push({
-            file: f.name,
+            file: f.relPath,
             durationSeconds,
             format,
             supported,
@@ -322,7 +352,7 @@ export async function POST() {
           });
           
           return {
-            relPath: f.name,
+            relPath: f.relPath,
             durationSeconds,
             format,
             supported,

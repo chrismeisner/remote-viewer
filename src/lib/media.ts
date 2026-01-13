@@ -136,7 +136,7 @@ export type ScheduledItem = {
 };
 
 // Media metadata types
-export type MediaType = "film" | "tv" | "documentary" | "other";
+export type MediaType = "film" | "tv" | "documentary" | "sports" | "concert" | "other";
 
 export type MediaMetadataItem = {
   title?: string | null;

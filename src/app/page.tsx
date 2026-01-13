@@ -12,6 +12,7 @@ import { Modal, ModalTitle, ModalFooter, ModalButton } from "@/components/Modal"
 const MUTED_PREF_KEY = "player-muted-default";
 const CRT_PREF_KEY = "player-crt-default";
 const REMOTE_PREF_KEY = "player-remote-default";
+const VOLUME_PREF_KEY = "player-volume-default";
 
 type NowPlaying = {
   title: string;
@@ -41,6 +42,8 @@ export default function Home() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [muted, setMuted] = useState(true);
   const mutedRef = useRef(muted);
+  const [volume, setVolume] = useState(1.0); // 0.0 to 1.0
+  const volumeRef = useRef(volume);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [crtEnabled, setCrtEnabled] = useState(true);
   const previousNowPlayingRef = useRef<NowPlaying | null>(null);
@@ -63,6 +66,10 @@ export default function Home() {
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
   const [overlayChannel, setOverlayChannel] = useState<ChannelInfo | null>(null);
   const overlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Volume overlay state
+  const [showVolumeOverlay, setShowVolumeOverlay] = useState(false);
+  const volumeOverlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Video loading state - show blue screen while buffering
   const [isVideoLoading, setIsVideoLoading] = useState(false);
@@ -117,8 +124,28 @@ export default function Home() {
       if (overlayTimeoutRef.current) {
         clearTimeout(overlayTimeoutRef.current);
       }
+      if (volumeOverlayTimeoutRef.current) {
+        clearTimeout(volumeOverlayTimeoutRef.current);
+      }
     };
   }, []);
+
+  // Show volume overlay when volume changes or mute toggles
+  useEffect(() => {
+    if (volumeOverlayTimeoutRef.current) {
+      clearTimeout(volumeOverlayTimeoutRef.current);
+    }
+    
+    setShowVolumeOverlay(true);
+    
+    // If muted, keep the overlay visible permanently
+    // Otherwise, hide after 1.5 seconds
+    if (!muted) {
+      volumeOverlayTimeoutRef.current = setTimeout(() => {
+        setShowVolumeOverlay(false);
+      }, 1500);
+    }
+  }, [volume, muted]);
 
   // Allow hiding the global header on the home page (toggled via "h" key)
   useEffect(() => {
@@ -186,6 +213,28 @@ export default function Home() {
     if (typeof window === "undefined") return;
     localStorage.setItem(CRT_PREF_KEY, crtEnabled ? "true" : "false");
   }, [crtEnabled]);
+
+  // Load volume preference from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(VOLUME_PREF_KEY);
+    if (stored !== null) {
+      const parsed = parseFloat(stored);
+      if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+        setVolume(parsed);
+      }
+    } else {
+      // Default to 100% volume
+      localStorage.setItem(VOLUME_PREF_KEY, "1.0");
+      setVolume(1.0);
+    }
+  }, []);
+
+  // Persist volume preference
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(VOLUME_PREF_KEY, volume.toString());
+  }, [volume]);
 
   // Load remote/controls preference from localStorage
   useEffect(() => {
@@ -381,6 +430,7 @@ export default function Home() {
       // Ensure newly-loaded media respects the latest mute state without
       // forcing the whole player wiring effect to re-run on every mute toggle.
       video.muted = mutedRef.current;
+      video.volume = volumeRef.current;
       const desiredTime = seekToDesired();
       console.log("[player] new media load", {
         channel,
@@ -450,6 +500,14 @@ export default function Home() {
     mutedRef.current = muted;
     video.muted = muted;
   }, [muted]);
+
+  // Sync volume to video element
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    volumeRef.current = volume;
+    video.volume = volume;
+  }, [volume]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -594,6 +652,41 @@ export default function Home() {
         return;
       }
 
+      if (key === "arrowleft") {
+        event.preventDefault();
+        // If already muted, do nothing
+        if (muted) return;
+        
+        // Convert to step (1-10) for easier comparison
+        const currentStep = Math.round(volume * 10);
+        
+        // If at step 1, mute instead of going to 0
+        if (currentStep <= 1) {
+          setMuted(true);
+        } else {
+          // Decrease volume by 1 step (out of 10)
+          const newStep = Math.max(1, currentStep - 1);
+          setVolume(newStep / 10);
+        }
+        return;
+      }
+
+      if (key === "arrowright") {
+        event.preventDefault();
+        // If muted, unmute and set to step 1
+        if (muted) {
+          setMuted(false);
+          setVolume(0.1);
+        } else {
+          // Convert to step (1-10) for easier math
+          const currentStep = Math.round(volume * 10);
+          // Increase volume by 1 step (out of 10)
+          const newStep = Math.min(10, currentStep + 1);
+          setVolume(newStep / 10);
+        }
+        return;
+      }
+
       if (!/^[1-9]$/.test(key)) return;
       const channelIds = channels.map(c => c.id);
       if (!channelIds.includes(key)) return;
@@ -601,7 +694,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [channels, channel]);
+  }, [channels, channel, muted, volume]);
 
   const resolvedSrc = (np: NowPlaying | null) =>
     np ? withMediaSource(np, mediaSource).src : "";
@@ -846,6 +939,24 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* Volume overlay - shows when volume changes */}
+              <div
+                className={`absolute top-4 right-4 z-10 transition-opacity duration-500 ${
+                  showVolumeOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
+                }`}
+              >
+                <div className="channel-overlay font-mono">
+                  {muted ? (
+                    <span className="channel-name">MUTE</span>
+                  ) : (
+                    <>
+                      <span className="channel-name">VOL</span>
+                      <span className="channel-number">{Math.round(volume * 10)}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
               {/* Desktop overlay remote (md+) */}
               {showControls && !isFullscreen && (
                 <div
@@ -927,6 +1038,8 @@ export default function Home() {
             <li className="flex justify-between gap-4"><span>Show remote</span><span className="font-mono text-neutral-100">r</span></li>
             <li className="flex justify-between gap-4"><span>Channel up</span><span className="font-mono text-neutral-100">↑</span></li>
             <li className="flex justify-between gap-4"><span>Channel down</span><span className="font-mono text-neutral-100">↓</span></li>
+            <li className="flex justify-between gap-4"><span>Volume up</span><span className="font-mono text-neutral-100">→</span></li>
+            <li className="flex justify-between gap-4"><span>Volume down</span><span className="font-mono text-neutral-100">←</span></li>
             <li className="flex justify-between gap-4"><span>Mute</span><span className="font-mono text-neutral-100">m</span></li>
             <li className="flex justify-between gap-4"><span>CRT Effect</span><span className="font-mono text-neutral-100">c</span></li>
             <li className="flex justify-between gap-4"><span>Fullscreen</span><span className="font-mono text-neutral-100">f</span></li>

@@ -98,10 +98,10 @@ export async function PUT(request: NextRequest) {
     }
 
     // Validate type if provided
-    const validTypes = ["film", "tv", "documentary", "other"];
+    const validTypes = ["film", "tv", "documentary", "sports", "concert", "other"];
     if (type !== undefined && type !== null && type !== "" && !validTypes.includes(type)) {
       return NextResponse.json(
-        { error: "Type must be one of: film, tv, documentary, other" },
+        { error: "Type must be one of: film, tv, documentary, sports, concert, other" },
         { status: 400 },
       );
     }

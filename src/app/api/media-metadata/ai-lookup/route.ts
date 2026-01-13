@@ -10,7 +10,7 @@ type AiLookupResponse = {
   category?: string | null;
   makingOf?: string | null;
   plot?: string | null;
-  type?: string | null;
+  type?: "film" | "tv" | "documentary" | "sports" | "concert" | "other" | null;
   season?: number | null;
   episode?: number | null;
 };
@@ -32,7 +32,7 @@ type AiLookupResponse = {
  *   - category: string | null
  *   - makingOf: string | null
  *   - plot: string | null
- *   - type: "film" | "tv" | "documentary" | "other" | null
+ *   - type: "film" | "tv" | "documentary" | "sports" | "concert" | "other" | null
  *   - season: number | null
  *   - episode: number | null
  */
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       apiKey: process.env.OPENAI_API_KEY,
     });
 
-    const systemPrompt = `You are a media identification assistant. Given a filename, identify the movie, TV show, documentary, or other media and return structured metadata.
+    const systemPrompt = `You are a media identification assistant. Given a filename, identify the movie, TV show, documentary, sporting event, or other media and return structured metadata.
 
 Your response MUST be valid JSON with exactly these fields:
 {
@@ -81,7 +81,7 @@ Rules:
 - "category" should be a simple genre like "Action", "Comedy", "Drama", "Sci-Fi", "Horror", "Documentary", "Animation", "Thriller", etc. Use the most fitting single category or two combined with "/"
 - "makingOf" should focus on the PEOPLE and PRODUCTION: list the main actors/cast members, who directed and produced it, interesting behind-the-scenes facts, production challenges, filming locations, budget info, box office performance, awards won, and any notable trivia about the making of the media. This is about WHO made it and HOW, not what the story is about.
 - "plot" should be a short summary of THIS SPECIFIC content's plot/story. For TV episodes, describe what happens in this particular episode. For movies, describe the movie's storyline. Always try to provide a plot summary.
-- "type" MUST be one of: "film" (for movies), "tv" (for TV shows/series), "documentary" (for documentaries), or "other" (for everything else like concerts, stand-up specials, etc.)
+- "type" MUST be one of: "film" (for movies), "tv" (for TV shows/series), "documentary" (for documentaries), "sports" (for sporting events, games, matches, races, etc.), "concert" (for live music performances, concerts, music festivals), or "other" (for everything else like stand-up specials, stage plays, etc.)
 - "season" should be the season number as an integer for TV shows, or null for non-TV content
 - "episode" should be the episode number as an integer for TV shows, or null for non-TV content
 
@@ -93,6 +93,38 @@ TV Episode Detection:
 - The makingOf should mention the main cast, creators, and any interesting production facts
 - The plot should describe what happens in THIS SPECIFIC EPISODE
 
+Sports Content Detection:
+- Look for DATE patterns in filenames like "02-01-1998", "1998-02-01", "02.01.1998", "020198", etc.
+- Look for team names, player names, or sporting event indicators (e.g., "Bulls", "Lakers", "vs", "Game", "Championship", "Finals", "Olympics")
+- If you detect a date AND sports-related terms (team names, player names, sporting events), this is likely a SPORTS recording
+- For sports content, set type to "sports"
+- The "title" should be the matchup or event name (e.g., "Bulls vs Lakers" or "Super Bowl XXXII")
+- The "year" should be extracted from the date in the filename
+- The "category" should be the sport type (e.g., "Basketball", "Football", "Baseball", "Soccer", "Hockey", "Racing", etc.)
+- The "director" can be null or list notable commentators/broadcasters if known
+- The "makingOf" should include: key players who participated, coaches, venue/location, significance of the game (playoff game, rivalry, etc.), notable storylines going into the game
+- The "plot" should describe what happened in THIS SPECIFIC GAME with as much detail as possible:
+  * Final score and how the scoring unfolded (quarter-by-quarter, inning-by-inning, etc.)
+  * Standout player performances with STATS (e.g., "Michael Jordan: 35 points, 8 rebounds, 5 assists" or "Tom Brady: 28/38, 350 yards, 3 TDs")
+  * Key individual achievements (career highs, records broken, milestones reached)
+  * Game-changing moments and dramatic plays (game-winning shots, crucial turnovers, big defensive stops)
+  * Momentum shifts and turning points
+  * How the game unfolded and the final outcome
+  * Post-game significance (playoff implications, records, etc.)
+- Example: For "Bulls-vs-Lakers-02-01-1998", search your knowledge for details about the Bulls vs Lakers game on February 1, 1998, including player stats and standout performances
+
+Concert/Music Performance Detection:
+- Look for artist names, band names, or music-related keywords (e.g., "Live", "Concert", "Tour", "Festival", "Performance")
+- Look for venue names (e.g., "Madison Square Garden", "Wembley", "Red Rocks")
+- For concert content, set type to "concert"
+- The "title" should be the artist/band name and tour/show name (e.g., "Pink Floyd - The Wall Live" or "Beyoncé - Renaissance World Tour")
+- The "year" should be the year of the performance
+- The "category" should be the music genre (e.g., "Rock", "Pop", "Hip-Hop", "Jazz", "Classical", "Electronic", etc.)
+- The "director" can list the tour director, musical director, or producer if known
+- The "makingOf" should include: band members/performers, backing musicians, special guests, venue information, tour context, production details, stage design, technical aspects
+- The "plot" should describe: the setlist highlights, memorable performances, special moments, audience interaction, visual production elements, encore performances, and overall atmosphere of the show
+- Example: For "Pink-Floyd-Live-Earls-Court-1994", provide details about the concert, setlist, and performance highlights
+
 General:
 - If you cannot identify the media, make your best guess based on the filename
 - If existing metadata is provided, use it as a hint but verify/correct if needed
@@ -102,6 +134,47 @@ General:
     let userPrompt = `Identify this media file and return the metadata as JSON:
 
 Filename: ${filename}`;
+
+    // Try to detect and highlight date patterns for sports content
+    const datePatterns = [
+      /(\d{2}[-_.]\d{2}[-_.]\d{4})/g,  // MM-DD-YYYY or DD-MM-YYYY
+      /(\d{4}[-_.]\d{2}[-_.]\d{2})/g,  // YYYY-MM-DD
+      /(\d{2}\d{2}\d{4})/g,            // MMDDYYYY or DDMMYYYY
+      /(\d{4}\d{2}\d{2})/g,            // YYYYMMDD
+    ];
+    
+    let detectedDate: string | null = null;
+    for (const pattern of datePatterns) {
+      const match = filename.match(pattern);
+      if (match) {
+        detectedDate = match[0];
+        break;
+      }
+    }
+    
+    // Detect sports-related keywords
+    const sportsKeywords = ['vs', 'game', 'bulls', 'lakers', 'celtics', 'patriots', 'cowboys', 
+                           'yankees', 'championship', 'finals', 'playoff', 'bowl', 'cup', 
+                           'match', 'race', 'fight', 'boxing', 'ufc', 'nba', 'nfl', 'mlb', 
+                           'nhl', 'soccer', 'football', 'basketball', 'baseball', 'hockey'];
+    const lowerFilename = filename.toLowerCase();
+    const hasSportsKeywords = sportsKeywords.some(keyword => lowerFilename.includes(keyword));
+    
+    // If we detect both a date and sports keywords, add a hint to the prompt
+    if (detectedDate && hasSportsKeywords) {
+      userPrompt += `
+
+IMPORTANT: This appears to be a SPORTS recording with date: ${detectedDate}
+- Extract team names, player names, and the date from the filename
+- Search your knowledge for details about this specific game/event on that date
+- Fill the "plot" field with comprehensive game details including:
+  * Final score
+  * Standout player performances WITH STATS (points, rebounds, assists, yards, touchdowns, etc.)
+  * Individual achievements and milestones
+  * Key plays and game-changing moments
+  * How the game unfolded quarter-by-quarter/period-by-period
+- Set type to "sports"`;
+    }
 
     // Add existing metadata as context if any fields are present
     const existingFields: string[] = [];
@@ -168,7 +241,7 @@ ${existingFields.join("\n")}`;
     }
 
     // Validate and clean up the response
-    const validTypes = ["film", "tv", "documentary", "other"];
+    const validTypes = ["film", "tv", "documentary", "sports", "concert", "other"];
     const result = {
       title: typeof parsed.title === "string" ? parsed.title.trim() : null,
       year: typeof parsed.year === "number" && parsed.year >= 1800 && parsed.year <= 2100 
@@ -187,7 +260,7 @@ ${existingFields.join("\n")}`;
         ? parsed.plot.trim()
         : null,
       type: typeof parsed.type === "string" && validTypes.includes(parsed.type.toLowerCase())
-        ? parsed.type.toLowerCase() as "film" | "tv" | "documentary" | "other"
+        ? parsed.type.toLowerCase() as "film" | "tv" | "documentary" | "sports" | "concert" | "other"
         : null,
       season: typeof parsed.season === "number" && Number.isInteger(parsed.season) && parsed.season > 0
         ? parsed.season
