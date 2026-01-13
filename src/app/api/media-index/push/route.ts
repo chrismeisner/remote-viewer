@@ -1,9 +1,7 @@
-import path from "node:path";
-import { Readable } from "node:stream";
-import { NextResponse } from "next/server";
-import { Client } from "basic-ftp";
 import fs from "node:fs/promises";
+import { NextResponse } from "next/server";
 import { getLocalMediaIndexFilePath } from "@/lib/media";
+import { isFtpConfigured, uploadJsonToFtp, getRemoteBaseDir, requireFtpConfig } from "@/lib/ftp";
 
 type PushResult = {
   success: boolean;
@@ -22,23 +20,10 @@ type MediaItem = {
   audioCodec?: string;
 };
 
-function getEnv() {
-  const host = process.env.FTP_HOST?.trim();
-  const user = process.env.FTP_USER?.trim();
-  const password = process.env.FTP_PASS?.trim();
-  const portRaw = process.env.FTP_PORT?.trim();
-  const remotePath = process.env.FTP_REMOTE_PATH?.trim();
-  const secureRaw = process.env.FTP_SECURE?.trim()?.toLowerCase();
-  const port = portRaw ? Number(portRaw) : 21;
-  const secure = secureRaw === "true" || secureRaw === "1";
-  return { host, user, password, port, remotePath, secure };
-}
-
 export const runtime = "nodejs";
 
 export async function POST() {
-  const { host, user, password, port, remotePath, secure } = getEnv();
-  if (!host || !user || !password || !remotePath) {
+  if (!isFtpConfigured()) {
     return NextResponse.json(
       {
         success: false,
@@ -100,21 +85,10 @@ export async function POST() {
       generatedAt: new Date().toISOString(),
       items,
     };
-    const body = JSON.stringify(payload, null, 2);
 
     // Upload to remote via FTP
-    const client = new Client(15000);
-    try {
-      await client.access({ host, port, user, password, secure });
-      const targetDir = path.posix.dirname(remotePath);
-      if (targetDir && targetDir !== ".") {
-        await client.ensureDir(targetDir);
-      }
-      const stream = Readable.from([body]);
-      await client.uploadFrom(stream, remotePath);
-    } finally {
-      client.close();
-    }
+    const config = requireFtpConfig();
+    const remotePath = await uploadJsonToFtp("media-index.json", payload);
 
     return NextResponse.json({
       success: true,

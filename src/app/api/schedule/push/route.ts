@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadFullSchedule } from "@/lib/media";
 import { isFtpConfigured, uploadJsonToFtp } from "@/lib/ftp";
+import type { Schedule } from "@/lib/schedule";
 
 type PushResult = {
   success: boolean;
@@ -9,6 +10,26 @@ type PushResult = {
 };
 
 export const runtime = "nodejs";
+
+/**
+ * Normalize schedule for pushing to remote.
+ * Ensures all channels have explicit active field (defaults to true if missing).
+ */
+function normalizeScheduleForPush(schedule: Schedule): Schedule {
+  const normalizedChannels: Schedule["channels"] = {};
+  
+  for (const [id, channel] of Object.entries(schedule.channels)) {
+    normalizedChannels[id] = {
+      ...channel,
+      active: channel.active ?? true, // Explicit default
+    };
+  }
+  
+  return {
+    ...schedule,
+    channels: normalizedChannels,
+  };
+}
 
 export async function POST() {
   if (!isFtpConfigured()) {
@@ -24,7 +45,8 @@ export async function POST() {
 
   try {
     const schedule = await loadFullSchedule("local");
-    const targetPath = await uploadJsonToFtp("schedule.json", schedule);
+    const normalizedSchedule = normalizeScheduleForPush(schedule);
+    const targetPath = await uploadJsonToFtp("schedule.json", normalizedSchedule);
 
     const channelCount = Object.keys(schedule.channels).length;
     return NextResponse.json({

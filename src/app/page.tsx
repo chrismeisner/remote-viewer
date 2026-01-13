@@ -786,8 +786,21 @@ export default function Home() {
                 isChromeless ? "h-full w-full" : "border border-white/10"
               } ${crtEnabled ? "crt-frame" : ""}`}
             >
-              {/* Blue screen fallback when channel is selected but video is loading or nothing scheduled */}
-              {channel && (!nowPlaying || isVideoLoading) && (
+              {/* Technical difficulties screen when channel is selected but nothing scheduled */}
+              {channel && !nowPlaying && !isVideoLoading && (
+                <div
+                  className={`relative ${isChromeless ? "h-full w-full" : "aspect-video w-full"}`}
+                >
+                  <img
+                    src="/offline.jpg"
+                    alt="Technical Difficulties"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                </div>
+              )}
+
+              {/* Blue screen fallback when channel is selected and video is loading */}
+              {channel && isVideoLoading && (
                 <div
                   className={isChromeless ? "h-full w-full" : "aspect-video w-full"}
                   style={{ backgroundColor: "#0000FF" }}
