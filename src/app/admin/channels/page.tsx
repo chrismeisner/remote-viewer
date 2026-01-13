@@ -344,8 +344,8 @@ export default function ChannelAdminPage() {
             </h3>
             <p className="text-xs text-neutral-400">
               {isRemote
-                ? "Stored in channels.json on remote CDN"
-                : "Stored in data/local/channels.json"}
+                ? "Stored in schedule.json on remote CDN (persistent)"
+                : "Stored in local schedule.json (not persistent on cloud platforms)"}
             </p>
           </div>
           <span className="text-xs text-neutral-400">
