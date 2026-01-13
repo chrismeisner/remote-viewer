@@ -1,6 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import {
+  MEDIA_SOURCE_EVENT,
+  MEDIA_SOURCE_KEY,
+  REMOTE_MEDIA_BASE,
+  type MediaSource,
+} from "@/constants/media";
 
 type AuditIssue = {
   id: string;
@@ -16,11 +23,13 @@ type FileInfo = {
   name: string;
   exists: boolean;
   path?: string;
+  url?: string;
   size?: number;
 };
 
 type AuditResult = {
   success: boolean;
+  mode: "local" | "remote";
   issues: AuditIssue[];
   summary: {
     total: number;
@@ -67,13 +76,32 @@ export default function DataHealthPage() {
   const [fixing, setFixing] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mediaSource, setMediaSource] = useState<MediaSource>("remote");
+
+  // Sync media source from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => {
+      const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
+      if (stored === "remote" || stored === "local") {
+        setMediaSource(stored);
+      }
+    };
+    sync();
+    window.addEventListener("storage", sync);
+    window.addEventListener(MEDIA_SOURCE_EVENT, sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener(MEDIA_SOURCE_EVENT, sync);
+    };
+  }, []);
 
   const runAudit = useCallback(async () => {
     setLoading(true);
     setError(null);
     setMessage(null);
     try {
-      const res = await fetch("/api/json-audit", { cache: "no-store" });
+      const res = await fetch(`/api/json-audit?mode=${mediaSource}`, { cache: "no-store" });
       const data = await res.json();
       setAuditResult(data);
     } catch (err) {
@@ -81,7 +109,7 @@ export default function DataHealthPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mediaSource]);
 
   useEffect(() => {
     void runAudit();
@@ -102,7 +130,6 @@ export default function DataHealthPage() {
         throw new Error(data.message || "Fix failed");
       }
       setMessage(data.message);
-      // Re-run audit to show updated state
       await runAudit();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fix failed");
@@ -149,6 +176,8 @@ export default function DataHealthPage() {
     return acc;
   }, {} as Record<string, AuditIssue[]>) ?? {};
 
+  const isRemote = auditResult?.mode === "remote";
+
   return (
     <div className="flex flex-col gap-6 text-neutral-100">
       {/* Header */}
@@ -159,14 +188,53 @@ export default function DataHealthPage() {
             Audit and clean up your JSON data files
           </p>
         </div>
-        <button
-          onClick={() => void runAudit()}
-          disabled={loading}
-          className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
-        >
-          {loading ? "Scanning…" : "Re-scan"}
-        </button>
+        <div className="flex items-center gap-3">
+          <div className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            isRemote ? "bg-blue-500/20 text-blue-200" : "bg-emerald-500/20 text-emerald-200"
+          }`}>
+            {isRemote ? "Remote" : "Local"}
+          </div>
+          <button
+            onClick={() => void runAudit()}
+            disabled={loading}
+            className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
+          >
+            {loading ? "Scanning…" : "Re-scan"}
+          </button>
+        </div>
       </div>
+
+      {/* Mode Info Banner */}
+      {auditResult && (
+        <div className={`rounded-lg border p-4 ${
+          isRemote 
+            ? "border-blue-400/30 bg-blue-500/10" 
+            : "border-emerald-400/30 bg-emerald-500/10"
+        }`}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className={`text-sm font-medium ${isRemote ? "text-blue-100" : "text-emerald-100"}`}>
+                {isRemote ? "Auditing Remote CDN Files" : "Auditing Local Files"}
+              </p>
+              <p className={`text-xs mt-1 ${isRemote ? "text-blue-200/70" : "text-emerald-200/70"}`}>
+                {isRemote ? (
+                  <>Checking files at <code className="bg-black/20 px-1 rounded">{REMOTE_MEDIA_BASE}</code></>
+                ) : (
+                  "Checking files in your configured media folder"
+                )}
+              </p>
+            </div>
+            {isRemote && (
+              <p className="text-xs text-blue-200/70">
+                Fixes require pushing from local →{" "}
+                <Link href="/admin/source" className="underline hover:text-blue-100">
+                  Source
+                </Link>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       {auditResult && (
@@ -198,8 +266,8 @@ export default function DataHealthPage() {
         </div>
       )}
 
-      {/* Fix All Button */}
-      {auditResult && auditResult.summary.fixable > 0 && (
+      {/* Fix All Button - Only for local mode with fixable issues */}
+      {auditResult && !isRemote && auditResult.summary.fixable > 0 && (
         <div className="flex items-center gap-3">
           <button
             onClick={() => void fixAll()}
@@ -236,7 +304,7 @@ export default function DataHealthPage() {
                 <tr>
                   <th className="px-4 py-2 text-left font-semibold">File</th>
                   <th className="px-4 py-2 text-left font-semibold">Status</th>
-                  <th className="px-4 py-2 text-left font-semibold">Size</th>
+                  <th className="px-4 py-2 text-left font-semibold">{isRemote ? "URL" : "Size"}</th>
                   <th className="px-4 py-2 text-left font-semibold">Issues</th>
                 </tr>
               </thead>
@@ -249,25 +317,42 @@ export default function DataHealthPage() {
                   return (
                     <tr key={file.name}>
                       <td className="px-4 py-3">
-                        <code className="rounded bg-white/5 px-2 py-1 text-xs text-neutral-100">
-                          {file.name}
-                        </code>
+                        {file.url ? (
+                          <a
+                            href={file.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-300 hover:text-blue-200 hover:underline"
+                          >
+                            <code className="rounded bg-white/5 px-2 py-1 text-xs">
+                              {file.name}
+                            </code>
+                          </a>
+                        ) : (
+                          <code className="rounded bg-white/5 px-2 py-1 text-xs text-neutral-100">
+                            {file.name}
+                          </code>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {file.exists ? (
                           <span className="inline-flex items-center gap-1 text-emerald-300 text-xs">
                             <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                            Exists
+                            Found
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-neutral-500 text-xs">
-                            <span className="h-2 w-2 rounded-full bg-neutral-600" />
+                          <span className="inline-flex items-center gap-1 text-red-300 text-xs">
+                            <span className="h-2 w-2 rounded-full bg-red-400" />
                             Missing
                           </span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-neutral-400 text-xs">
-                        {file.size !== undefined ? formatBytes(file.size) : "—"}
+                        {isRemote ? (
+                          file.url ? <span className="truncate max-w-[200px] block">{file.url}</span> : "—"
+                        ) : (
+                          file.size !== undefined ? formatBytes(file.size) : "—"
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {fileIssues.length === 0 ? (
@@ -326,7 +411,7 @@ export default function DataHealthPage() {
                           {issue.description}
                         </p>
                       </div>
-                      {issue.fixable && issue.fixAction && (
+                      {issue.fixable && issue.fixAction && !isRemote && (
                         <button
                           onClick={() => void applyFix(issue.fixAction!, issue.id)}
                           disabled={fixing !== null}
@@ -352,7 +437,7 @@ export default function DataHealthPage() {
             All Data Files Are Clean
           </h3>
           <p className="text-sm text-emerald-200/70">
-            No issues found in your JSON data files.
+            No issues found in your {isRemote ? "remote" : "local"} JSON data files.
           </p>
         </div>
       )}
@@ -361,7 +446,7 @@ export default function DataHealthPage() {
       {loading && !auditResult && (
         <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-8 text-center">
           <div className="inline-block h-8 w-8 border-2 border-neutral-400 border-t-emerald-400 rounded-full animate-spin mb-3" />
-          <p className="text-sm text-neutral-400">Scanning data files…</p>
+          <p className="text-sm text-neutral-400">Scanning {mediaSource} data files…</p>
         </div>
       )}
     </div>
