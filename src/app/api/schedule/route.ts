@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadSchedule, saveSchedule } from "@/lib/media";
+import { loadSchedule, saveSchedule, clearMediaCaches } from "@/lib/media";
 import type { ChannelSchedule } from "@/lib/schedule";
 import type { MediaSource } from "@/constants/media";
 
@@ -10,6 +10,11 @@ export async function GET(request: NextRequest) {
   const sourceParam = request.nextUrl.searchParams.get("source");
   const source: MediaSource =
     sourceParam === "remote" || sourceParam === "local" ? sourceParam : "local";
+
+  // Clear cache for local source to ensure fresh reads
+  if (source === "local") {
+    clearMediaCaches();
+  }
 
   const schedule = await loadSchedule(channel, source);
   return NextResponse.json({ schedule, source });

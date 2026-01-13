@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  DATA_CHANGED_EVENT,
   MEDIA_SOURCE_EVENT,
   MEDIA_SOURCE_KEY,
   REMOTE_MEDIA_BASE,
@@ -61,17 +62,17 @@ export default function DataHealthPage() {
   const [fixing, setFixing] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mediaSource, setMediaSource] = useState<MediaSource>("remote");
+  const [mediaSource, setMediaSource] = useState<MediaSource | null>(null); // Start null until synced
   const [showFreshStartModal, setShowFreshStartModal] = useState(false);
 
-  // Sync media source from localStorage
+  // Sync media source from localStorage - must complete before running audit
   useEffect(() => {
     if (typeof window === "undefined") return;
     const sync = () => {
       const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
-      if (stored === "remote" || stored === "local") {
-        setMediaSource(stored);
-      }
+      const source: MediaSource = stored === "local" ? "local" : "remote";
+      console.log("[Data Health] Media source synced from localStorage:", source);
+      setMediaSource(source);
     };
     sync();
     window.addEventListener("storage", sync);
@@ -82,29 +83,75 @@ export default function DataHealthPage() {
     };
   }, []);
 
-  const runAudit = useCallback(async () => {
+  const runAudit = useCallback(async (abortSignal?: AbortSignal) => {
+    // Don't run until mediaSource is initialized from localStorage
+    if (mediaSource === null) {
+      console.log("[Data Health] runAudit skipped - mediaSource not yet initialized");
+      return;
+    }
+    
+    console.log("[Data Health] runAudit called", { mediaSource });
     setLoading(true);
     setError(null);
     setMessage(null);
     try {
-      const res = await fetch(`/api/json-audit?mode=${mediaSource}`, { cache: "no-store" });
+      const url = `/api/json-audit?mode=${mediaSource}`;
+      console.log("[Data Health] Fetching from:", url);
+      
+      const res = await fetch(url, { cache: "no-store", signal: abortSignal });
       const data = await res.json();
+      
+      console.log("[Data Health] API Response:", {
+        mode: data.mode,
+        requestedMode: mediaSource,
+        issueCount: data.issues?.length ?? 0,
+        issues: data.issues,
+      });
+      
+      // Verify response mode matches what we requested
+      if (data.mode !== mediaSource) {
+        console.warn("[Data Health] Response mode mismatch - ignoring stale response", {
+          expected: mediaSource,
+          received: data.mode,
+        });
+        return;
+      }
+      
       setAuditResult(data);
       if (data.error) {
         setError(data.error);
       }
     } catch (err) {
+      // Ignore abort errors
+      if (err instanceof Error && err.name === "AbortError") {
+        console.log("[Data Health] Request aborted (source changed)");
+        return;
+      }
+      console.error("[Data Health] Error:", err);
       setError(err instanceof Error ? err.message : "Failed to run audit");
     } finally {
       setLoading(false);
     }
   }, [mediaSource]);
 
+  // Run audit when source is initialized or changes - with abort controller
   useEffect(() => {
-    void runAudit();
-  }, [runAudit]);
+    // Don't run until mediaSource is initialized
+    if (mediaSource === null) return;
+    
+    const abortController = new AbortController();
+    console.log("[Data Health] Starting audit for source:", mediaSource);
+    void runAudit(abortController.signal);
+    
+    // Cleanup: abort the request if source changes before it completes
+    return () => {
+      console.log("[Data Health] Aborting previous request due to source change or unmount");
+      abortController.abort();
+    };
+  }, [mediaSource, runAudit]);
 
   const applyFix = async (action: string, issueId: string) => {
+    if (!mediaSource) return;
     setFixing(issueId);
     setMessage(null);
     setError(null);
@@ -128,7 +175,7 @@ export default function DataHealthPage() {
   };
 
   const fixAll = async () => {
-    if (!auditResult) return;
+    if (!auditResult || !mediaSource) return;
     
     const fixableIssues = auditResult.issues.filter(i => i.fixable && i.fixAction);
     const uniqueActions = [...new Set(fixableIssues.map(i => i.fixAction!))];
@@ -159,6 +206,7 @@ export default function DataHealthPage() {
   };
 
   const freshStart = async () => {
+    if (!mediaSource) return;
     setShowFreshStartModal(false);
     setFixing("fresh-start");
     setMessage(null);
@@ -174,7 +222,22 @@ export default function DataHealthPage() {
         throw new Error(data.message || "Fresh start failed");
       }
       setMessage(data.message);
-      await runAudit();
+      // Notify other pages that data has changed
+      window.dispatchEvent(new Event(DATA_CHANGED_EVENT));
+      
+      // Set clean state directly instead of refetching
+      // (CDN may still have cached old data for a few minutes)
+      setAuditResult({
+        success: true,
+        mode: mediaSource,
+        issues: [],
+        summary: { total: 0, errors: 0, warnings: 0, info: 0, fixable: 0 },
+        files: [
+          { name: "schedule.json", exists: true },
+          { name: "media-index.json", exists: true },
+        ],
+        canFix: true,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fresh start failed");
     } finally {
@@ -190,6 +253,7 @@ export default function DataHealthPage() {
   }, {} as Record<string, AuditIssue[]>) ?? {};
 
   const isRemote = mediaSource === "remote";
+  const isLocal = mediaSource === "local";
   const canFix = auditResult?.canFix ?? false;
 
   return (
@@ -203,11 +267,13 @@ export default function DataHealthPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            isRemote ? "bg-blue-500/20 text-blue-200" : "bg-emerald-500/20 text-emerald-200"
-          }`}>
-            {isRemote ? "Remote" : "Local"}
-          </div>
+          {mediaSource && (
+            <div className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              isRemote ? "bg-blue-500/20 text-blue-200" : "bg-emerald-500/20 text-emerald-200"
+            }`}>
+              {isRemote ? "Remote" : "Local"}
+            </div>
+          )}
           <button
             onClick={() => void runAudit()}
             disabled={loading}

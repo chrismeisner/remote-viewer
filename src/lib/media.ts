@@ -41,33 +41,34 @@ async function resolveMediaRoot(): Promise<string | null> {
 
 /**
  * Get the data folder path based on current config.
- * Always uses: <mediaRoot>/.remote-viewer/
- * Returns null if no media root is configured.
+ * Uses: <mediaRoot>/.remote-viewer/ if configured
+ * Falls back to data/local/ ONLY if no media root is configured.
  */
 async function resolveDataRoot(): Promise<string | null> {
   // Reuse cached value when available
   if (cachedDataRoot) return cachedDataRoot;
 
-  // Prefer configured media root when it is writable
   const mediaRoot = await getEffectiveMediaRoot();
+  
   if (mediaRoot) {
+    // Media root is configured - use it (no fallback)
     const dataRoot = getDataFolderForMediaRoot(mediaRoot);
     try {
-      // Ensure the directory exists and is writable
       await fs.mkdir(dataRoot, { recursive: true });
+      // Verify write access
+      const testFile = path.join(dataRoot, ".write-test");
+      await fs.writeFile(testFile, "test");
+      await fs.unlink(testFile);
       cachedDataRoot = dataRoot;
       return dataRoot;
     } catch (error) {
-      // If the configured path is invalid or not writable (common in cloud/runtime envs),
-      // fall back to the bundled data folder so schedule operations still work.
-      console.warn(
-        "Media data path is not writable; falling back to app data folder:",
-        error,
-      );
+      console.warn("Media data path is not writable:", error);
+      // Don't fall back - let the error propagate so user knows to fix config
+      return null;
     }
   }
 
-  // Fallback to repository data folder (works in ephemeral/cloud environments)
+  // No media root configured - use local fallback
   const fallbackRoot = path.join(process.cwd(), "data", "local");
   try {
     await fs.mkdir(fallbackRoot, { recursive: true });
@@ -75,7 +76,6 @@ async function resolveDataRoot(): Promise<string | null> {
     return fallbackRoot;
   } catch (error) {
     console.warn("Failed to create fallback data folder", error);
-    cachedDataRoot = null;
     return null;
   }
 }
@@ -85,12 +85,6 @@ async function getScheduleFilePath(): Promise<string | null> {
   const dataRoot = await resolveDataRoot();
   if (!dataRoot) return null;
   return path.join(dataRoot, "schedule.json");
-}
-
-async function getChannelsFilePath(): Promise<string | null> {
-  const dataRoot = await resolveDataRoot();
-  if (!dataRoot) return null;
-  return path.join(dataRoot, "channels.json");
 }
 
 async function getMediaIndexFilePath(): Promise<string | null> {
@@ -207,11 +201,18 @@ export { hasMediaRootConfigured } from "@/lib/config";
  * Clear all caches - call when media root changes.
  */
 export function clearMediaCaches(): void {
+  console.log("[Media Lib] clearMediaCaches called - clearing all caches");
+  console.log("[Media Lib] Before clear - localScheduleCache:", {
+    hasSchedule: !!localScheduleCache.schedule,
+    path: localScheduleCache.path,
+    channelCount: localScheduleCache.schedule ? Object.keys(localScheduleCache.schedule.channels || {}).length : 0,
+  });
   scheduleCache.clear();
   durationCache.clear();
   localScheduleCache = { mtimeMs: null, schedule: null, path: null };
   cachedMediaRoot = null;
   cachedDataRoot = null;
+  console.log("[Media Lib] After clear - caches reset to null/empty");
 }
 
 export function buildMediaUrl(relPath: string): string {
@@ -265,35 +266,68 @@ export async function loadFullSchedule(
 }
 
 async function loadLocalFullSchedule(): Promise<Schedule> {
+  console.log("[Media Lib] loadLocalFullSchedule called");
   const scheduleFile = await getScheduleFilePath();
+  
+  console.log("[Media Lib] Schedule file path:", scheduleFile);
   
   // No folder configured - return empty schedule
   if (!scheduleFile) {
+    console.log("[Media Lib] No schedule file path - returning empty schedule");
     return { channels: {} };
   }
   
   try {
     const stat = await fs.stat(scheduleFile);
+    console.log("[Media Lib] File stat:", { 
+      mtimeMs: stat.mtimeMs, 
+      size: stat.size,
+      path: scheduleFile 
+    });
+    
     // Check cache is for same path and same mtime
-    if (
-      localScheduleCache.path === scheduleFile &&
+    const cacheHit = localScheduleCache.path === scheduleFile &&
       localScheduleCache.mtimeMs === stat.mtimeMs &&
-      localScheduleCache.schedule
-    ) {
-      return localScheduleCache.schedule;
+      localScheduleCache.schedule;
+    
+    console.log("[Media Lib] Cache check:", {
+      cacheHit,
+      cachePath: localScheduleCache.path,
+      cacheMtime: localScheduleCache.mtimeMs,
+      fileMtime: stat.mtimeMs,
+      cacheHasSchedule: !!localScheduleCache.schedule,
+    });
+    
+    if (cacheHit) {
+      const channelCount = Object.keys(localScheduleCache.schedule!.channels || {}).length;
+      console.log("[Media Lib] RETURNING FROM CACHE - channels:", channelCount);
+      return localScheduleCache.schedule!;
     }
 
+    console.log("[Media Lib] Reading from disk:", scheduleFile);
     const raw = await fs.readFile(scheduleFile, "utf8");
+    console.log("[Media Lib] Raw file contents (first 1000 chars):", raw.substring(0, 1000));
+    
     const parsed = JSON.parse(raw) as Schedule;
+    const channelCount = Object.keys(parsed.channels || {}).length;
+    console.log("[Media Lib] Parsed schedule - channels:", channelCount, "ids:", Object.keys(parsed.channels || {}));
+    
+    // Log shortName for each channel to debug the issue
+    for (const [cid, cdata] of Object.entries(parsed.channels || {})) {
+      console.log("[Media Lib] Parsed channel data:", { id: cid, shortName: cdata.shortName, keys: Object.keys(cdata) });
+    }
+    
     validateSchedule(parsed);
     localScheduleCache = { mtimeMs: stat.mtimeMs, schedule: parsed, path: scheduleFile };
+    console.log("[Media Lib] RETURNING FROM DISK - updated cache");
     return parsed;
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err?.code === "ENOENT") {
-      // Return empty schedule if file doesn't exist
+      console.log("[Media Lib] File not found - returning empty schedule");
       return { channels: {} };
     }
+    console.error("[Media Lib] Error loading schedule:", error);
     throw error;
   }
 }
@@ -320,7 +354,16 @@ async function loadRemoteFullSchedule(): Promise<Schedule> {
 
 // Save the full schedule file
 export async function saveFullSchedule(schedule: Schedule): Promise<Schedule> {
+  console.log("[Media Lib] saveFullSchedule called");
   const scheduleFile = await getScheduleFilePath();
+  
+  console.log("[Media Lib] saveFullSchedule - target file:", scheduleFile);
+  console.log("[Media Lib] saveFullSchedule - saving channels:", Object.keys(schedule.channels || {}));
+  
+  // Log each channel's data including shortName
+  for (const [cid, cdata] of Object.entries(schedule.channels || {})) {
+    console.log("[Media Lib] saveFullSchedule - channel data:", { id: cid, shortName: cdata.shortName, active: cdata.active, slotCount: cdata.slots?.length });
+  }
   
   if (!scheduleFile) {
     throw new Error("No media folder configured. Please configure a folder in Source settings.");
@@ -328,10 +371,19 @@ export async function saveFullSchedule(schedule: Schedule): Promise<Schedule> {
   
   validateSchedule(schedule);
   await fs.mkdir(path.dirname(scheduleFile), { recursive: true });
-  await fs.writeFile(scheduleFile, JSON.stringify(schedule, null, 2), {
+  
+  const content = JSON.stringify(schedule, null, 2);
+  console.log("[Media Lib] saveFullSchedule - writing content (first 1000 chars):", content.substring(0, 1000));
+  
+  await fs.writeFile(scheduleFile, content, {
     encoding: "utf8",
   });
-  localScheduleCache = { mtimeMs: null, schedule, path: scheduleFile };
+  
+  console.log("[Media Lib] saveFullSchedule - file written successfully");
+  
+  // Clear cache completely to ensure fresh reads
+  localScheduleCache = { mtimeMs: null, schedule: null, path: null };
+  console.log("[Media Lib] saveFullSchedule - cache cleared");
   return schedule;
 }
 
@@ -339,10 +391,6 @@ export async function saveFullSchedule(schedule: Schedule): Promise<Schedule> {
 // Returns null if no folder configured
 export async function getLocalScheduleFilePath(): Promise<string | null> {
   return getScheduleFilePath();
-}
-
-export async function getLocalChannelsFilePath(): Promise<string | null> {
-  return getChannelsFilePath();
 }
 
 export async function getLocalMediaIndexFilePath(): Promise<string | null> {
@@ -360,8 +408,12 @@ export async function saveSchedule(
   // Load existing schedule
   const fullSchedule = await loadLocalFullSchedule();
 
-  // Update the channel's schedule
-  fullSchedule.channels[channelId] = { slots: schedule.slots };
+  // Update the channel's schedule - preserve existing shortName, active, etc.
+  const existingChannel = fullSchedule.channels[channelId] || {};
+  fullSchedule.channels[channelId] = {
+    ...existingChannel,
+    slots: schedule.slots,
+  };
 
   // Save back
   await saveFullSchedule(fullSchedule);
@@ -391,14 +443,26 @@ export type ChannelInfo = {
 };
 
 export async function listChannels(source: MediaSource = "local"): Promise<ChannelInfo[]> {
+  console.log("[Media Lib] listChannels called", { source });
   const fullSchedule = await loadFullSchedule(source);
+  console.log("[Media Lib] listChannels - fullSchedule loaded, channel keys:", Object.keys(fullSchedule.channels || {}));
+
   const channels: ChannelInfo[] = Object.entries(fullSchedule.channels).map(
-    ([id, schedule]) => ({
-      id,
-      shortName: schedule.shortName,
-      active: schedule.active ?? true, // Default to active if not set
-    }),
+    ([id, schedule]) => {
+      console.log("[Media Lib] listChannels - processing channel:", {
+        id,
+        shortName: schedule.shortName,
+        hasShortName: "shortName" in schedule,
+        scheduleKeys: Object.keys(schedule),
+      });
+      return {
+        id,
+        shortName: schedule.shortName,
+        active: schedule.active ?? true, // Default to active if not set
+      };
+    },
   );
+  console.log("[Media Lib] listChannels - returning", channels.length, "channels with data:", channels);
   return channels.sort((a, b) =>
     a.id.localeCompare(b.id, undefined, { sensitivity: "base" }),
   );
@@ -416,6 +480,7 @@ export async function createChannel(
   channel?: string,
   shortName?: string,
 ): Promise<{ channel: string; schedule: ChannelSchedule; shortName?: string }> {
+  console.log("[Media Lib] createChannel called", { channel, shortName });
   const id = normalizeChannelId(channel);
 
   // If it already exists, return the current schedule (or empty).
@@ -423,13 +488,19 @@ export async function createChannel(
   if (existing) {
     const fullSchedule = await loadLocalFullSchedule();
     const existingShortName = fullSchedule.channels[id]?.shortName;
+    console.log("[Media Lib] createChannel - channel exists, returning existing:", { id, existingShortName });
     return { channel: id, schedule: existing, shortName: existingShortName };
   }
 
   // Load full schedule and add new channel
   const fullSchedule = await loadLocalFullSchedule();
-  const empty: ChannelSchedule = { slots: [], shortName: shortName?.trim() || undefined };
-  fullSchedule.channels[id] = empty;
+  const newChannelData: ChannelSchedule = { slots: [], shortName: shortName?.trim() || undefined };
+  console.log("[Media Lib] createChannel - creating new channel:", { id, newChannelData });
+  fullSchedule.channels[id] = newChannelData;
+  
+  console.log("[Media Lib] createChannel - saving fullSchedule with channels:", 
+    Object.entries(fullSchedule.channels).map(([cid, data]) => ({ id: cid, shortName: data.shortName }))
+  );
   await saveFullSchedule(fullSchedule);
 
   return { channel: id, schedule: { slots: [] }, shortName: shortName?.trim() || undefined };
@@ -447,75 +518,6 @@ export async function deleteChannel(channel?: string): Promise<void> {
     delete fullSchedule.channels[id];
     await saveFullSchedule(fullSchedule);
   }
-}
-
-/**
- * Migrate channels.json data into schedule.json.
- * This merges shortName and active fields from the legacy channels.json
- * into the schedule.json channel entries.
- * Returns the number of channels migrated.
- */
-export async function migrateChannelsToSchedule(): Promise<{ migrated: number; skipped: number }> {
-  const channelsFile = await getChannelsFilePath();
-  
-  if (!channelsFile) {
-    return { migrated: 0, skipped: 0 };
-  }
-
-  type LegacyChannel = { id: string; shortName?: string; active?: boolean };
-  type LegacyChannelsData = { channels: LegacyChannel[] };
-
-  let legacyChannels: LegacyChannel[] = [];
-  try {
-    const raw = await fs.readFile(channelsFile, "utf8");
-    const data: LegacyChannelsData = JSON.parse(raw);
-    legacyChannels = Array.isArray(data.channels) ? data.channels : [];
-  } catch {
-    return { migrated: 0, skipped: 0 };
-  }
-
-  if (legacyChannels.length === 0) {
-    return { migrated: 0, skipped: 0 };
-  }
-
-  const fullSchedule = await loadLocalFullSchedule();
-  let migrated = 0;
-  let skipped = 0;
-
-  for (const legacy of legacyChannels) {
-    if (!legacy.id) {
-      skipped++;
-      continue;
-    }
-
-    const existing = fullSchedule.channels[legacy.id];
-    
-    if (existing) {
-      // Merge legacy data into existing schedule entry
-      // Only update if legacy has the field and schedule doesn't
-      if (legacy.shortName !== undefined && existing.shortName === undefined) {
-        existing.shortName = legacy.shortName;
-      }
-      if (legacy.active !== undefined && existing.active === undefined) {
-        existing.active = legacy.active;
-      }
-      migrated++;
-    } else {
-      // Create new channel entry from legacy
-      fullSchedule.channels[legacy.id] = {
-        slots: [],
-        shortName: legacy.shortName,
-        active: legacy.active ?? true,
-      };
-      migrated++;
-    }
-  }
-
-  if (migrated > 0) {
-    await saveFullSchedule(fullSchedule);
-  }
-
-  return { migrated, skipped };
 }
 
 export async function renameChannel(oldId: string, newId: string): Promise<void> {

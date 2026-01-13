@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getEffectiveMediaRoot, getDataFolderForMediaRoot } from "@/lib/config";
 import { REMOTE_MEDIA_BASE } from "@/constants/media";
 import { isFtpConfigured, uploadJsonToFtp } from "@/lib/ftp";
+import { clearMediaCaches } from "@/lib/media";
 
 export const runtime = "nodejs";
 
@@ -48,6 +49,37 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
+/**
+ * Resolve the actual data folder - matches logic in media.ts
+ * Falls back to data/local/ if configured mediaRoot is not writable
+ */
+async function resolveLocalDataFolder(): Promise<string | null> {
+  const mediaRoot = await getEffectiveMediaRoot();
+  
+  if (mediaRoot) {
+    const dataRoot = getDataFolderForMediaRoot(mediaRoot);
+    try {
+      await fs.mkdir(dataRoot, { recursive: true });
+      // Test write access
+      const testFile = path.join(dataRoot, ".write-test");
+      await fs.writeFile(testFile, "test");
+      await fs.unlink(testFile);
+      return dataRoot;
+    } catch {
+      console.log("Media root not writable, falling back to data/local/");
+    }
+  }
+
+  // Fallback to repository data folder
+  const fallbackRoot = path.join(process.cwd(), "data", "local");
+  try {
+    await fs.mkdir(fallbackRoot, { recursive: true });
+    return fallbackRoot;
+  } catch {
+    return null;
+  }
+}
+
 async function readJsonFile<T>(filePath: string): Promise<T | null> {
   try {
     const content = await fs.readFile(filePath, "utf8");
@@ -59,7 +91,9 @@ async function readJsonFile<T>(filePath: string): Promise<T | null> {
 
 async function fetchRemoteJson<T>(url: string): Promise<{ data: T | null; exists: boolean; error?: string }> {
   try {
-    const res = await fetch(url, { cache: "no-store" });
+    // Add timestamp to bust CDN caches
+    const cacheBustedUrl = url.includes("?") ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
+    const res = await fetch(cacheBustedUrl, { cache: "no-store" });
     if (res.status === 404) {
       return { data: null, exists: false };
     }
@@ -75,6 +109,7 @@ async function fetchRemoteJson<T>(url: string): Promise<{ data: T | null; exists
 
 // ==================== REMOTE MODE AUDIT ====================
 async function auditRemoteMode(): Promise<AuditResult> {
+  console.log("[JSON Audit] auditRemoteMode called");
   const issues: AuditIssue[] = [];
   const files: AuditResult["files"] = [];
   const canFix = isFtpConfigured();
@@ -84,6 +119,7 @@ async function auditRemoteMode(): Promise<AuditResult> {
     { name: "media-index.json", url: `${REMOTE_MEDIA_BASE}media-index.json` },
     { name: "schedule.json", url: `${REMOTE_MEDIA_BASE}schedule.json` },
   ];
+  console.log("[JSON Audit] Checking remote files at:", REMOTE_MEDIA_BASE);
 
   for (const file of remoteFiles) {
     const result = await fetchRemoteJson<Record<string, unknown>>(file.url);
@@ -110,6 +146,12 @@ async function auditRemoteMode(): Promise<AuditResult> {
   const scheduleResult = await fetchRemoteJson<{ channels?: Record<string, { slots?: unknown[]; shortName?: string; active?: boolean }> }>(
     `${REMOTE_MEDIA_BASE}schedule.json`
   );
+  
+  console.log("[JSON Audit] Remote schedule.json result:", {
+    exists: scheduleResult.exists,
+    channelCount: scheduleResult.data?.channels ? Object.keys(scheduleResult.data.channels).length : 0,
+    channelIds: scheduleResult.data?.channels ? Object.keys(scheduleResult.data.channels) : [],
+  });
   
   if (scheduleResult.exists && scheduleResult.data?.channels) {
     let needsNormalization = false;
@@ -171,12 +213,14 @@ async function auditRemoteMode(): Promise<AuditResult> {
 
 // ==================== LOCAL MODE AUDIT ====================
 async function auditLocalMode(): Promise<AuditResult> {
+  console.log("[JSON Audit] auditLocalMode called");
   const issues: AuditIssue[] = [];
   const files: AuditResult["files"] = [];
 
-  const mediaRoot = await getEffectiveMediaRoot();
-  
-  if (!mediaRoot) {
+  const dataFolder = await resolveLocalDataFolder();
+  console.log("[JSON Audit] Local data folder:", dataFolder);
+
+  if (!dataFolder) {
     return {
       success: false,
       mode: "local",
@@ -184,23 +228,14 @@ async function auditLocalMode(): Promise<AuditResult> {
         id: "no-folder",
         file: "config",
         severity: "error",
-        title: "No media folder configured",
-        description: "Configure a media folder in Source settings first.",
+        title: "No data folder available",
+        description: "Could not access or create a data folder.",
         fixable: false,
       }],
       summary: { total: 1, errors: 1, warnings: 0, info: 0, fixable: 0 },
       files: [],
       canFix: false,
     };
-  }
-  
-  const dataFolder = getDataFolderForMediaRoot(mediaRoot);
-
-  // Ensure data folder exists
-  try {
-    await fs.mkdir(dataFolder, { recursive: true });
-  } catch {
-    // Ignore
   }
 
   // Files to check
@@ -250,6 +285,12 @@ async function auditLocalMode(): Promise<AuditResult> {
   if (await fileExists(schedulePath)) {
     const schedule = await readJsonFile<{ channels: Record<string, { slots?: unknown[]; shortName?: string; active?: boolean }> }>(schedulePath);
     
+    console.log("[JSON Audit] Local schedule.json:", {
+      path: schedulePath,
+      channelCount: schedule?.channels ? Object.keys(schedule.channels).length : 0,
+      channelIds: schedule?.channels ? Object.keys(schedule.channels) : [],
+    });
+    
     if (schedule?.channels) {
       for (const [channelId, channelData] of Object.entries(schedule.channels)) {
         if (channelData.active === undefined) {
@@ -281,6 +322,7 @@ async function auditLocalMode(): Promise<AuditResult> {
   const mediaIndexPath = path.join(dataFolder, "media-index.json");
   if (await fileExists(mediaIndexPath)) {
     const mediaIndex = await readJsonFile<{ items?: { relPath: string; durationSeconds?: number }[] }>(mediaIndexPath);
+    const mediaRoot = await getEffectiveMediaRoot();
     
     if (mediaIndex?.items && mediaRoot) {
       let staleCount = 0;
@@ -334,20 +376,38 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const mode = searchParams.get("mode") as "local" | "remote" | null;
     
+    console.log("[JSON Audit API] GET request received", { mode });
+    
     if (mode === "remote") {
-      return NextResponse.json(await auditRemoteMode());
+      console.log("[JSON Audit API] Running remote audit");
+      const result = await auditRemoteMode();
+      console.log("[JSON Audit API] Remote audit result:", {
+        mode: result.mode,
+        issueCount: result.issues.length,
+        channelIssues: result.issues.filter(i => i.file === "schedule.json").map(i => i.id),
+      });
+      return NextResponse.json(result);
     } else if (mode === "local") {
-      return NextResponse.json(await auditLocalMode());
+      console.log("[JSON Audit API] Running local audit");
+      const result = await auditLocalMode();
+      console.log("[JSON Audit API] Local audit result:", {
+        mode: result.mode,
+        issueCount: result.issues.length,
+        channelIssues: result.issues.filter(i => i.file === "schedule.json").map(i => i.id),
+      });
+      return NextResponse.json(result);
     }
     
     // Default to local if configured, otherwise remote
     const mediaRoot = await getEffectiveMediaRoot();
+    console.log("[JSON Audit API] No mode specified, defaulting based on mediaRoot:", { hasMediaRoot: !!mediaRoot });
     if (mediaRoot) {
       return NextResponse.json(await auditLocalMode());
     }
     return NextResponse.json(await auditRemoteMode());
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
+    console.error("[JSON Audit API] Error:", msg);
     return NextResponse.json(
       { success: false, mode: "unknown", issues: [], summary: { total: 0, errors: 0, warnings: 0, info: 0, fixable: 0 }, files: [], canFix: false, error: msg },
       { status: 500 }
@@ -429,9 +489,12 @@ async function handleRemoteFix(action: string) {
       // Push clean files
       await uploadJsonToFtp("schedule.json", { channels: {} });
       await uploadJsonToFtp("media-index.json", { items: [], generatedAt: new Date().toISOString() });
-      
-      return NextResponse.json({ 
-        success: true, 
+
+      // Clear caches
+      clearMediaCaches();
+
+      return NextResponse.json({
+        success: true,
         message: "Fresh start complete. Pushed empty schedule.json and media-index.json"
       });
     }
@@ -443,11 +506,10 @@ async function handleRemoteFix(action: string) {
 
 // ==================== LOCAL FIXES ====================
 async function handleLocalFix(action: string) {
-  const mediaRoot = await getEffectiveMediaRoot();
-  if (!mediaRoot) {
-    return NextResponse.json({ success: false, message: "No media folder configured" }, { status: 400 });
+  const dataFolder = await resolveLocalDataFolder();
+  if (!dataFolder) {
+    return NextResponse.json({ success: false, message: "No data folder available" }, { status: 400 });
   }
-  const dataFolder = getDataFolderForMediaRoot(mediaRoot);
 
   switch (action) {
     case "initialize-missing": {
@@ -509,6 +571,11 @@ async function handleLocalFix(action: string) {
         return NextResponse.json({ success: false, message: "Could not read media-index.json" }, { status: 400 });
       }
 
+      const mediaRoot = await getEffectiveMediaRoot();
+      if (!mediaRoot) {
+        return NextResponse.json({ success: false, message: "No media folder configured" }, { status: 400 });
+      }
+
       const validItems: typeof mediaIndex.items = [];
       let removedCount = 0;
       
@@ -536,11 +603,11 @@ async function handleLocalFix(action: string) {
 
     case "fresh-start": {
       await fs.mkdir(dataFolder, { recursive: true });
-      
+
       // Create clean files
       await fs.writeFile(path.join(dataFolder, "schedule.json"), JSON.stringify({ channels: {} }, null, 2));
       await fs.writeFile(path.join(dataFolder, "media-index.json"), JSON.stringify({ items: [], generatedAt: new Date().toISOString() }, null, 2));
-      
+
       // Delete deprecated files
       const toDelete = ["channels.json", "media-metadata.json"];
       for (const file of toDelete) {
@@ -549,7 +616,10 @@ async function handleLocalFix(action: string) {
           await fs.unlink(filePath);
         }
       }
-      
+
+      // Clear media caches so next request reads fresh data
+      clearMediaCaches();
+
       return NextResponse.json({ success: true, message: "Fresh start complete. Created clean files, removed deprecated ones." });
     }
 
