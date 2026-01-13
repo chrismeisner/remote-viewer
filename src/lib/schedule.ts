@@ -8,6 +8,7 @@ export type ScheduleSlot = {
 export type ChannelSchedule = {
   slots: ScheduleSlot[];
   shortName?: string;
+  active?: boolean; // Default true if undefined
 };
 
 // Single schedule.json containing all channels
@@ -16,11 +17,10 @@ export type Schedule = {
   version?: number;
 };
 
-// Legacy type for backward compatibility during migration
-export type DailySchedule = {
-  slots: ScheduleSlot[];
-  version?: number;
-};
+/**
+ * @deprecated Use ChannelSchedule instead. This alias exists for backwards compatibility.
+ */
+export type DailySchedule = ChannelSchedule;
 
 const timePattern = /^([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/;
 
@@ -99,8 +99,10 @@ export function validateSchedule(schedule: Schedule) {
   }
 }
 
-// Legacy validation for backward compatibility
-export function validateDailySchedule(schedule: DailySchedule) {
+/**
+ * @deprecated Use validateChannelSchedule instead.
+ */
+export function validateDailySchedule(schedule: ChannelSchedule) {
   validateChannelSchedule(schedule);
 }
 

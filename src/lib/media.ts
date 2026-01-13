@@ -7,7 +7,6 @@ import ffprobe from "ffprobe-static";
 import { REMOTE_MEDIA_BASE, type MediaSource } from "@/constants/media";
 import {
   ChannelSchedule,
-  DailySchedule,
   Schedule,
   ScheduleSlot,
   parseTimeToSeconds,
@@ -22,6 +21,7 @@ import {
   getDataFolderForMediaRoot,
   hasMediaRootConfigured,
 } from "@/lib/config";
+import { normalizeChannelId } from "@/lib/ftp";
 
 const execFileAsync = promisify(execFile);
 
@@ -351,9 +351,9 @@ export async function getLocalMediaIndexFilePath(): Promise<string | null> {
 
 // Save a channel's schedule (updates the full schedule file)
 export async function saveSchedule(
-  schedule: DailySchedule,
+  schedule: ChannelSchedule,
   channel?: string,
-): Promise<DailySchedule> {
+): Promise<ChannelSchedule> {
   const channelId = normalizeChannelId(channel);
   validateChannelSchedule(schedule, channelId);
 
@@ -372,7 +372,7 @@ export async function saveSchedule(
 export async function loadSchedule(
   channel?: string,
   source: MediaSource = "local",
-): Promise<DailySchedule | null> {
+): Promise<ChannelSchedule | null> {
   const channelId = normalizeChannelId(channel);
   const fullSchedule = await loadFullSchedule(source);
   const channelSchedule = fullSchedule.channels[channelId];
@@ -387,6 +387,7 @@ export async function loadSchedule(
 export type ChannelInfo = {
   id: string;
   shortName?: string;
+  active?: boolean; // Default true if undefined
 };
 
 export async function listChannels(source: MediaSource = "local"): Promise<ChannelInfo[]> {
@@ -395,6 +396,7 @@ export async function listChannels(source: MediaSource = "local"): Promise<Chann
     ([id, schedule]) => ({
       id,
       shortName: schedule.shortName,
+      active: schedule.active ?? true, // Default to active if not set
     }),
   );
   return channels.sort((a, b) =>
@@ -402,10 +404,18 @@ export async function listChannels(source: MediaSource = "local"): Promise<Chann
   );
 }
 
+/**
+ * List only active channels.
+ */
+export async function listActiveChannels(source: MediaSource = "local"): Promise<ChannelInfo[]> {
+  const channels = await listChannels(source);
+  return channels.filter((ch) => ch.active !== false);
+}
+
 export async function createChannel(
   channel?: string,
   shortName?: string,
-): Promise<{ channel: string; schedule: DailySchedule; shortName?: string }> {
+): Promise<{ channel: string; schedule: ChannelSchedule; shortName?: string }> {
   const id = normalizeChannelId(channel);
 
   // If it already exists, return the current schedule (or empty).
@@ -439,9 +449,107 @@ export async function deleteChannel(channel?: string): Promise<void> {
   }
 }
 
+/**
+ * Migrate channels.json data into schedule.json.
+ * This merges shortName and active fields from the legacy channels.json
+ * into the schedule.json channel entries.
+ * Returns the number of channels migrated.
+ */
+export async function migrateChannelsToSchedule(): Promise<{ migrated: number; skipped: number }> {
+  const channelsFile = await getChannelsFilePath();
+  
+  if (!channelsFile) {
+    return { migrated: 0, skipped: 0 };
+  }
+
+  type LegacyChannel = { id: string; shortName?: string; active?: boolean };
+  type LegacyChannelsData = { channels: LegacyChannel[] };
+
+  let legacyChannels: LegacyChannel[] = [];
+  try {
+    const raw = await fs.readFile(channelsFile, "utf8");
+    const data: LegacyChannelsData = JSON.parse(raw);
+    legacyChannels = Array.isArray(data.channels) ? data.channels : [];
+  } catch {
+    return { migrated: 0, skipped: 0 };
+  }
+
+  if (legacyChannels.length === 0) {
+    return { migrated: 0, skipped: 0 };
+  }
+
+  const fullSchedule = await loadLocalFullSchedule();
+  let migrated = 0;
+  let skipped = 0;
+
+  for (const legacy of legacyChannels) {
+    if (!legacy.id) {
+      skipped++;
+      continue;
+    }
+
+    const existing = fullSchedule.channels[legacy.id];
+    
+    if (existing) {
+      // Merge legacy data into existing schedule entry
+      // Only update if legacy has the field and schedule doesn't
+      if (legacy.shortName !== undefined && existing.shortName === undefined) {
+        existing.shortName = legacy.shortName;
+      }
+      if (legacy.active !== undefined && existing.active === undefined) {
+        existing.active = legacy.active;
+      }
+      migrated++;
+    } else {
+      // Create new channel entry from legacy
+      fullSchedule.channels[legacy.id] = {
+        slots: [],
+        shortName: legacy.shortName,
+        active: legacy.active ?? true,
+      };
+      migrated++;
+    }
+  }
+
+  if (migrated > 0) {
+    await saveFullSchedule(fullSchedule);
+  }
+
+  return { migrated, skipped };
+}
+
+export async function renameChannel(oldId: string, newId: string): Promise<void> {
+  const oldNormalized = normalizeChannelId(oldId);
+  const newNormalized = normalizeChannelId(newId);
+  
+  if (!oldNormalized || !newNormalized) {
+    throw new Error("Both old and new channel IDs are required");
+  }
+  
+  if (oldNormalized === newNormalized) {
+    return; // No change needed
+  }
+
+  const fullSchedule = await loadLocalFullSchedule();
+  
+  if (!fullSchedule.channels[oldNormalized]) {
+    throw new Error(`Channel "${oldNormalized}" not found`);
+  }
+  
+  if (fullSchedule.channels[newNormalized]) {
+    throw new Error(`Channel "${newNormalized}" already exists`);
+  }
+
+  // Move the channel data to the new ID
+  fullSchedule.channels[newNormalized] = fullSchedule.channels[oldNormalized];
+  delete fullSchedule.channels[oldNormalized];
+
+  await saveFullSchedule(fullSchedule);
+}
+
 export async function updateChannel(
   channel: string,
-  updates: { shortName?: string },
+  updates: { shortName?: string; active?: boolean },
 ): Promise<ChannelInfo> {
   const id = normalizeChannelId(channel);
   if (!id) {
@@ -459,11 +567,17 @@ export async function updateChannel(
     fullSchedule.channels[id].shortName = trimmed || undefined;
   }
 
+  // Update active status
+  if (updates.active !== undefined) {
+    fullSchedule.channels[id].active = updates.active;
+  }
+
   await saveFullSchedule(fullSchedule);
 
   return {
     id,
     shortName: fullSchedule.channels[id].shortName,
+    active: fullSchedule.channels[id].active ?? true,
   };
 }
 
@@ -997,15 +1111,6 @@ function clampSeconds(value: number, min: number, max: number): number {
 function normalizeRel(rel: string): string {
   return path.normalize(rel).replace(/^(\.\.(\/|\\|$))+/, "");
 }
-
-function normalizeChannelId(channel?: string): string {
-  if (!channel) return "";
-  const base = channel.trim();
-  if (!base) return "";
-  const safe = base.replace(/[^a-zA-Z0-9_-]/g, "-");
-  return safe;
-}
-
 
 function getLocalNow(now: number) {
   const d = new Date(now);

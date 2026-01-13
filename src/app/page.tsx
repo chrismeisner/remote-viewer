@@ -31,6 +31,7 @@ type NowPlayingResponse = {
 type ChannelInfo = {
   id: string;
   shortName?: string;
+  active?: boolean;
 };
 
 export default function Home() {
@@ -606,17 +607,20 @@ export default function Home() {
     np ? withMediaSource(np, mediaSource).src : "";
 
   // Normalize channels to ChannelInfo format (handles legacy string[] responses)
+  // Also filters out inactive channels (active !== false means active)
   const normalizeChannels = (channels: unknown): ChannelInfo[] => {
     if (!Array.isArray(channels)) return [];
-    return channels.map((ch) => {
-      if (typeof ch === "string") {
-        return { id: ch };
-      }
-      if (ch && typeof ch === "object" && typeof (ch as ChannelInfo).id === "string") {
-        return ch as ChannelInfo;
-      }
-      return null;
-    }).filter(Boolean) as ChannelInfo[];
+    return channels
+      .map((ch) => {
+        if (typeof ch === "string") {
+          return { id: ch, active: true };
+        }
+        if (ch && typeof ch === "object" && typeof (ch as ChannelInfo).id === "string") {
+          return ch as ChannelInfo;
+        }
+        return null;
+      })
+      .filter((ch): ch is ChannelInfo => ch !== null && ch.active !== false);
   };
 
   useEffect(() => {
