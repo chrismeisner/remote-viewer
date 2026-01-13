@@ -171,66 +171,23 @@ type ProbeResult = {
 
 async function probeRemoteDuration(url: string): Promise<ProbeResult> {
   try {
-    // First, do a quick HEAD request to verify URL is accessible
-    // This helps distinguish network issues from ffprobe issues
-    try {
-      const headRes = await fetch(url, { 
-        method: "HEAD",
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!headRes.ok) {
-        return { 
-          durationSeconds: 0, 
-          success: false, 
-          error: `URL not accessible: HTTP ${headRes.status}` 
-        };
-      }
-    } catch (fetchErr) {
-      const fetchErrMsg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-      console.warn("URL not accessible:", url, fetchErrMsg);
-      return { 
-        durationSeconds: 0, 
-        success: false, 
-        error: `URL not accessible: ${fetchErrMsg}` 
-      };
-    }
-
     const ffprobePath = await resolveFfprobePath();
-    
-    // For remote URLs on Heroku, we need special options for reliable HTTP streaming.
-    // Key insight: MP4 files store duration in the 'moov' atom which is usually at
-    // the start or end of the file. We need minimal data to extract this.
-    const args = [
-      "-v", "warning",            // Show warnings too for debugging
-      
-      // Minimal probing - just get container metadata
-      "-probesize", "500000",     // 500KB - enough for moov atom in most MP4s
-      "-analyzeduration", "500000", // 0.5 second analysis - just need duration
-      
-      "-print_format", "json",
-      "-show_format",             // Format has duration for most containers
-      "-show_streams",            // Fallback: streams may have duration
+    const { stdout, stderr } = await execFileAsync(ffprobePath, [
+      "-v",
+      "error",                    // Show errors for debugging
+      "-probesize",
+      "5000000",                  // Limit to 5MB of data to probe
+      "-analyzeduration",
+      "3000000",                  // Limit analysis to 3 seconds
+      "-print_format",
+      "json",
+      "-show_format",
+      "-show_streams",
       url,
-    ];
-    
-    console.log("Running ffprobe:", ffprobePath, args.slice(0, -1).join(" "), "[url]");
-    
-    // Use 12s timeout - gives enough time for slow connections but stays safe
-    const { stdout, stderr } = await execFileAsync(ffprobePath, args, { 
-      timeout: 12000,
-      killSignal: "SIGTERM",
-    });
+    ], { timeout: 8000 }); // 8 second timeout - must be fast for Heroku's 30s limit
 
     if (stderr) {
       console.warn("ffprobe stderr for", url, ":", stderr);
-    }
-
-    if (!stdout || stdout.trim() === "") {
-      return { 
-        durationSeconds: 0, 
-        success: false, 
-        error: "ffprobe returned empty output" 
-      };
     }
 
     const parsed = JSON.parse(stdout);
@@ -243,17 +200,9 @@ async function probeRemoteDuration(url: string): Promise<ProbeResult> {
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     // Include more details for debugging
-    const typedError = error as { stderr?: string; stdout?: string; killed?: boolean; signal?: string; code?: number };
-    let errorDetails = errMsg;
-    
-    if (typedError.killed) {
-      errorDetails = `Process killed (timeout or signal: ${typedError.signal || 'unknown'})`;
-    } else if (typedError.stderr) {
-      errorDetails = `${errMsg} | stderr: ${typedError.stderr}`;
-    } else if (typedError.code !== undefined) {
-      errorDetails = `${errMsg} | exit code: ${typedError.code}`;
-    }
-    
+    const errorDetails = error instanceof Error && 'stderr' in error 
+      ? `${errMsg} | stderr: ${(error as { stderr?: string }).stderr}`
+      : errMsg;
     console.warn("ffprobe failed for remote URL", url, errorDetails);
     return { durationSeconds: 0, success: false, error: errorDetails };
   }
@@ -330,14 +279,10 @@ export async function POST() {
       : REMOTE_MEDIA_BASE + "/";
 
     // Probe each file for duration (in parallel with concurrency limit)
-    // IMPORTANT: Heroku has a 30-second request timeout, so we must be careful
-    // With 12s probe timeout and 2 concurrent probes, we can probe ~4-5 files per request
-    // Limit to 10 new probes per request to stay well within the 30s limit
+    // IMPORTANT: Heroku has a 30-second request timeout, so we must be fast
     const items: MediaItem[] = [];
     const fileResults: FileResult[] = [];
-    const CONCURRENCY = 2; // Lower concurrency due to 12s probe timeout
-    const MAX_NEW_PROBES = 10; // Maximum files to probe per request (cached files don't count)
-    let newProbeCount = 0;
+    const CONCURRENCY = 4; // Higher concurrency since each probe is fast (8s timeout)
     
     for (let i = 0; i < mediaFiles.length; i += CONCURRENCY) {
       const batch = mediaFiles.slice(i, i + CONCURRENCY);
@@ -354,21 +299,14 @@ export async function POST() {
           let wasReprobed = false;
           
           // If no valid cached duration (new file or previously 0), probe the remote file
-          // But respect the MAX_NEW_PROBES limit to avoid request timeout
           if (durationSeconds === 0) {
-            if (newProbeCount >= MAX_NEW_PROBES) {
-              // Skip this file for now - will be picked up in next scan
-              probeError = "Skipped: probe limit reached for this request";
-            } else {
-              newProbeCount++;
-              const fileUrl = baseUrl + encodeURIComponent(f.name);
-              console.log(`Probing remote file (${newProbeCount}/${MAX_NEW_PROBES}): ${fileUrl}`);
-              const probeResult = await probeRemoteDuration(fileUrl);
-              durationSeconds = probeResult.durationSeconds;
-              probeSuccess = probeResult.success;
-              probeError = probeResult.error;
-              wasReprobed = true;
-            }
+            const fileUrl = baseUrl + encodeURIComponent(f.name);
+            console.log(`Probing remote file: ${fileUrl}`);
+            const probeResult = await probeRemoteDuration(fileUrl);
+            durationSeconds = probeResult.durationSeconds;
+            probeSuccess = probeResult.success;
+            probeError = probeResult.error;
+            wasReprobed = true;
           }
           
           // Record detailed file result
@@ -400,18 +338,16 @@ export async function POST() {
     const reprobedFiles = fileResults.filter(r => r.wasReprobed);
     const fixedFiles = reprobedFiles.filter(r => r.probeSuccess && r.durationSeconds > 0);
     const cachedFiles = fileResults.filter(r => r.wasCached);
-    const skippedFiles = fileResults.filter(r => r.probeError?.includes("Skipped:"));
     
     const stats = {
       total: items.length,
       withDuration: items.filter(i => i.durationSeconds > 0).length,
       zeroDuration: items.filter(i => i.durationSeconds === 0).length,
       probeSuccessCount: fileResults.filter(r => r.probeSuccess).length,
-      probeFailCount: fileResults.filter(r => !r.probeSuccess && !r.probeError?.includes("Skipped:")).length,
+      probeFailCount: fileResults.filter(r => !r.probeSuccess).length,
       reprobedCount: reprobedFiles.length,
       fixedCount: fixedFiles.length,
       cachedCount: cachedFiles.length,
-      skippedCount: skippedFiles.length,
     };
 
     // Sort by filename
@@ -438,20 +374,9 @@ export async function POST() {
       uploadClient.close();
     }
 
-    // Build message based on what happened
-    let message = `Scanned remote folder and uploaded media-index.json with ${items.length} files`;
-    if (skippedFiles.length > 0) {
-      message += `. ${skippedFiles.length} files skipped (run scan again to continue)`;
-    }
-    if (stats.withDuration === items.length) {
-      message = `All ${items.length} files have duration info!`;
-    } else if (stats.probeFailCount > 0) {
-      message += `. ${stats.probeFailCount} files failed to probe`;
-    }
-
     return NextResponse.json({
       success: true,
-      message,
+      message: `Scanned remote folder and uploaded media-index.json with ${items.length} files`,
       remotePath,
       count: items.length,
       files: items.map((i) => i.relPath),

@@ -455,6 +455,14 @@ function ScheduleAdminContent() {
     setShowSlotModal(true);
   };
 
+  const scheduleNext = (slotEndTime: string) => {
+    const defaultFile = supportedFiles[0]?.relPath || "";
+    setModalFile(defaultFile);
+    setModalStart(slotEndTime);
+    setModalEnd(computeEndTime(slotEndTime, defaultFile, sortedFiles));
+    setShowSlotModal(true);
+  };
+
   useEffect(() => {
     setCopiedCommand(false);
   }, [selectedFile]);
@@ -777,6 +785,9 @@ function ScheduleAdminContent() {
                         <th className="px-3 py-2 text-right font-semibold w-28">
                           Duration
                         </th>
+                        <th className="px-3 py-2 text-right font-semibold w-28">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
@@ -842,6 +853,15 @@ function ScheduleAdminContent() {
                                     </span>
                                   )}
                                 </div>
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <button
+                                  onClick={() => scheduleNext(slot.end)}
+                                  className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-200 transition hover:border-white/30 hover:bg-white/10"
+                                  title={`Schedule next item starting at ${slot.end}`}
+                                >
+                                  + Next
+                                </button>
                               </td>
                             </tr>
                           );
