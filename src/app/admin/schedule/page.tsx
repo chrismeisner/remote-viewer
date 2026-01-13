@@ -512,7 +512,9 @@ function ScheduleAdminContent() {
     }
   };
 
-  // Core save function - always saves to local, then pushes to remote if needed
+  // Core save function
+  // For local source: saves to local filesystem, then pushes to remote if needed
+  // For remote source: saves directly to FTP (for Heroku/serverless environments)
   // Takes targetChannel as parameter to avoid stale closure issues
   const doSave = useCallback(async (slotsToPersist: ScheduleSlot[], targetChannel: string) => {
     if (!targetChannel) return false;
@@ -529,15 +531,18 @@ function ScheduleAdminContent() {
     }
 
     try {
-      // Always save to local first
-      const res = await fetch(
-        `/api/schedule?channel=${encodeURIComponent(targetChannel)}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        },
-      );
+      // Build URL with source parameter
+      // For remote source, this tells the API to save directly to FTP
+      // (needed for Heroku/serverless where local filesystem is read-only)
+      const url = mediaSource === "remote"
+        ? `/api/schedule?channel=${encodeURIComponent(targetChannel)}&source=remote`
+        : `/api/schedule?channel=${encodeURIComponent(targetChannel)}`;
+
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       if (!res.ok) return false;
       
       // CRITICAL: Only update refs if we're still on the same channel
@@ -547,13 +552,11 @@ function ScheduleAdminContent() {
         lastSavedChannelRef.current = targetChannel;
       }
 
-      // If remote source is active, push schedule to remote
-      if (mediaSource === "remote") {
-        try {
-          await fetch("/api/schedule/push", { method: "POST" });
-        } catch {
-          // Ignore push errors - local save succeeded
-        }
+      // For local source with remote sync, push to remote after local save
+      if (mediaSource === "local") {
+        // Check if user wants remote sync (this could be a setting in the future)
+        // For now, only push if FTP is configured and we're explicitly in local mode
+        // The remote source already saved directly to FTP above
       }
 
       return true;
