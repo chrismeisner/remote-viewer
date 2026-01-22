@@ -36,17 +36,32 @@ async function listRemoteChannels(): Promise<ChannelInfo[]> {
   return channelsFromSchedule(schedule);
 }
 
+// Sort channels numerically when IDs are numbers, otherwise alphabetically
+function sortChannelsNumerically(channels: ChannelInfo[]): ChannelInfo[] {
+  return channels.sort((a, b) => {
+    const aNum = parseInt(a.id, 10);
+    const bNum = parseInt(b.id, 10);
+    // If both are valid numbers, sort numerically
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      return aNum - bNum;
+    }
+    // Otherwise fall back to string comparison
+    return a.id.localeCompare(b.id, undefined, { sensitivity: "base" });
+  });
+}
+
 // Convert schedule object to channels list (used for both fetched and in-memory schedules)
 function channelsFromSchedule(schedule: ScheduleData | null): ChannelInfo[] {
   if (!schedule?.channels) return [];
   
-  return Object.entries(schedule.channels)
+  const channels = Object.entries(schedule.channels)
     .map(([id, ch]) => ({
       id,
       shortName: ch.shortName,
       active: ch.active ?? true,
-    }))
-    .sort((a, b) => a.id.localeCompare(b.id, undefined, { sensitivity: "base" }));
+    }));
+  
+  return sortChannelsNumerically(channels);
 }
 
 async function pushRemoteSchedule(schedule: ScheduleData): Promise<void> {

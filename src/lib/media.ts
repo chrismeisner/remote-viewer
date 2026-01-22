@@ -463,9 +463,17 @@ export async function listChannels(source: MediaSource = "local"): Promise<Chann
     },
   );
   console.log("[Media Lib] listChannels - returning", channels.length, "channels with data:", channels);
-  return channels.sort((a, b) =>
-    a.id.localeCompare(b.id, undefined, { sensitivity: "base" }),
-  );
+  // Sort numerically when IDs are numbers, otherwise alphabetically
+  return channels.sort((a, b) => {
+    const aNum = parseInt(a.id, 10);
+    const bNum = parseInt(b.id, 10);
+    // If both are valid numbers, sort numerically
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      return aNum - bNum;
+    }
+    // Otherwise fall back to string comparison
+    return a.id.localeCompare(b.id, undefined, { sensitivity: "base" });
+  });
 }
 
 /**

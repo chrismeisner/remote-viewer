@@ -379,8 +379,8 @@ export default function ChannelAdminPage() {
                 {channels.map((channel) => (
                   <tr key={channel.id} className="text-neutral-100">
                     <td className="px-3 py-2">
-                      <span className="rounded-full bg-white/5 px-2 py-1 text-xs font-semibold text-neutral-200">
-                        {channel.id}
+                      <span className="rounded-full bg-white/5 px-2 py-1 text-xs font-semibold text-neutral-200 font-mono">
+                        {channel.id.toString().padStart(2, "0")}
                       </span>
                     </td>
                     <td className="px-3 py-2">

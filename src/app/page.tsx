@@ -67,10 +67,28 @@ export default function Home() {
   const [overlayChannel, setOverlayChannel] = useState<ChannelInfo | null>(null);
   const overlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Numeric input buffer for multi-digit channel selection (like a real TV remote)
+  const [channelInputBuffer, setChannelInputBuffer] = useState("");
+  const channelInputTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Volume overlay state
   const [showVolumeOverlay, setShowVolumeOverlay] = useState(false);
   const volumeOverlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  const triggerVolumeOverlay = (isMuted: boolean) => {
+    if (volumeOverlayTimeoutRef.current) {
+      clearTimeout(volumeOverlayTimeoutRef.current);
+    }
+
+    setShowVolumeOverlay(true);
+
+    if (!isMuted) {
+      volumeOverlayTimeoutRef.current = setTimeout(() => {
+        setShowVolumeOverlay(false);
+      }, 1500);
+    }
+  };
+
   // Video loading state - show blue screen while buffering
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   // Reset playback context when channel changes to ensure fresh offsets.
@@ -127,24 +145,15 @@ export default function Home() {
       if (volumeOverlayTimeoutRef.current) {
         clearTimeout(volumeOverlayTimeoutRef.current);
       }
+      if (channelInputTimeoutRef.current) {
+        clearTimeout(channelInputTimeoutRef.current);
+      }
     };
   }, []);
 
   // Show volume overlay when volume changes or mute toggles
   useEffect(() => {
-    if (volumeOverlayTimeoutRef.current) {
-      clearTimeout(volumeOverlayTimeoutRef.current);
-    }
-    
-    setShowVolumeOverlay(true);
-    
-    // If muted, keep the overlay visible permanently
-    // Otherwise, hide after 1.5 seconds
-    if (!muted) {
-      volumeOverlayTimeoutRef.current = setTimeout(() => {
-        setShowVolumeOverlay(false);
-      }, 1500);
-    }
+    triggerVolumeOverlay(muted);
   }, [volume, muted]);
 
   // Allow hiding the global header on the home page (toggled via "h" key)
@@ -682,19 +691,58 @@ export default function Home() {
           const currentStep = Math.round(volume * 10);
           // Increase volume by 1 step (out of 10)
           const newStep = Math.min(10, currentStep + 1);
-          setVolume(newStep / 10);
+          if (newStep === currentStep && newStep === 10) {
+            // Already at max - still show overlay to confirm level
+            triggerVolumeOverlay(false);
+          } else {
+            setVolume(newStep / 10);
+          }
         }
         return;
       }
 
-      if (!/^[1-9]$/.test(key)) return;
+      // Handle numeric input for channel selection (0-9)
+      if (!/^[0-9]$/.test(key)) return;
+      
+      event.preventDefault();
+      
+      // Clear any existing timeout
+      if (channelInputTimeoutRef.current) {
+        clearTimeout(channelInputTimeoutRef.current);
+      }
+      
+      // Add the digit to the buffer
+      const newBuffer = channelInputBuffer + key;
+      setChannelInputBuffer(newBuffer);
+      
       const channelIds = channels.map(c => c.id);
-      if (!channelIds.includes(key)) return;
-      switchToChannel(key);
+      
+      // Check if exact match exists
+      const exactMatch = channelIds.includes(newBuffer);
+      
+      // Check if any channel starts with the current buffer (potential longer match)
+      const hasPotentialLongerMatch = channelIds.some(id => 
+        id.startsWith(newBuffer) && id.length > newBuffer.length
+      );
+      
+      // If we have an exact match and no potential longer matches, switch immediately
+      if (exactMatch && !hasPotentialLongerMatch) {
+        setChannelInputBuffer("");
+        switchToChannel(newBuffer);
+        return;
+      }
+      
+      // Otherwise, wait for more input
+      channelInputTimeoutRef.current = setTimeout(() => {
+        if (exactMatch) {
+          switchToChannel(newBuffer);
+        }
+        setChannelInputBuffer("");
+      }, 800);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [channels, channel, muted, volume]);
+  }, [channels, channel, muted, volume, channelInputBuffer]);
 
   const resolvedSrc = (np: NowPlaying | null) =>
     np ? withMediaSource(np, mediaSource).src : "";
@@ -941,7 +989,7 @@ export default function Home() {
 
               {/* Volume overlay - shows when volume changes */}
               <div
-                className={`absolute top-4 right-4 z-10 transition-opacity duration-500 ${
+                className={`absolute top-4 right-4 z-10 ${
                   showVolumeOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
                 }`}
               >
@@ -1005,7 +1053,7 @@ export default function Home() {
               >
                 {channels.map((ch) => (
                   <option key={ch.id} value={ch.id}>
-                    {ch.id}{ch.shortName ? ` - ${ch.shortName}` : ""}
+                    {ch.id.toString().padStart(2, "0")}{ch.shortName ? ` - ${ch.shortName}` : ""}
                   </option>
                 ))}
               </select>

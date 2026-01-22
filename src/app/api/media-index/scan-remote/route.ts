@@ -36,6 +36,10 @@ type ScanResult = {
     reprobedCount: number;
     fixedCount: number;
     cachedCount: number;
+    // Incremental scan stats
+    unchangedCount: number;
+    newOrChangedCount: number;
+    skippedFailureCount: number;
   };
 };
 
@@ -47,6 +51,11 @@ type MediaItem = {
   supportedViaCompanion: boolean;
   title: string;
   audioCodec?: string;
+  // FTP metadata for incremental scanning
+  size?: number;
+  modifiedAt?: string; // ISO string
+  // Track probe failures to avoid retrying every scan
+  probeFailedAt?: string; // ISO string - when probe last failed
 };
 
 const ALLOWED_EXTENSIONS = [".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm"];
@@ -83,15 +92,23 @@ function getTitle(filename: string): string {
   return path.basename(filename, path.extname(filename));
 }
 
+type FtpFileInfo = {
+  name: string;
+  relPath: string;
+  size: number;
+  modifiedAt: string | null; // ISO string or null if unavailable
+};
+
 /**
  * Recursively list all media files in the current FTP directory and subdirectories
+ * Captures size and modifiedAt for incremental scanning
  */
 async function listMediaFilesRecursive(
   client: Client,
   currentPath: string,
-): Promise<Array<{ name: string; relPath: string }>> {
+): Promise<FtpFileInfo[]> {
   const fileList = await client.list(currentPath || undefined);
-  const results: Array<{ name: string; relPath: string }> = [];
+  const results: FtpFileInfo[] = [];
   
   for (const entry of fileList) {
     // Skip hidden files/folders
@@ -104,10 +121,12 @@ async function listMediaFilesRecursive(
       const subFiles = await listMediaFilesRecursive(client, entryPath);
       results.push(...subFiles);
     } else if (entry.isFile && isMediaFile(entry.name)) {
-      // Add media file with its relative path
+      // Add media file with its relative path, size, and mtime
       results.push({
         name: entry.name,
         relPath: entryPath,
+        size: entry.size,
+        modifiedAt: entry.modifiedAt ? entry.modifiedAt.toISOString() : null,
       });
     }
   }
@@ -256,10 +275,15 @@ export async function POST() {
   }
 
   try {
-    // Fetch existing remote media-index.json to get cached durations
-    // This allows us to skip re-probing files that already have valid durations
-    // while re-trying files that previously had 0 duration
-    const existingDurations = new Map<string, number>();
+    // Fetch existing remote media-index.json to get cached data
+    // This allows incremental scanning: we only probe files that are new or changed
+    type CachedItem = {
+      durationSeconds: number;
+      size?: number;
+      modifiedAt?: string;
+      probeFailedAt?: string;
+    };
+    const existingItems = new Map<string, CachedItem>();
     try {
       const manifestUrl = REMOTE_MEDIA_BASE.endsWith("/")
         ? `${REMOTE_MEDIA_BASE}media-index.json`
@@ -268,13 +292,14 @@ export async function POST() {
       if (res.ok) {
         const existingIndex = await res.json() as { items?: MediaItem[] };
         for (const item of existingIndex.items || []) {
-          // Only cache durations that are > 0 (valid)
-          // Files with 0 duration will be re-probed
-          if (item.durationSeconds > 0) {
-            existingDurations.set(item.relPath, item.durationSeconds);
-          }
+          existingItems.set(item.relPath, {
+            durationSeconds: item.durationSeconds,
+            size: item.size,
+            modifiedAt: item.modifiedAt,
+            probeFailedAt: item.probeFailedAt,
+          });
         }
-        console.log(`Loaded ${existingDurations.size} existing durations from remote index`);
+        console.log(`Loaded ${existingItems.size} existing items from remote index`);
       }
     } catch (err) {
       console.warn("Could not fetch existing remote index, will probe all files:", err);
@@ -283,7 +308,7 @@ export async function POST() {
     // Connect to FTP and list files recursively
     // Use shorter timeout to stay within Heroku's 30s request limit
     const client = new Client(10000);
-    let mediaFiles: Array<{ name: string; relPath: string }> = [];
+    let mediaFiles: FtpFileInfo[] = [];
     
     try {
       await client.access({ host, port, user, password, secure });
@@ -299,6 +324,59 @@ export async function POST() {
     } finally {
       client.close();
     }
+    
+    // How long to wait before retrying a failed probe (24 hours)
+    const PROBE_RETRY_HOURS = 24;
+    
+    /**
+     * Check if the file's size/mtime has changed from cached version
+     */
+    function hasFileChanged(f: FtpFileInfo, cached: CachedItem): boolean {
+      // If we have size info, compare it
+      if (cached.size !== undefined && cached.size !== f.size) {
+        return true; // Size changed
+      }
+      
+      // If we have modifiedAt info, compare it
+      if (cached.modifiedAt && f.modifiedAt && cached.modifiedAt !== f.modifiedAt) {
+        return true; // Modified time changed
+      }
+      
+      return false;
+    }
+    
+    /**
+     * Determine if we should skip probing this file.
+     * Skip if:
+     * - File exists in cache with valid duration > 0 AND hasn't changed
+     * - OR file exists in cache with recent probe failure AND hasn't changed
+     */
+    function shouldSkipProbe(f: FtpFileInfo, cached: CachedItem | undefined): { skip: boolean; reason: string } {
+      if (!cached) {
+        return { skip: false, reason: "new" };
+      }
+      
+      const fileChanged = hasFileChanged(f, cached);
+      
+      // If file has valid duration and hasn't changed, skip
+      if (cached.durationSeconds > 0 && !fileChanged) {
+        return { skip: true, reason: "unchanged" };
+      }
+      
+      // If probe recently failed and file hasn't changed, skip retry
+      if (cached.probeFailedAt && !fileChanged) {
+        const failedAt = new Date(cached.probeFailedAt);
+        const hoursSinceFailure = (Date.now() - failedAt.getTime()) / (1000 * 60 * 60);
+        if (hoursSinceFailure < PROBE_RETRY_HOURS) {
+          return { skip: true, reason: "recent-failure" };
+        }
+        // Enough time has passed, retry
+        return { skip: false, reason: "retry-after-wait" };
+      }
+      
+      // File changed or no recent failure, probe it
+      return { skip: false, reason: fileChanged ? "changed" : "no-duration" };
+    }
 
     // Build base URL for probing remote files
     const baseUrl = REMOTE_MEDIA_BASE.endsWith("/")
@@ -307,9 +385,15 @@ export async function POST() {
 
     // Probe each file for duration (in parallel with concurrency limit)
     // IMPORTANT: Heroku has a 30-second request timeout, so we must be fast
+    // Using incremental scanning: only probe new or changed files
     const items: MediaItem[] = [];
     const fileResults: FileResult[] = [];
     const CONCURRENCY = 4; // Higher concurrency since each probe is fast (8s timeout)
+    
+    // Track stats
+    let unchangedCount = 0;
+    let newOrChangedCount = 0;
+    let skippedFailureCount = 0;
     
     for (let i = 0; i < mediaFiles.length; i += CONCURRENCY) {
       const batch = mediaFiles.slice(i, i + CONCURRENCY);
@@ -317,26 +401,50 @@ export async function POST() {
         batch.map(async (f) => {
           const format = getFormat(f.name);
           const supported = isSupported(format);
+          const cached = existingItems.get(f.relPath);
           
-          // Check existing remote index for cached duration (only valid durations > 0 are cached)
-          const cachedDuration = existingDurations.get(f.relPath);
-          let durationSeconds = cachedDuration ?? 0;
-          let probeSuccess = cachedDuration !== undefined && cachedDuration > 0;
+          let durationSeconds: number;
+          let probeSuccess: boolean;
           let probeError: string | undefined;
           let wasReprobed = false;
+          let wasCached = false;
+          let probeFailedAt: string | undefined;
           
-          // If no valid cached duration (new file or previously 0), probe the remote file
-          if (durationSeconds === 0) {
+          const { skip, reason } = shouldSkipProbe(f, cached);
+          
+          if (skip) {
+            // Skip probing - use cached data
+            durationSeconds = cached?.durationSeconds ?? 0;
+            probeSuccess = cached?.durationSeconds ? cached.durationSeconds > 0 : false;
+            wasCached = true;
+            // Preserve the probeFailedAt timestamp if it exists
+            probeFailedAt = cached?.probeFailedAt;
+            
+            if (reason === "recent-failure") {
+              skippedFailureCount++;
+              probeError = "Skipped - probe failed recently, will retry in 24h";
+            } else {
+              unchangedCount++;
+            }
+          } else {
+            // Need to probe this file
+            newOrChangedCount++;
+            
             // Encode each path segment separately to handle subdirectories correctly
             const pathParts = f.relPath.split('/');
             const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
             const fileUrl = baseUrl + encodedPath;
-            console.log(`Probing remote file: ${fileUrl}`);
+            console.log(`Probing (${reason}) file: ${fileUrl}`);
             const probeResult = await probeRemoteDuration(fileUrl);
             durationSeconds = probeResult.durationSeconds;
             probeSuccess = probeResult.success;
             probeError = probeResult.error;
             wasReprobed = true;
+            
+            // If probe failed, record the timestamp so we don't retry too soon
+            if (!probeSuccess) {
+              probeFailedAt = new Date().toISOString();
+            }
           }
           
           // Record detailed file result
@@ -348,7 +456,7 @@ export async function POST() {
             probeSuccess,
             probeError,
             wasReprobed,
-            wasCached: cachedDuration !== undefined && cachedDuration > 0,
+            wasCached,
           });
           
           return {
@@ -358,11 +466,17 @@ export async function POST() {
             supported,
             supportedViaCompanion: false,
             title: getTitle(f.name),
+            // Store FTP metadata for future incremental scans
+            size: f.size,
+            modifiedAt: f.modifiedAt ?? undefined,
+            probeFailedAt,
           };
         })
       );
       items.push(...batchResults);
     }
+    
+    console.log(`Incremental scan: ${unchangedCount} unchanged, ${newOrChangedCount} probed, ${skippedFailureCount} skipped (recent failure)`);
     
     // Calculate stats
     const reprobedFiles = fileResults.filter(r => r.wasReprobed);
@@ -378,6 +492,10 @@ export async function POST() {
       reprobedCount: reprobedFiles.length,
       fixedCount: fixedFiles.length,
       cachedCount: cachedFiles.length,
+      // Incremental scan stats
+      unchangedCount,
+      newOrChangedCount,
+      skippedFailureCount,
     };
 
     // Sort by filename
@@ -404,9 +522,21 @@ export async function POST() {
       uploadClient.close();
     }
 
+    // Build a descriptive message
+    const messageParts = [`Scanned ${items.length} files`];
+    if (unchangedCount > 0) {
+      messageParts.push(`${unchangedCount} unchanged`);
+    }
+    if (skippedFailureCount > 0) {
+      messageParts.push(`${skippedFailureCount} skipped (known issues)`);
+    }
+    if (newOrChangedCount > 0) {
+      messageParts.push(`${newOrChangedCount} probed`);
+    }
+    
     return NextResponse.json({
       success: true,
-      message: `Scanned remote folder and uploaded media-index.json with ${items.length} files`,
+      message: messageParts.join(", "),
       remotePath,
       count: items.length,
       files: items.map((i) => i.relPath),

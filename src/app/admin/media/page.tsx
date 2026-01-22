@@ -52,6 +52,10 @@ type ScanStats = {
   reprobedCount: number;
   fixedCount: number;
   cachedCount: number;
+  // Incremental scan stats
+  unchangedCount?: number;
+  newOrChangedCount?: number;
+  skippedFailureCount?: number;
 };
 
 type ScanReport = {
@@ -959,14 +963,19 @@ function ScanReportModal({
           
           {/* Scan details */}
           <div className="mt-4 flex flex-wrap gap-3 justify-center text-xs">
-            {stats.cachedCount > 0 && (
-              <span className="px-2 py-1 rounded-full bg-blue-500/20 text-blue-300">
-                {stats.cachedCount} cached
+            {stats.unchangedCount !== undefined && stats.unchangedCount > 0 && (
+              <span className="px-2 py-1 rounded-full bg-neutral-500/20 text-neutral-300">
+                {stats.unchangedCount} unchanged
               </span>
             )}
-            {stats.reprobedCount > 0 && (
-              <span className="px-2 py-1 rounded-full bg-purple-500/20 text-purple-300">
-                {stats.reprobedCount} probed
+            {stats.skippedFailureCount !== undefined && stats.skippedFailureCount > 0 && (
+              <span className="px-2 py-1 rounded-full bg-amber-500/20 text-amber-300" title="Files with known probe issues - will retry in 24 hours">
+                {stats.skippedFailureCount} skipped (known issues)
+              </span>
+            )}
+            {stats.newOrChangedCount !== undefined && stats.newOrChangedCount > 0 && (
+              <span className="px-2 py-1 rounded-full bg-cyan-500/20 text-cyan-300">
+                {stats.newOrChangedCount} probed
               </span>
             )}
             {stats.fixedCount > 0 && (
@@ -1663,14 +1672,16 @@ export default function MediaAdminPage() {
               </button>
             )}
             {mediaSource === "remote" && (
-              <button
-                onClick={() => void scanRemoteMedia()}
-                disabled={loading || scanningRemote}
-                className="rounded-md border border-blue-300/50 bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30 disabled:opacity-50"
-                title="Scan remote FTP folder, analyze all media files, and update the remote media-index.json"
-              >
-                {scanningRemote ? "Syncing…" : "Scan & Sync Remote"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void scanRemoteMedia()}
+                  disabled={loading || scanningRemote}
+                  className="rounded-md border border-blue-300/50 bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30 disabled:opacity-50"
+                  title="Scan remote FTP folder, analyze all media files, and update the remote media-index.json"
+                >
+                  {scanningRemote ? "Syncing…" : "Scan & Sync Remote"}
+                </button>
+              </div>
             )}
           </div>
         </div>
