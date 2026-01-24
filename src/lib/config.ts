@@ -145,24 +145,36 @@ export async function validateMediaPath(
 
 /**
  * Get the effective covers folder path.
- * Priority: config.coversFolder > <mediaRoot>/.remote-viewer/covers > data/local/covers (fallback for remote mode)
+ * Priority: config.coversFolder (if accessible) > <mediaRoot>/.remote-viewer/covers > data/local/covers (fallback for remote mode)
  * Always returns a valid path.
  */
 export async function getEffectiveCoversFolder(): Promise<string> {
   const config = await loadConfig();
   
-  // Custom covers folder configured
+  // Custom covers folder configured - verify it's accessible
   if (config.coversFolder) {
-    return config.coversFolder;
+    try {
+      await fs.access(config.coversFolder);
+      return config.coversFolder;
+    } catch {
+      console.warn(`Configured covers folder not accessible: ${config.coversFolder}, using fallback`);
+      // Continue to fallback logic
+    }
   }
   
   // Fall back to default location within media root
   const mediaRoot = await getEffectiveMediaRoot();
   if (mediaRoot) {
-    return path.join(getDataFolderForMediaRoot(mediaRoot), "covers");
+    try {
+      await fs.access(mediaRoot);
+      return path.join(getDataFolderForMediaRoot(mediaRoot), "covers");
+    } catch {
+      console.warn(`Media root not accessible: ${mediaRoot}, using fallback`);
+      // Continue to fallback logic
+    }
   }
   
-  // No media root configured (remote/FTP mode) - use local fallback
+  // No media root configured or not accessible (remote/FTP mode) - use local fallback
   return path.join(process.cwd(), "data", "local", "covers");
 }
 

@@ -25,6 +25,9 @@
 *.pem
 /media/
 
+# local config (user-specific paths)
+/data/local/config.json
+
 # debug
 npm-debug.log*
 yarn-debug.log*
