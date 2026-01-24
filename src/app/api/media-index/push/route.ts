@@ -17,6 +17,7 @@ type MediaItem = {
   supported: boolean;
   supportedViaCompanion: boolean;
   title: string;
+  videoCodec?: string;
   audioCodec?: string;
 };
 

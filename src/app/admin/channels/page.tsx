@@ -13,6 +13,7 @@ type Channel = {
   id: string;
   shortName?: string;
   active?: boolean;
+  scheduledCount?: number;
 };
 
 export default function ChannelAdminPage() {
@@ -371,6 +372,7 @@ export default function ChannelAdminPage() {
                 <tr>
                   <th className="w-24 px-3 py-2 text-left font-semibold">Number</th>
                   <th className="px-3 py-2 text-left font-semibold">Name</th>
+                  <th className="w-24 px-3 py-2 text-center font-semibold">Scheduled</th>
                   <th className="w-24 px-3 py-2 text-left font-semibold">Status</th>
                   <th className="w-48 px-3 py-2 text-right font-semibold">Actions</th>
                 </tr>
@@ -389,6 +391,15 @@ export default function ChannelAdminPage() {
                       ) : (
                         <span className="text-xs text-neutral-500">—</span>
                       )}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`text-sm font-medium ${
+                        (channel.scheduledCount ?? 0) > 0 
+                          ? "text-neutral-100" 
+                          : "text-neutral-500"
+                      }`}>
+                        {channel.scheduledCount ?? 0}
+                      </span>
                     </td>
                     <td className="px-3 py-2">
                       <button
@@ -554,6 +565,18 @@ export default function ChannelAdminPage() {
               >
                 {resetting ? "Deleting…" : "Delete All Channels"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Saving Overlay */}
+      {saving !== null && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-xl border border-white/20 bg-neutral-900/90 p-6 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-neutral-600 border-t-emerald-400" />
+              <span className="text-lg font-semibold text-neutral-100">Saving changes…</span>
             </div>
           </div>
         </div>

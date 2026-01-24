@@ -102,3 +102,7 @@ export function normalizeChannelId(channel?: string): string {
   if (!base) return "";
   return base.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
+
+// Re-export filename utilities from client-safe module
+// These can be used in server code as well
+export { cleanupFilename, needsFilenameCleanup } from "./filename-utils";

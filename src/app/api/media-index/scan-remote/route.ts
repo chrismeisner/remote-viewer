@@ -50,12 +50,15 @@ type MediaItem = {
   supported: boolean;
   supportedViaCompanion: boolean;
   title: string;
+  videoCodec?: string;
   audioCodec?: string;
   // FTP metadata for incremental scanning
   size?: number;
   modifiedAt?: string; // ISO string
   // Track probe failures to avoid retrying every scan
   probeFailedAt?: string; // ISO string - when probe last failed
+  // Track when file was first added to the library
+  dateAdded?: string; // ISO string
 };
 
 const ALLOWED_EXTENSIONS = [".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm"];
@@ -216,9 +219,33 @@ function parseFps(value: string): number | null {
 
 type ProbeResult = {
   durationSeconds: number;
+  videoCodec?: string;
+  audioCodec?: string;
   success: boolean;
   error?: string;
 };
+
+function extractCodecNames(probeJson: unknown): { videoCodec?: string; audioCodec?: string } {
+  if (!probeJson || typeof probeJson !== "object") return {};
+  const obj = probeJson as { streams?: unknown[] };
+  const streams = Array.isArray(obj.streams) ? obj.streams : [];
+  
+  let videoCodec: string | undefined;
+  let audioCodec: string | undefined;
+  
+  for (const stream of streams) {
+    if (!stream || typeof stream !== "object") continue;
+    const s = stream as { codec_type?: string; codec_name?: string };
+    if (s.codec_type === "video" && !videoCodec && s.codec_name) {
+      videoCodec = s.codec_name;
+    }
+    if (s.codec_type === "audio" && !audioCodec && s.codec_name) {
+      audioCodec = s.codec_name;
+    }
+  }
+  
+  return { videoCodec, audioCodec };
+}
 
 async function probeRemoteDuration(url: string): Promise<ProbeResult> {
   try {
@@ -243,11 +270,12 @@ async function probeRemoteDuration(url: string): Promise<ProbeResult> {
 
     const parsed = JSON.parse(stdout);
     const duration = extractDurationSeconds(parsed);
+    const { videoCodec, audioCodec } = extractCodecNames(parsed);
 
     if (duration !== null && Number.isFinite(duration) && duration > 0) {
-      return { durationSeconds: duration, success: true };
+      return { durationSeconds: duration, videoCodec, audioCodec, success: true };
     }
-    return { durationSeconds: 0, success: false, error: "No duration found in metadata" };
+    return { durationSeconds: 0, videoCodec, audioCodec, success: false, error: "No duration found in metadata" };
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     // Include more details for debugging
@@ -282,6 +310,7 @@ export async function POST() {
       size?: number;
       modifiedAt?: string;
       probeFailedAt?: string;
+      dateAdded?: string;
     };
     const existingItems = new Map<string, CachedItem>();
     try {
@@ -297,6 +326,7 @@ export async function POST() {
             size: item.size,
             modifiedAt: item.modifiedAt,
             probeFailedAt: item.probeFailedAt,
+            dateAdded: item.dateAdded,
           });
         }
         console.log(`Loaded ${existingItems.size} existing items from remote index`);
@@ -404,6 +434,8 @@ export async function POST() {
           const cached = existingItems.get(f.relPath);
           
           let durationSeconds: number;
+          let videoCodec: string | undefined;
+          let audioCodec: string | undefined;
           let probeSuccess: boolean;
           let probeError: string | undefined;
           let wasReprobed = false;
@@ -415,6 +447,8 @@ export async function POST() {
           if (skip) {
             // Skip probing - use cached data
             durationSeconds = cached?.durationSeconds ?? 0;
+            videoCodec = cached?.videoCodec;
+            audioCodec = cached?.audioCodec;
             probeSuccess = cached?.durationSeconds ? cached.durationSeconds > 0 : false;
             wasCached = true;
             // Preserve the probeFailedAt timestamp if it exists
@@ -437,6 +471,8 @@ export async function POST() {
             console.log(`Probing (${reason}) file: ${fileUrl}`);
             const probeResult = await probeRemoteDuration(fileUrl);
             durationSeconds = probeResult.durationSeconds;
+            videoCodec = probeResult.videoCodec;
+            audioCodec = probeResult.audioCodec;
             probeSuccess = probeResult.success;
             probeError = probeResult.error;
             wasReprobed = true;
@@ -459,6 +495,9 @@ export async function POST() {
             wasCached,
           });
           
+          // Preserve existing dateAdded or set to now for new files
+          const dateAdded = cached?.dateAdded ?? new Date().toISOString();
+          
           return {
             relPath: f.relPath,
             durationSeconds,
@@ -466,10 +505,13 @@ export async function POST() {
             supported,
             supportedViaCompanion: false,
             title: getTitle(f.name),
+            videoCodec,
+            audioCodec,
             // Store FTP metadata for future incremental scans
             size: f.size,
             modifiedAt: f.modifiedAt ?? undefined,
             probeFailedAt,
+            dateAdded,
           };
         })
       );

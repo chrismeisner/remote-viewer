@@ -25,6 +25,7 @@ type MediaFile = {
   format: string;
   supported: boolean;
   supportedViaCompanion: boolean;
+  videoCodec?: string;
   audioCodec?: string;
 };
 
@@ -1783,6 +1784,56 @@ function copyConvertCommand(
   }
 }
 
+function needsFullReencode(file: MediaFile): boolean {
+  const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
+  const filename = file.relPath.toLowerCase();
+  const codec = (file.videoCodec || "").toLowerCase();
+  
+  // Extensions that always need full re-encoding (legacy formats)
+  const fullReencodeExtensions = ["avi", "wmv", "asf", "flv", "mpeg", "mpg", "vob", "ogv", "ogg", "3gp", "3g2", "webm"];
+  
+  // Check actual codec from ffprobe first (most reliable)
+  const codecIsH264 = codec.includes("h264") || codec.includes("avc");
+  
+  // If we have actual codec info, use it
+  if (codec) {
+    // Only H.264/AVC can be safely copied for browser playback
+    if (codecIsH264) return false;  // H.264 can be copied
+    return true;  // Everything else (HEVC, VP9, MPEG-2, etc.) needs re-encoding
+  }
+  
+  // Fallback to filename hints when no codec info available
+  const nameIsH264 = filename.includes("x264") || 
+                     filename.includes("h264") || 
+                     filename.includes("h.264") ||
+                     filename.includes("avc");
+  
+  const nameIsHevc = filename.includes("x265") ||
+                     filename.includes("hevc") ||
+                     filename.includes("h265") ||
+                     filename.includes("h.265");
+  
+  // AVI with H.264 indicator can be remuxed
+  if (ext === "avi" && nameIsH264) return false;
+  
+  // Legacy formats always need re-encoding
+  if (fullReencodeExtensions.includes(ext)) return true;
+  
+  // HEVC indicators in filename mean re-encode
+  if (nameIsHevc) return true;
+  
+  // For MKV/MP4/MOV without codec info or filename hints, be conservative:
+  // - If filename suggests H.264, we can copy
+  // - Otherwise, safer to re-encode since we can't verify codec
+  if (["mkv", "mp4", "m4v", "mov", "ts", "m2ts", "mts"].includes(ext)) {
+    if (nameIsH264) return false;  // Filename suggests H.264, can copy
+    // No codec info and no H.264 hint - safer to re-encode
+    return true;
+  }
+  
+  return false;
+}
+
 function buildConvertCommand(file: MediaFile): string {
   const escapedIn = escapeDoubleQuotes(file.relPath);
   const base = file.relPath.replace(/\.[^/.]+$/, "");
@@ -1790,91 +1841,21 @@ function buildConvertCommand(file: MediaFile): string {
   const inputPath = `"media/${escapedIn}"`;
   const outputPath = `"media/${escapedOut}"`;
 
-  // Get file extension (lowercase)
-  const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
+  // Browser-compatible H.264 encoding settings:
+  // - profile:v high -level 4.1: Ensures broad browser/device compatibility
+  // - pix_fmt yuv420p: 8-bit color required for browser playback (HEVC sources often use 10-bit)
+  // - ac 2: Downmix to stereo for reliable browser audio playback
+  const h264Encode = "-c:v libx264 -profile:v high -level 4.1 -pix_fmt yuv420p -preset medium -crf 18";
+  const aacEncode = "-c:a aac -ac 2 -b:a 192k";
+  const faststart = "-movflags +faststart";
   
-  // Determine the appropriate ffmpeg command based on file type
-  switch (ext) {
-    case "avi":
-      // Check if AVI has H.264 (rare but possible) - can remux
-      if (file.relPath.toLowerCase().includes("x264") || 
-          file.relPath.toLowerCase().includes("h264") ||
-          file.relPath.toLowerCase().includes("h.264")) {
-        return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-      }
-      // AVI files typically use legacy codecs (XviD, DivX) that need full re-encoding
-      // Use H.264 with CRF 18 for high quality, medium preset for good speed/quality balance
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    case "wmv":
-    case "asf":
-      // Windows Media files need full re-encoding
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    case "flv":
-      // Flash Video - older format, needs re-encoding
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    case "mov":
-      // QuickTime - may use ProRes or other codecs, try copy first with audio re-encode
-      // If this fails, user can try the avi command manually
-      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    case "mkv":
-      // MKV containers - check if format indicates x265/HEVC (less browser support)
-      // For HEVC content, re-encode to H.264; otherwise just copy video and re-encode audio
-      if (file.format?.toLowerCase()?.includes("hevc") || 
-          file.format?.toLowerCase()?.includes("x265") ||
-          file.relPath.toLowerCase().includes("x265") ||
-          file.relPath.toLowerCase().includes("hevc")) {
-        return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-      }
-      // For x264/h264 MKV files, just remux to MP4 with AAC audio
-      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    case "mpeg":
-    case "mpg":
-    case "vob":
-      // DVD/MPEG formats - need re-encoding
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    case "ts":
-    case "m2ts":
-    case "mts":
-      // Transport stream formats - often H.264 but may have compatibility issues
-      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    case "webm":
-      // WebM with VP8/VP9 - re-encode to H.264 for broader compatibility
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    case "ogv":
-    case "ogg":
-      // Ogg/Theora - needs re-encoding
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    case "3gp":
-    case "3g2":
-      // Mobile formats - may need re-encoding depending on codec
-      return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    case "mp4":
-    case "m4v":
-      // MP4 container - likely just needs audio re-encoding to AAC
-      // Check for x265/HEVC which has limited browser support
-      if (file.format?.toLowerCase()?.includes("hevc") || 
-          file.format?.toLowerCase()?.includes("x265") ||
-          file.relPath.toLowerCase().includes("x265") ||
-          file.relPath.toLowerCase().includes("hevc")) {
-        return `ffmpeg -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-      }
-      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
-    
-    default:
-      // Unknown format - try video copy with audio re-encode as safest option
-      // If it fails, user can try full re-encode
-      return `ffmpeg -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+  // Use actual codec detection to determine if we need full re-encode
+  if (needsFullReencode(file)) {
+    return `ffmpeg -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
   }
+  
+  // Video is H.264, just remux with audio conversion
+  return `ffmpeg -i ${inputPath} -c:v copy ${aacEncode} ${faststart} ${outputPath}`;
 }
 
 function escapeDoubleQuotes(value: string): string {

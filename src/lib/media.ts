@@ -20,6 +20,7 @@ import {
   getEffectiveMediaRoot,
   getDataFolderForMediaRoot,
   hasMediaRootConfigured,
+  getEffectiveCoversFolder,
 } from "@/lib/config";
 import { normalizeChannelId } from "@/lib/ftp";
 
@@ -99,6 +100,10 @@ async function getMediaMetadataFilePath(): Promise<string | null> {
   return path.join(dataRoot, "media-metadata.json");
 }
 
+async function getCoversFolderPath(): Promise<string | null> {
+  return getEffectiveCoversFolder();
+}
+
 const ALLOWED_EXTENSIONS = [
   ".mp4",
   ".mkv",
@@ -132,6 +137,7 @@ export type ScheduledItem = {
   format: string;
   supported: boolean;
   supportedViaCompanion: boolean;
+  videoCodec?: string;
   audioCodec?: string;
 };
 
@@ -148,6 +154,10 @@ export type MediaMetadataItem = {
   type?: MediaType | null;
   season?: number | null;
   episode?: number | null;
+  dateAdded?: string | null; // ISO date string when file was first added to library
+  coverUrl?: string | null; // URL to external/uploaded cover image
+  coverLocal?: string | null; // Filename of local cover in covers folder (for remote mode)
+  coverPath?: string | null; // Full filesystem path to local image (for local mode)
 };
 
 export type MediaMetadataStore = {
@@ -440,6 +450,7 @@ export type ChannelInfo = {
   id: string;
   shortName?: string;
   active?: boolean; // Default true if undefined
+  scheduledCount?: number; // Number of scheduled items in this channel
 };
 
 export async function listChannels(source: MediaSource = "local"): Promise<ChannelInfo[]> {
@@ -454,11 +465,13 @@ export async function listChannels(source: MediaSource = "local"): Promise<Chann
         shortName: schedule.shortName,
         hasShortName: "shortName" in schedule,
         scheduleKeys: Object.keys(schedule),
+        slotCount: schedule.slots?.length ?? 0,
       });
       return {
         id,
         shortName: schedule.shortName,
         active: schedule.active ?? true, // Default to active if not set
+        scheduledCount: schedule.slots?.length ?? 0,
       };
     },
   );
@@ -672,6 +685,7 @@ export async function getScheduleItems(options?: { refresh?: boolean }): Promise
       supported,
       supportedViaCompanion,
       title: titleFromPath(file.relPath),
+      videoCodec: probeInfo?.videoCodec,
       audioCodec: probeInfo?.audioCodec,
     });
   }
@@ -1327,6 +1341,9 @@ export async function updateMediaItemMetadata(
   if (updates.type !== undefined) updated.type = updates.type;
   if (updates.season !== undefined) updated.season = updates.season;
   if (updates.episode !== undefined) updated.episode = updates.episode;
+  if (updates.coverUrl !== undefined) updated.coverUrl = updates.coverUrl;
+  if (updates.coverLocal !== undefined) updated.coverLocal = updates.coverLocal;
+  if (updates.coverPath !== undefined) updated.coverPath = updates.coverPath;
   
   // Clean up null/undefined values for cleaner JSON
   const cleaned: MediaMetadataItem = {};
@@ -1339,6 +1356,9 @@ export async function updateMediaItemMetadata(
   if (updated.type != null) cleaned.type = updated.type;
   if (updated.season != null) cleaned.season = updated.season;
   if (updated.episode != null) cleaned.episode = updated.episode;
+  if (updated.coverUrl != null) cleaned.coverUrl = updated.coverUrl;
+  if (updated.coverLocal != null) cleaned.coverLocal = updated.coverLocal;
+  if (updated.coverPath != null) cleaned.coverPath = updated.coverPath;
   
   // Only store if there's actual data
   if (Object.keys(cleaned).length > 0) {
@@ -1394,5 +1414,163 @@ async function resolveFfprobePath(): Promise<string> {
   }
 
   return "ffprobe";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cover Image Functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ALLOWED_COVER_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
+
+/**
+ * Get path to covers folder for external use.
+ * Returns null if no media folder configured.
+ */
+export async function getLocalCoversFolderPath(): Promise<string | null> {
+  return getCoversFolderPath();
+}
+
+/**
+ * Ensure the covers folder exists.
+ */
+export async function ensureCoversFolderExists(): Promise<string | null> {
+  const coversFolder = await getCoversFolderPath();
+  if (!coversFolder) return null;
+  
+  try {
+    await fs.mkdir(coversFolder, { recursive: true });
+    return coversFolder;
+  } catch (error) {
+    console.warn("Failed to create covers folder:", error);
+    return null;
+  }
+}
+
+/**
+ * List all available cover images in the covers folder.
+ */
+export async function listCoverImages(): Promise<string[]> {
+  const coversFolder = await getCoversFolderPath();
+  if (!coversFolder) return [];
+  
+  try {
+    const entries = await fs.readdir(coversFolder, { withFileTypes: true });
+    const coverFiles = entries
+      .filter((entry) => {
+        if (!entry.isFile()) return false;
+        const ext = path.extname(entry.name).toLowerCase();
+        return ALLOWED_COVER_EXTENSIONS.includes(ext);
+      })
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    
+    return coverFiles;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err?.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get the absolute path to a specific cover image.
+ * Returns null if the file doesn't exist or is not a valid cover image.
+ */
+export async function getCoverImagePath(filename: string): Promise<string | null> {
+  const coversFolder = await getCoversFolderPath();
+  if (!coversFolder) return null;
+  
+  // Security: prevent path traversal
+  const safeName = path.basename(filename);
+  const ext = path.extname(safeName).toLowerCase();
+  
+  if (!ALLOWED_COVER_EXTENSIONS.includes(ext)) {
+    return null;
+  }
+  
+  const absPath = path.join(coversFolder, safeName);
+  
+  // Verify the path is still within the covers folder
+  if (!absPath.startsWith(coversFolder)) {
+    return null;
+  }
+  
+  try {
+    const stat = await fs.stat(absPath);
+    if (!stat.isFile()) return null;
+    return absPath;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save a cover image to the covers folder.
+ * Returns the filename of the saved cover.
+ */
+export async function saveCoverImage(
+  filename: string,
+  data: Buffer,
+): Promise<string> {
+  const coversFolder = await ensureCoversFolderExists();
+  if (!coversFolder) {
+    throw new Error("No media folder configured. Please configure a folder in Source settings.");
+  }
+  
+  // Security: use only the base filename and validate extension
+  const safeName = path.basename(filename);
+  const ext = path.extname(safeName).toLowerCase();
+  
+  if (!ALLOWED_COVER_EXTENSIONS.includes(ext)) {
+    throw new Error(`Invalid cover image format. Allowed: ${ALLOWED_COVER_EXTENSIONS.join(", ")}`);
+  }
+  
+  const absPath = path.join(coversFolder, safeName);
+  
+  // Verify the path is still within the covers folder
+  if (!absPath.startsWith(coversFolder)) {
+    throw new Error("Invalid filename");
+  }
+  
+  await fs.writeFile(absPath, data);
+  return safeName;
+}
+
+/**
+ * Delete a cover image from the covers folder.
+ */
+export async function deleteCoverImage(filename: string): Promise<void> {
+  const absPath = await getCoverImagePath(filename);
+  if (!absPath) {
+    throw new Error("Cover image not found");
+  }
+  
+  await fs.unlink(absPath);
+}
+
+/**
+ * Get the URL to serve a local cover image via the API.
+ */
+export function buildCoverUrl(filename: string): string {
+  return `/api/covers/${encodeURIComponent(filename)}`;
+}
+
+/**
+ * Resolve the effective cover URL for a media item.
+ * Priority: coverUrl > coverPath (local filesystem) > coverLocal (covers folder) > null
+ */
+export function resolveCoverUrl(metadata: MediaMetadataItem): string | null {
+  if (metadata.coverUrl) {
+    return metadata.coverUrl;
+  }
+  if (metadata.coverPath) {
+    return `/api/local-image?path=${encodeURIComponent(metadata.coverPath)}`;
+  }
+  if (metadata.coverLocal) {
+    return buildCoverUrl(metadata.coverLocal);
+  }
+  return null;
 }
 

@@ -6,6 +6,7 @@ const DATA_SUBFOLDER = ".remote-viewer";
 
 export type AppConfig = {
   mediaRoot: string | null; // Always required for local mode - no default
+  coversFolder: string | null; // Custom covers folder path (optional, defaults to <mediaRoot>/.remote-viewer/covers)
 };
 
 let configCache: { config: AppConfig; mtimeMs: number | null } | null = null;
@@ -38,13 +39,14 @@ export async function loadConfig(): Promise<AppConfig> {
     const parsed = JSON.parse(raw) as AppConfig;
     const config: AppConfig = {
       mediaRoot: typeof parsed.mediaRoot === "string" ? parsed.mediaRoot : null,
+      coversFolder: typeof parsed.coversFolder === "string" ? parsed.coversFolder : null,
     };
     configCache = { config, mtimeMs: stat.mtimeMs };
     return config;
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err?.code === "ENOENT") {
-      return { mediaRoot: null };
+      return { mediaRoot: null, coversFolder: null };
     }
     throw error;
   }
@@ -134,6 +136,77 @@ export async function validateMediaPath(
     if (err?.code === "EACCES") {
       return { valid: false, error: "Permission denied" };
     }
+    return {
+      valid: false,
+      error: err?.message || "Unknown error accessing path",
+    };
+  }
+}
+
+/**
+ * Get the effective covers folder path.
+ * Priority: config.coversFolder > <mediaRoot>/.remote-viewer/covers > null
+ */
+export async function getEffectiveCoversFolder(): Promise<string | null> {
+  const config = await loadConfig();
+  
+  // Custom covers folder configured
+  if (config.coversFolder) {
+    return config.coversFolder;
+  }
+  
+  // Fall back to default location within media root
+  const mediaRoot = await getEffectiveMediaRoot();
+  if (mediaRoot) {
+    return path.join(getDataFolderForMediaRoot(mediaRoot), "covers");
+  }
+  
+  return null;
+}
+
+/**
+ * Validate that a path is a valid, accessible directory for covers.
+ * Returns { valid: true } or { valid: false, error: string }
+ */
+export async function validateCoversPath(
+  targetPath: string
+): Promise<{ valid: true } | { valid: false; error: string }> {
+  try {
+    const resolved = path.resolve(targetPath);
+    
+    // Check if path exists
+    try {
+      const stat = await fs.stat(resolved);
+      if (!stat.isDirectory()) {
+        return { valid: false, error: "Path is not a directory" };
+      }
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException;
+      if (e?.code === "ENOENT") {
+        // Directory doesn't exist - try to create it
+        try {
+          await fs.mkdir(resolved, { recursive: true });
+        } catch {
+          return { valid: false, error: "Cannot create directory" };
+        }
+      } else {
+        return { valid: false, error: e?.message || "Cannot access path" };
+      }
+    }
+
+    // Verify read/write access
+    try {
+      await fs.readdir(resolved);
+      const testFile = path.join(resolved, ".write-test");
+      await fs.writeFile(testFile, "test", "utf8");
+      await fs.unlink(testFile);
+    } catch {
+      return { valid: false, error: "Cannot read/write to directory" };
+    }
+
+    return { valid: true };
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
     return {
       valid: false,
       error: err?.message || "Unknown error accessing path",

@@ -4,6 +4,7 @@ import {
   getMediaItemMetadata,
   updateMediaItemMetadata,
   extractYearFromFilename,
+  resolveCoverUrl,
   type MediaMetadataItem,
 } from "@/lib/media";
 
@@ -71,13 +72,15 @@ export async function GET(request: NextRequest) {
  *   - year?: number | null
  *   - director?: string | null
  *   - category?: string | null
+ *   - coverUrl?: string | null - URL to external cover image
+ *   - coverLocal?: string | null - filename of local cover in covers folder
  * 
  * Returns: updated metadata for the file
  */
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { file, title, year, director, category, makingOf, plot, type, season, episode } = body;
+    const { file, title, year, director, category, makingOf, plot, type, season, episode, coverUrl, coverLocal, coverPath } = body;
     
     if (!file || typeof file !== "string") {
       return NextResponse.json(
@@ -105,6 +108,18 @@ export async function PUT(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Validate coverUrl if provided (should be a valid URL)
+    if (coverUrl !== undefined && coverUrl !== null && coverUrl !== "") {
+      try {
+        new URL(coverUrl);
+      } catch {
+        return NextResponse.json(
+          { error: "coverUrl must be a valid URL" },
+          { status: 400 },
+        );
+      }
+    }
     
     const updates: Partial<MediaMetadataItem> = {};
     if (title !== undefined) updates.title = title === "" ? null : title;
@@ -116,12 +131,19 @@ export async function PUT(request: NextRequest) {
     if (type !== undefined) updates.type = type === "" ? null : type;
     if (season !== undefined) updates.season = season === null || season === "" ? null : Number(season);
     if (episode !== undefined) updates.episode = episode === null || episode === "" ? null : Number(episode);
+    if (coverUrl !== undefined) updates.coverUrl = coverUrl === "" ? null : coverUrl;
+    if (coverLocal !== undefined) updates.coverLocal = coverLocal === "" ? null : coverLocal;
+    if (coverPath !== undefined) updates.coverPath = coverPath === "" ? null : coverPath;
     
     const updated = await updateMediaItemMetadata(file, updates);
+    
+    // Include resolved cover URL in response
+    const resolvedCover = resolveCoverUrl(updated);
     
     return NextResponse.json({
       file,
       metadata: updated,
+      resolvedCoverUrl: resolvedCover,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

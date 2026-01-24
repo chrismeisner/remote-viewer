@@ -59,6 +59,7 @@ function channelsFromSchedule(schedule: ScheduleData | null): ChannelInfo[] {
       id,
       shortName: ch.shortName,
       active: ch.active ?? true,
+      scheduledCount: Array.isArray(ch.slots) ? ch.slots.length : 0,
     }));
   
   return sortChannelsNumerically(channels);

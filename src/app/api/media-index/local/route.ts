@@ -60,6 +60,7 @@ export async function POST() {
         supported: item.supported,
         supportedViaCompanion: item.supportedViaCompanion,
         title: item.title,
+        videoCodec: item.videoCodec,
         audioCodec: item.audioCodec,
       })),
     };

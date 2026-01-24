@@ -7,6 +7,7 @@ import {
   REMOTE_MEDIA_BASE,
   type MediaSource,
 } from "@/constants/media";
+import { cleanupFilename } from "@/lib/filename-utils";
 
 type MediaFile = {
   relPath: string;
@@ -15,7 +16,9 @@ type MediaFile = {
   format: string;
   supported: boolean;
   supportedViaCompanion: boolean;
+  videoCodec?: string;
   audioCodec?: string;
+  dateAdded?: string;
 };
 
 type MediaType = "film" | "tv" | "documentary" | "sports" | "concert" | "other";
@@ -30,6 +33,15 @@ type MediaMetadata = {
   type?: MediaType | null;
   season?: number | null;
   episode?: number | null;
+  dateAdded?: string | null;
+  coverUrl?: string | null;
+  coverLocal?: string | null;
+  coverPath?: string | null; // Full filesystem path for local mode
+};
+
+type CoverOption = {
+  filename: string;
+  url: string;
 };
 
 type FileResult = {
@@ -71,14 +83,18 @@ function MediaDetailModal({
   item,
   mediaSource,
   mediaRoot,
+  allFiles,
   onClose,
   onMetadataUpdate,
+  onFileRenamed,
 }: {
   item: MediaFile;
   mediaSource: MediaSource;
   mediaRoot: string;
+  allFiles: MediaFile[];
   onClose: () => void;
   onMetadataUpdate?: (relPath: string, metadata: MediaMetadata) => void;
+  onFileRenamed?: (oldPath: string, newPath: string) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -105,11 +121,56 @@ function MediaDetailModal({
   const [editType, setEditType] = useState<string>("");
   const [editSeason, setEditSeason] = useState<string>("");
   const [editEpisode, setEditEpisode] = useState<string>("");
+  const [availableCovers, setAvailableCovers] = useState<CoverOption[]>([]);
   
   // AI lookup state
   const [aiLoading, setAiLoading] = useState(false);
   const [aiConfigured, setAiConfigured] = useState(false);
   const [aiTokenLevel, setAiTokenLevel] = useState<"fast" | "balanced" | "detailed">("balanced");
+
+  // Filename rename state
+  const [showRenameUI, setShowRenameUI] = useState(false);
+  const [proposedFilename, setProposedFilename] = useState("");
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameSuccess, setRenameSuccess] = useState(false);
+  const [currentRelPath, setCurrentRelPath] = useState(item.relPath);
+
+  // Compute if filename needs cleanup
+  const cleanedPath = useMemo(() => cleanupFilename(currentRelPath), [currentRelPath]);
+  const filenameNeedsCleanup = currentRelPath !== cleanedPath;
+
+  // Check for supported versions in the same folder (for unsupported files)
+  const supportedVersions = useMemo(() => {
+    // Only compute if this file is unsupported
+    if (isBrowserSupported(item)) return [];
+    
+    // Get the folder path and base name (without extension)
+    const lastSlash = currentRelPath.lastIndexOf("/");
+    const folder = lastSlash >= 0 ? currentRelPath.substring(0, lastSlash) : "";
+    const filename = lastSlash >= 0 ? currentRelPath.substring(lastSlash + 1) : currentRelPath;
+    const lastDot = filename.lastIndexOf(".");
+    const baseName = lastDot >= 0 ? filename.substring(0, lastDot).toLowerCase() : filename.toLowerCase();
+    
+    // Find other files in the same folder with matching base name
+    return allFiles.filter((f) => {
+      if (f.relPath === currentRelPath) return false; // Skip self
+      
+      // Check if in same folder
+      const fLastSlash = f.relPath.lastIndexOf("/");
+      const fFolder = fLastSlash >= 0 ? f.relPath.substring(0, fLastSlash) : "";
+      if (fFolder !== folder) return false;
+      
+      // Check if base name matches
+      const fFilename = fLastSlash >= 0 ? f.relPath.substring(fLastSlash + 1) : f.relPath;
+      const fLastDot = fFilename.lastIndexOf(".");
+      const fBaseName = fLastDot >= 0 ? fFilename.substring(0, fLastDot).toLowerCase() : fFilename.toLowerCase();
+      if (fBaseName !== baseName) return false;
+      
+      // Check if this alternative is supported
+      return isBrowserSupported(f);
+    });
+  }, [item, currentRelPath, allFiles]);
 
   // Check if AI is configured
   useEffect(() => {
@@ -125,20 +186,28 @@ function MediaDetailModal({
     setMetadataLoading(true);
     setMetadataError(null);
 
-    fetch(`/api/media-metadata?file=${encodeURIComponent(item.relPath)}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled && data.metadata) {
-          setMetadata(data.metadata);
-          setEditTitle(data.metadata.title ?? "");
-          setEditYear(data.metadata.year?.toString() ?? "");
-          setEditDirector(data.metadata.director ?? "");
-          setEditCategory(data.metadata.category ?? "");
-          setEditMakingOf(data.metadata.makingOf ?? "");
-          setEditPlot(data.metadata.plot ?? "");
-          setEditType(data.metadata.type ?? "");
-          setEditSeason(data.metadata.season?.toString() ?? "");
-          setEditEpisode(data.metadata.episode?.toString() ?? "");
+    // Fetch both metadata and available covers in parallel
+    Promise.all([
+      fetch(`/api/media-metadata?file=${encodeURIComponent(item.relPath)}`).then((res) => res.json()),
+      fetch("/api/covers").then((res) => res.json()),
+    ])
+      .then(([metaData, coversData]) => {
+        if (!cancelled) {
+          if (metaData.metadata) {
+            setMetadata(metaData.metadata);
+            setEditTitle(metaData.metadata.title ?? "");
+            setEditYear(metaData.metadata.year?.toString() ?? "");
+            setEditDirector(metaData.metadata.director ?? "");
+            setEditCategory(metaData.metadata.category ?? "");
+            setEditMakingOf(metaData.metadata.makingOf ?? "");
+            setEditPlot(metaData.metadata.plot ?? "");
+            setEditType(metaData.metadata.type ?? "");
+            setEditSeason(metaData.metadata.season?.toString() ?? "");
+            setEditEpisode(metaData.metadata.episode?.toString() ?? "");
+          }
+          if (coversData.covers) {
+            setAvailableCovers(coversData.covers);
+          }
         }
       })
       .catch((err) => {
@@ -267,11 +336,64 @@ function MediaDetailModal({
     }
   };
 
+  // Filename rename handlers
+  const handleShowRename = () => {
+    setShowRenameUI(true);
+    setProposedFilename(cleanedPath);
+    setRenameError(null);
+    setRenameSuccess(false);
+  };
+
+  const handleCancelRename = () => {
+    setShowRenameUI(false);
+    setProposedFilename("");
+    setRenameError(null);
+  };
+
+  const handleConfirmRename = async () => {
+    if (!proposedFilename || proposedFilename === currentRelPath) {
+      setRenameError("New filename must be different");
+      return;
+    }
+
+    setRenameLoading(true);
+    setRenameError(null);
+
+    try {
+      const res = await fetch("/api/media-files/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          oldPath: currentRelPath,
+          newPath: proposedFilename,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Rename failed");
+      }
+
+      // Success - update local state
+      setCurrentRelPath(proposedFilename);
+      setShowRenameUI(false);
+      setRenameSuccess(true);
+      
+      // Notify parent to refresh media list
+      onFileRenamed?.(currentRelPath, proposedFilename);
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : "Rename failed");
+    } finally {
+      setRenameLoading(false);
+    }
+  };
+
   // Build the video URL based on media source
   const videoUrl =
     mediaSource === "remote"
-      ? `${REMOTE_MEDIA_BASE}${item.relPath}`
-      : `/api/media?file=${encodeURIComponent(item.relPath)}`;
+      ? `${REMOTE_MEDIA_BASE}${currentRelPath}`
+      : `/api/media?file=${encodeURIComponent(currentRelPath)}`;
 
   // Handle escape key to close modal
   useEffect(() => {
@@ -350,7 +472,7 @@ function MediaDetailModal({
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  const fileName = item.relPath.split("/").pop() || item.relPath;
+  const fileName = currentRelPath.split("/").pop() || currentRelPath;
 
   return (
     <div
@@ -367,9 +489,12 @@ function MediaDetailModal({
             <h2 className="text-lg font-semibold text-neutral-50 truncate" title={fileName}>
               {fileName}
             </h2>
-            <p className="text-xs text-neutral-400 truncate font-mono" title={item.relPath}>
-              {item.relPath}
+            <p className="text-xs text-neutral-400 truncate font-mono" title={currentRelPath}>
+              {currentRelPath}
             </p>
+            {renameSuccess && (
+              <p className="text-xs text-emerald-400 mt-1">File renamed successfully</p>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -546,6 +671,46 @@ function MediaDetailModal({
               </span>
             </div>
           </div>
+
+          {/* Supported version indicator for unsupported files */}
+          {!isBrowserSupported(item) && (
+            <div className="mt-4 pt-3 border-t border-white/5">
+              <p className="text-xs text-neutral-500 mb-1">Supported Version</p>
+              {supportedVersions.length > 0 ? (
+                <div className="space-y-1">
+                  {supportedVersions.map((sv) => {
+                    const svFilename = sv.relPath.split("/").pop() || sv.relPath;
+                    return (
+                      <div key={sv.relPath} className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold bg-emerald-500/20 text-emerald-200">
+                          Available
+                        </span>
+                        <span className="text-sm text-emerald-300 font-mono truncate" title={sv.relPath}>
+                          {svFilename}
+                        </span>
+                        <span className="text-xs text-neutral-500">
+                          ({sv.format.toUpperCase()})
+                        </span>
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs text-neutral-500 mt-1">
+                    A playable version of this file exists in the same folder.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold bg-neutral-500/20 text-neutral-400">
+                    Not found
+                  </span>
+                  <span className="text-xs text-neutral-500">
+                    No supported version in this folder
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {item.title && (
             <div className="mt-4 pt-3 border-t border-white/5">
               <p className="text-xs text-neutral-500 mb-1">Title</p>
@@ -585,6 +750,104 @@ function MediaDetailModal({
             </div>
           </div>
         </div>
+
+        {/* Filename Cleanup Section - Only show for remote source */}
+        {mediaSource === "remote" && (
+          <div className="border-t border-white/10 bg-neutral-800/30 px-5 py-4">
+            <h3 className="text-xs uppercase tracking-widest text-neutral-500 mb-3">Server Filename</h3>
+            
+            <div className="space-y-3">
+              {/* Current filename display */}
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Current filename on server</p>
+                <p className="text-sm font-mono text-neutral-200 break-all bg-black/20 rounded-lg px-3 py-2">
+                  {currentRelPath}
+                </p>
+              </div>
+
+              {!showRenameUI ? (
+                /* Show cleanup button if needed, or rename option if clean */
+                <div className="flex items-center gap-3">
+                  {filenameNeedsCleanup ? (
+                    <>
+                      <button
+                        onClick={handleShowRename}
+                        className="rounded-md border border-amber-300/50 bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:border-amber-200 hover:bg-amber-500/30"
+                      >
+                        Clean up filename
+                      </button>
+                      <span className="text-xs text-amber-300">
+                        Filename has special characters or spaces
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-emerald-300 flex items-center gap-1.5">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Filename is clean (URL-safe)
+                      </span>
+                      <button
+                        onClick={handleShowRename}
+                        className="rounded-md border border-white/20 bg-white/5 px-2 py-1 text-xs text-neutral-400 transition hover:bg-white/10 hover:text-neutral-200"
+                      >
+                        Rename
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                /* Rename UI */
+                <div className="space-y-3 rounded-lg border border-white/10 bg-black/20 p-4">
+                  <div>
+                    <label className="block text-xs text-neutral-500 mb-1">Proposed new filename</label>
+                    <input
+                      type="text"
+                      value={proposedFilename}
+                      onChange={(e) => setProposedFilename(e.target.value)}
+                      className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-mono text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                      placeholder="new-filename.mp4"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1">
+                      You can edit the proposed name before confirming
+                    </p>
+                  </div>
+
+                  {/* Preview comparison */}
+                  {proposedFilename && proposedFilename !== currentRelPath && (
+                    <div className="text-xs space-y-1">
+                      <p className="text-neutral-500">Preview:</p>
+                      <p className="text-red-300/70 line-through font-mono truncate">{currentRelPath}</p>
+                      <p className="text-emerald-300 font-mono truncate">{proposedFilename}</p>
+                    </div>
+                  )}
+
+                  {renameError && (
+                    <p className="text-xs text-amber-300">{renameError}</p>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleConfirmRename}
+                      disabled={renameLoading || !proposedFilename || proposedFilename === currentRelPath}
+                      className="rounded-md bg-emerald-500 hover:bg-emerald-400 px-3 py-1.5 text-xs font-semibold text-neutral-900 transition disabled:opacity-50"
+                    >
+                      {renameLoading ? "Renaming..." : "Confirm Rename"}
+                    </button>
+                    <button
+                      onClick={handleCancelRename}
+                      disabled={renameLoading}
+                      className="rounded-md border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition hover:bg-white/10 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Media Metadata Section */}
         <div className="border-t border-white/10 bg-neutral-800/30 px-5 py-4">
@@ -846,10 +1109,459 @@ function MediaDetailModal({
                   {metadata.plot ?? <span className="text-neutral-500">—</span>}
                 </p>
               </div>
+              
             </div>
           )}
         </div>
+
+        {/* Dedicated Cover Image Section */}
+        <CoverImageSection
+          relPath={item.relPath}
+          metadata={metadata}
+          availableCovers={availableCovers}
+          mediaSource={mediaSource}
+          onCoverSaved={(updatedMeta) => {
+            setMetadata(updatedMeta);
+            onMetadataUpdate?.(item.relPath, updatedMeta);
+          }}
+        />
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Cover Image Section Component (for Media Detail Modal)
+   ───────────────────────────────────────────────────────────────────────────── */
+function CoverImageSection({
+  relPath,
+  metadata,
+  availableCovers,
+  mediaSource,
+  onCoverSaved,
+}: {
+  relPath: string;
+  metadata: MediaMetadata;
+  availableCovers: CoverOption[];
+  mediaSource: MediaSource;
+  onCoverSaved: (updatedMeta: MediaMetadata) => void;
+}) {
+  const [coverUrl, setCoverUrl] = useState(metadata.coverUrl || "");
+  const [coverLocal, setCoverLocal] = useState(metadata.coverLocal || "");
+  const [coverPath, setCoverPath] = useState(metadata.coverPath || "");
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [localCovers, setLocalCovers] = useState<CoverOption[]>(availableCovers);
+  
+  // Image browser state (for local mode)
+  const [showBrowser, setShowBrowser] = useState(false);
+  const [browserPath, setBrowserPath] = useState("");
+  const [browserEntries, setBrowserEntries] = useState<{ name: string; path: string; isDirectory: boolean }[]>([]);
+  const [browserRoots, setBrowserRoots] = useState<{ name: string; path: string }[]>([]);
+  const [browserParent, setBrowserParent] = useState<string | null>(null);
+  const [browserLoading, setBrowserLoading] = useState(false);
+  const [browserError, setBrowserError] = useState<string | null>(null);
+
+  // Sync state when metadata prop changes
+  useEffect(() => {
+    setCoverUrl(metadata.coverUrl || "");
+    setCoverLocal(metadata.coverLocal || "");
+    setCoverPath(metadata.coverPath || "");
+  }, [metadata.coverUrl, metadata.coverLocal, metadata.coverPath]);
+
+  // Get the resolved cover URL for preview
+  const resolvedCoverUrl = coverUrl 
+    || (coverPath ? `/api/local-image?path=${encodeURIComponent(coverPath)}` : null)
+    || (coverLocal ? `/api/covers/${encodeURIComponent(coverLocal)}` : null);
+  
+  const hasChanges = 
+    coverUrl !== (metadata.coverUrl || "") || 
+    coverLocal !== (metadata.coverLocal || "") ||
+    coverPath !== (metadata.coverPath || "");
+
+  // Save cover
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const res = await fetch("/api/media-metadata", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file: relPath,
+          coverUrl: coverUrl.trim() || null,
+          coverLocal: coverLocal || null,
+          coverPath: coverPath || null,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save");
+
+      setSuccess("Cover saved");
+      onCoverSaved(data.metadata);
+      
+      // Clear success message after a moment
+      setTimeout(() => setSuccess(null), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Upload new cover (for remote mode)
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/covers", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+
+      // Add to local covers list and select it
+      setLocalCovers((prev) => {
+        const exists = prev.some((c) => c.filename === data.filename);
+        if (exists) return prev;
+        return [...prev, { filename: data.filename, url: data.url }];
+      });
+      setCoverLocal(data.filename);
+      setCoverUrl("");
+      setCoverPath("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  // Browse for image (for local mode)
+  const openImageBrowser = () => {
+    setShowBrowser(true);
+    setBrowserError(null);
+    void browseTo(coverPath ? coverPath.substring(0, coverPath.lastIndexOf("/")) : "");
+  };
+
+  const browseTo = async (targetPath: string) => {
+    setBrowserLoading(true);
+    setBrowserError(null);
+
+    try {
+      const url = targetPath 
+        ? `/api/browse?path=${encodeURIComponent(targetPath)}&type=images` 
+        : "/api/browse?type=images";
+      const res = await fetch(url, { cache: "no-store" });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || "Failed to browse");
+
+      setBrowserPath(data.currentPath || "");
+      setBrowserEntries(data.entries || []);
+      setBrowserRoots(data.roots || []);
+      setBrowserParent(data.parentPath || null);
+    } catch (err) {
+      setBrowserError(err instanceof Error ? err.message : "Failed to browse");
+    } finally {
+      setBrowserLoading(false);
+    }
+  };
+
+  const selectImage = (imagePath: string) => {
+    setCoverPath(imagePath);
+    setCoverUrl("");
+    setCoverLocal("");
+    setShowBrowser(false);
+  };
+
+  // Clear cover
+  const handleClear = () => {
+    setCoverUrl("");
+    setCoverLocal("");
+    setCoverPath("");
+  };
+
+  const isLocal = mediaSource === "local";
+
+  return (
+    <div className="border-t border-white/10 bg-neutral-800/30 px-5 py-4">
+      <h3 className="text-xs uppercase tracking-widest text-neutral-500 mb-3">Cover Image</h3>
+
+      <div className="flex gap-4">
+        {/* Cover Preview */}
+        <div className="flex-shrink-0">
+          <div className="w-28 h-40 rounded-lg border border-white/15 bg-neutral-900 overflow-hidden">
+            {resolvedCoverUrl ? (
+              <img
+                src={resolvedCoverUrl}
+                alt="Cover preview"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                  (e.target as HTMLImageElement).parentElement!.innerHTML = 
+                    '<div class="w-full h-full flex items-center justify-center text-neutral-600 text-xs p-2 text-center">Failed to load</div>';
+                }}
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-neutral-600 p-2">
+                <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="text-xs">No cover</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Cover Controls */}
+        <div className="flex-1 space-y-3">
+          {isLocal ? (
+            /* Local Mode: Browse filesystem for images */
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1">Local Image File</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={coverPath}
+                  onChange={(e) => {
+                    setCoverPath(e.target.value);
+                    if (e.target.value) {
+                      setCoverUrl("");
+                      setCoverLocal("");
+                    }
+                  }}
+                  placeholder="/path/to/cover.jpg"
+                  className="flex-1 rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300"
+                />
+                <button
+                  onClick={openImageBrowser}
+                  className="rounded-md border border-white/20 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-neutral-300 hover:bg-white/10 transition flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  Browse
+                </button>
+              </div>
+              {coverPath && (
+                <p className="text-xs text-neutral-500 mt-1 truncate" title={coverPath}>
+                  {coverPath.split("/").pop()}
+                </p>
+              )}
+            </div>
+          ) : (
+            /* Remote Mode: Upload or select from covers folder */
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1">Covers Folder</label>
+              <div className="flex gap-2">
+                <select
+                  value={coverLocal}
+                  onChange={(e) => {
+                    setCoverLocal(e.target.value);
+                    if (e.target.value) {
+                      setCoverUrl("");
+                      setCoverPath("");
+                    }
+                  }}
+                  className="flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-sm text-neutral-100 outline-none focus:border-emerald-300"
+                >
+                  <option value="">— None —</option>
+                  {localCovers.map((cover) => (
+                    <option key={cover.filename} value={cover.filename}>
+                      {cover.filename}
+                    </option>
+                  ))}
+                </select>
+                <label className="cursor-pointer rounded-md border border-white/20 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-neutral-300 hover:bg-white/10 transition flex items-center gap-1.5">
+                  {uploading ? (
+                    <span>Uploading...</span>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      Upload
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handleUpload}
+                    disabled={uploading}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* URL input (always available) */}
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1">Or Cover URL</label>
+            <input
+              type="url"
+              value={coverUrl}
+              onChange={(e) => {
+                setCoverUrl(e.target.value);
+                if (e.target.value) {
+                  setCoverLocal("");
+                  setCoverPath("");
+                }
+              }}
+              placeholder="https://example.com/cover.jpg"
+              className="w-full rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300"
+            />
+          </div>
+
+          {/* Status messages */}
+          {error && <p className="text-xs text-red-300">{error}</p>}
+          {success && <p className="text-xs text-emerald-300">{success}</p>}
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={handleSave}
+              disabled={saving || !hasChanges}
+              className="rounded-md bg-emerald-500 hover:bg-emerald-400 px-3 py-1.5 text-xs font-semibold text-neutral-900 transition disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save Cover"}
+            </button>
+            {(coverUrl || coverLocal || coverPath) && (
+              <button
+                onClick={handleClear}
+                disabled={saving}
+                className="rounded-md border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-medium text-neutral-400 hover:bg-white/10 hover:text-neutral-200 transition disabled:opacity-50"
+              >
+                Clear
+              </button>
+            )}
+            {hasChanges && !saving && (
+              <span className="text-xs text-amber-300/70 ml-2">Unsaved changes</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Image Browser Modal (for local mode) */}
+      {showBrowser && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 px-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowBrowser(false); }}
+        >
+          <div className="w-full max-w-xl rounded-xl border border-white/15 bg-neutral-900 shadow-2xl shadow-black/60">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-100">Select Cover Image</h3>
+                <p className="text-xs text-neutral-400 mt-0.5 font-mono truncate max-w-md">
+                  {browserPath || "Select a location"}
+                </p>
+              </div>
+              <button onClick={() => setShowBrowser(false)} className="rounded-md p-1 text-neutral-400 hover:bg-white/10 hover:text-neutral-100">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {browserRoots.length > 0 && (
+              <div className="flex flex-wrap gap-2 border-b border-white/10 px-4 py-2">
+                {browserRoots.map((root) => (
+                  <button
+                    key={root.path}
+                    onClick={() => void browseTo(root.path)}
+                    className={`rounded-md px-2 py-1 text-xs font-medium transition ${
+                      browserPath === root.path
+                        ? "bg-emerald-500/20 text-emerald-100 border border-emerald-400/40"
+                        : "bg-white/5 text-neutral-300 border border-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    {root.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="max-h-80 overflow-y-auto">
+              {browserLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-6 w-6 border-2 border-neutral-400 border-t-emerald-400 rounded-full animate-spin" />
+                  <span className="ml-2 text-sm text-neutral-400">Loading...</span>
+                </div>
+              ) : browserError ? (
+                <div className="px-4 py-8 text-center">
+                  <p className="text-sm text-red-400">{browserError}</p>
+                  <button onClick={() => void browseTo("")} className="mt-2 text-xs text-neutral-400 hover:text-neutral-200">
+                    Back to roots
+                  </button>
+                </div>
+              ) : (
+                <div className="divide-y divide-white/5">
+                  {browserParent !== null && (
+                    <button onClick={() => void browseTo(browserParent)} className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-white/5 transition">
+                      <svg className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+                      </svg>
+                      <span className="text-sm text-neutral-300">..</span>
+                    </button>
+                  )}
+                  {browserEntries.length === 0 && !browserParent && (
+                    <div className="px-4 py-8 text-center text-sm text-neutral-500">No folders or images found.</div>
+                  )}
+                  {browserEntries.map((entry) => (
+                    <button
+                      key={entry.path}
+                      onClick={() => entry.isDirectory ? void browseTo(entry.path) : selectImage(entry.path)}
+                      className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-white/5 transition group"
+                    >
+                      {entry.isDirectory ? (
+                        <svg className="h-5 w-5 text-amber-400/70" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                        </svg>
+                      ) : (
+                        <svg className="h-5 w-5 text-blue-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                      <span className="flex-1 text-sm text-neutral-100 truncate">{entry.name}</span>
+                      {entry.isDirectory ? (
+                        <svg className="h-4 w-4 text-neutral-600 group-hover:text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      ) : (
+                        <span className="text-xs text-emerald-400 opacity-0 group-hover:opacity-100">Select</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
+              <p className="text-xs text-neutral-500">
+                {browserEntries.filter(e => !e.isDirectory).length} image{browserEntries.filter(e => !e.isDirectory).length !== 1 ? "s" : ""} in folder
+              </p>
+              <button onClick={() => setShowBrowser(false)} className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1140,9 +1852,10 @@ export default function MediaAdminPage() {
   const [scanReport, setScanReport] = useState<ScanReport | null>(null);
   const [formatFilter, setFormatFilter] = useState<string>("all");
   const [audioFilter, setAudioFilter] = useState<string>("all");
-  const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported">(
+  const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported" | "needs-conversion">(
     "supported",
   );
+  const [locationFilter, setLocationFilter] = useState<"all" | "in-folder" | "in-root">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [manifestUpdatedAt, setManifestUpdatedAt] = useState<string | null>(null);
   const [mediaRoot, setMediaRoot] = useState<string>("media");
@@ -1491,6 +2204,18 @@ export default function MediaAdminPage() {
       const browserSupported = isBrowserSupported(file);
       if (supportedFilter === "supported" && !browserSupported) return false;
       if (supportedFilter === "unsupported" && browserSupported) return false;
+      if (supportedFilter === "needs-conversion") {
+        // Must be unsupported AND have no supported version in same folder
+        if (browserSupported) return false;
+        const hasSupportedVersion = checkHasSupportedVersion(file, sortedFiles);
+        if (hasSupportedVersion) return false;
+      }
+      // Location filter (in folder vs root)
+      if (locationFilter !== "all") {
+        const isInFolder = file.relPath.includes("/");
+        if (locationFilter === "in-folder" && !isInFolder) return false;
+        if (locationFilter === "in-root" && isInFolder) return false;
+      }
       // Search query
       if (terms.length > 0) {
         const haystack = `${file.relPath} ${file.title || ""}`.toLowerCase();
@@ -1500,7 +2225,7 @@ export default function MediaAdminPage() {
       }
       return true;
     });
-  }, [sortedFiles, formatFilter, audioFilter, supportedFilter, searchQuery]);
+  }, [sortedFiles, formatFilter, audioFilter, supportedFilter, locationFilter, searchQuery]);
 
   const totalDurationSeconds = useMemo(
     () => sortedFiles.reduce((sum, f) => sum + (f.durationSeconds || 0), 0),
@@ -1764,6 +2489,19 @@ export default function MediaAdminPage() {
               <option value="all">All</option>
               <option value="supported">Supported</option>
               <option value="unsupported">Unsupported</option>
+              <option value="needs-conversion">Needs conversion</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-neutral-400">Location</label>
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value as typeof locationFilter)}
+              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100"
+            >
+              <option value="all">All</option>
+              <option value="in-folder">In folder</option>
+              <option value="in-root">In root</option>
             </select>
           </div>
         </div>
@@ -1810,6 +2548,9 @@ export default function MediaAdminPage() {
                       </th>
                       <th className="px-3 py-2 font-semibold w-24 text-right">
                         Duration
+                      </th>
+                      <th className="px-3 py-2 font-semibold w-28 text-left">
+                        Added
                       </th>
                     </tr>
                   </thead>
@@ -1874,6 +2615,9 @@ export default function MediaAdminPage() {
                           <td className="px-3 py-2 text-right text-neutral-200">
                             {formatDuration(file.durationSeconds)}
                           </td>
+                          <td className="px-3 py-2 text-left text-neutral-400 text-xs">
+                            {file.dateAdded ? formatDateAdded(file.dateAdded) : "—"}
+                          </td>
                         </tr>
                       );
                     })}
@@ -1893,12 +2637,41 @@ export default function MediaAdminPage() {
           item={selectedFile}
           mediaSource={mediaSource}
           mediaRoot={mediaRoot}
+          allFiles={files}
           onClose={() => setSelectedFile(null)}
           onMetadataUpdate={(relPath, metadata) => {
             setAllMetadata((prev) => ({
               ...prev,
               [relPath]: metadata,
             }));
+          }}
+          onFileRenamed={(oldPath, newPath) => {
+            // Update the files list with the new path and title
+            const newFileName = newPath.split("/").pop() || newPath;
+            const newTitle = newFileName.replace(/\.[^/.]+$/, "");
+            setFiles((prev) =>
+              prev.map((f) =>
+                f.relPath === oldPath 
+                  ? { ...f, relPath: newPath, title: newTitle } 
+                  : f
+              )
+            );
+            // Update the selected file
+            setSelectedFile((prev) =>
+              prev && prev.relPath === oldPath 
+                ? { ...prev, relPath: newPath, title: newTitle } 
+                : prev
+            );
+            // Move metadata to new key
+            setAllMetadata((prev) => {
+              const updated = { ...prev };
+              if (updated[oldPath]) {
+                updated[newPath] = updated[oldPath];
+                delete updated[oldPath];
+              }
+              return updated;
+            });
+            setMessage(`File renamed successfully`);
           }}
         />
       )}
@@ -1935,6 +2708,16 @@ function formatDateTime(value: string): string {
   });
 }
 
+function formatDateAdded(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 // Audio codecs that browsers can't play natively
 const UNSUPPORTED_AUDIO_CODECS = ["ac3", "eac3", "dts", "truehd", "dts-hd", "dtshd", "pcm_s16le", "pcm_s24le", "pcm_s32le", "flac"];
 
@@ -1947,6 +2730,35 @@ function hasUnsupportedAudio(file: MediaFile): boolean {
 function isBrowserSupported(file: MediaFile): boolean {
   if (hasUnsupportedAudio(file)) return false;
   return file.supported || file.supportedViaCompanion;
+}
+
+// Check if an unsupported file has a supported version in the same folder
+function checkHasSupportedVersion(file: MediaFile, allFiles: MediaFile[]): boolean {
+  // Get the folder path and base name (without extension)
+  const lastSlash = file.relPath.lastIndexOf("/");
+  const folder = lastSlash >= 0 ? file.relPath.substring(0, lastSlash) : "";
+  const filename = lastSlash >= 0 ? file.relPath.substring(lastSlash + 1) : file.relPath;
+  const lastDot = filename.lastIndexOf(".");
+  const baseName = lastDot >= 0 ? filename.substring(0, lastDot).toLowerCase() : filename.toLowerCase();
+  
+  // Find other files in the same folder with matching base name that are supported
+  return allFiles.some((f) => {
+    if (f.relPath === file.relPath) return false; // Skip self
+    
+    // Check if in same folder
+    const fLastSlash = f.relPath.lastIndexOf("/");
+    const fFolder = fLastSlash >= 0 ? f.relPath.substring(0, fLastSlash) : "";
+    if (fFolder !== folder) return false;
+    
+    // Check if base name matches
+    const fFilename = fLastSlash >= 0 ? f.relPath.substring(fLastSlash + 1) : f.relPath;
+    const fLastDot = fFilename.lastIndexOf(".");
+    const fBaseName = fLastDot >= 0 ? fFilename.substring(0, fLastDot).toLowerCase() : fFilename.toLowerCase();
+    if (fBaseName !== baseName) return false;
+    
+    // Check if this alternative is supported
+    return isBrowserSupported(f);
+  });
 }
 
 function isAlreadyOptimal(file: MediaFile): boolean {
@@ -1964,25 +2776,55 @@ function isAlreadyOptimal(file: MediaFile): boolean {
 function needsFullReencode(file: MediaFile): boolean {
   const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
   const filename = file.relPath.toLowerCase();
+  const codec = (file.videoCodec || "").toLowerCase();
   
-  const fullReencodeExtensions = ["avi", "wmv", "asf", "flv", "mpeg", "mpg", "vob", "ogv", "ogg", "3gp", "3g2"];
+  // Extensions that always need full re-encoding (legacy formats)
+  const fullReencodeExtensions = ["avi", "wmv", "asf", "flv", "mpeg", "mpg", "vob", "ogv", "ogg", "3gp", "3g2", "webm"];
   
-  const isH264 = filename.includes("x264") || 
-                 filename.includes("h264") || 
-                 filename.includes("h.264") ||
-                 filename.includes("avc");
+  // Check actual codec from ffprobe first (most reliable)
+  const codecIsH264 = codec.includes("h264") || codec.includes("avc");
+  const codecIsHevc = codec.includes("hevc") || codec.includes("h265");
+  const codecIsVp8 = codec.includes("vp8");
+  const codecIsVp9 = codec.includes("vp9");
   
-  if (ext === "avi" && isH264) return false;
+  // If we have actual codec info, use it
+  if (codec) {
+    // Only H.264/AVC can be safely copied for browser playback
+    // VP8/VP9 in WebM is browser-compatible but we convert to H.264 for broader support
+    if (codecIsH264) return false;  // H.264 can be copied
+    return true;  // Everything else (HEVC, VP9, MPEG-2, etc.) needs re-encoding
+  }
+  
+  // Fallback to filename hints when no codec info available
+  const nameIsH264 = filename.includes("x264") || 
+                     filename.includes("h264") || 
+                     filename.includes("h.264") ||
+                     filename.includes("avc");
+  
+  const nameIsHevc = filename.includes("x265") ||
+                     filename.includes("hevc") ||
+                     filename.includes("h265") ||
+                     filename.includes("h.265");
+  
+  // AVI with H.264 indicator can be remuxed
+  if (ext === "avi" && nameIsH264) return false;
+  
+  // Legacy formats always need re-encoding
   if (fullReencodeExtensions.includes(ext)) return true;
   
-  const isHevc = file.format?.toLowerCase()?.includes("hevc") || 
-                 file.format?.toLowerCase()?.includes("x265") ||
-                 filename.includes("x265") ||
-                 filename.includes("hevc") ||
-                 filename.includes("h265") ||
-                 filename.includes("h.265");
+  // HEVC indicators in filename mean re-encode
+  if (nameIsHevc) return true;
   
-  return isHevc;
+  // For MKV/MP4/MOV without codec info or filename hints, be conservative:
+  // - If filename suggests H.264, we can copy
+  // - Otherwise, safer to re-encode since we can't verify codec
+  if (["mkv", "mp4", "m4v", "mov"].includes(ext)) {
+    if (nameIsH264) return false;  // Filename suggests H.264, can copy
+    // No codec info and no H.264 hint - safer to re-encode
+    return true;
+  }
+  
+  return false;
 }
 
 function needsAudioOnlyConversion(file: MediaFile): boolean {
@@ -2104,9 +2946,17 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
   
   // -n flag prevents overwriting existing files (never prompts, just exits if file exists)
   
+  // Browser-compatible H.264 encoding settings:
+  // - profile:v high -level 4.1: Ensures broad browser/device compatibility
+  // - pix_fmt yuv420p: 8-bit color required for browser playback (HEVC sources often use 10-bit)
+  // - ac 2: Downmix to stereo for reliable browser audio playback
+  const h264Encode = "-c:v libx264 -profile:v high -level 4.1 -pix_fmt yuv420p -preset medium -crf 18";
+  const aacEncode = "-c:a aac -ac 2 -b:a 192k";
+  const faststart = "-movflags +faststart";
+  
   // Already optimal files - just copy with faststart for streaming optimization
   if (isAlreadyOptimal(file)) {
-    return `ffmpeg -n -i ${inputPath} -c:v copy -c:a copy -movflags +faststart ${outputPath}`;
+    return `ffmpeg -n -i ${inputPath} -c:v copy -c:a copy ${faststart} ${outputPath}`;
   }
   
   switch (ext) {
@@ -2114,59 +2964,59 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
       if (file.relPath.toLowerCase().includes("x264") || 
           file.relPath.toLowerCase().includes("h264") ||
           file.relPath.toLowerCase().includes("h.264")) {
-        return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+        return `ffmpeg -n -i ${inputPath} -c:v copy ${aacEncode} ${faststart} ${outputPath}`;
       }
-      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
     
     case "wmv":
     case "asf":
-      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
     
     case "flv":
-      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
     
     case "mov":
       if (needsFullReencode(file)) {
-        return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+        return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
       }
-      return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v copy ${aacEncode} ${faststart} ${outputPath}`;
     
     case "mkv":
       if (needsFullReencode(file)) {
-        return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+        return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
       }
-      return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v copy ${aacEncode} ${faststart} ${outputPath}`;
     
     case "mpeg":
     case "mpg":
     case "vob":
-      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
     
     case "ts":
     case "m2ts":
     case "mts":
-      return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v copy ${aacEncode} ${faststart} ${outputPath}`;
     
     case "webm":
-      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
     
     case "ogv":
     case "ogg":
-      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
     
     case "3gp":
     case "3g2":
-      return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
     
     case "mp4":
     case "m4v":
       if (needsFullReencode(file)) {
-        return `ffmpeg -n -i ${inputPath} -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+        return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
       }
-      return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v copy ${aacEncode} ${faststart} ${outputPath}`;
     
     default:
-      return `ffmpeg -n -i ${inputPath} -c:v copy -c:a aac -b:a 192k -movflags +faststart ${outputPath}`;
+      return `ffmpeg -n -i ${inputPath} -c:v copy ${aacEncode} ${faststart} ${outputPath}`;
   }
 }
 

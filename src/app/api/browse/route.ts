@@ -21,10 +21,16 @@ type BrowseResponse = {
 };
 
 const MEDIA_EXTENSIONS = [".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm"];
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
 function isMediaFile(filename: string): boolean {
   const ext = path.extname(filename).toLowerCase();
   return MEDIA_EXTENSIONS.includes(ext);
+}
+
+function isImageFile(filename: string): boolean {
+  const ext = path.extname(filename).toLowerCase();
+  return IMAGE_EXTENSIONS.includes(ext);
 }
 
 /**
@@ -59,8 +65,12 @@ function getRoots(): { name: string; path: string }[] {
 }
 
 /**
- * GET /api/browse?path=/some/path
+ * GET /api/browse?path=/some/path&type=images
  * Lists directories at the given path. Only available in local mode.
+ * 
+ * Query params:
+ *   - path: directory path to browse
+ *   - type: "images" to also include image files in the listing
  */
 export async function GET(request: NextRequest) {
   // Only allow in local mode
@@ -72,6 +82,8 @@ export async function GET(request: NextRequest) {
   }
 
   const targetPath = request.nextUrl.searchParams.get("path");
+  const browseType = request.nextUrl.searchParams.get("type"); // "images" to include image files
+  const includeImages = browseType === "images";
   
   // If no path provided, return roots
   if (!targetPath) {
@@ -101,6 +113,7 @@ export async function GET(request: NextRequest) {
     
     // Filter and map to our format
     const directories: DirectoryEntry[] = [];
+    const imageFiles: DirectoryEntry[] = [];
     let hasMediaInCurrentDir = false;
     
     for (const entry of entries) {
@@ -127,15 +140,31 @@ export async function GET(request: NextRequest) {
           isDirectory: true,
           hasMediaFiles: hasMedia,
         });
-      } else if (entry.isFile() && isMediaFile(entry.name)) {
-        hasMediaInCurrentDir = true;
+      } else if (entry.isFile()) {
+        if (isMediaFile(entry.name)) {
+          hasMediaInCurrentDir = true;
+        }
+        // Include image files if requested
+        if (includeImages && isImageFile(entry.name)) {
+          imageFiles.push({
+            name: entry.name,
+            path: entryPath,
+            isDirectory: false,
+          });
+        }
       }
     }
 
-    // Sort directories alphabetically
+    // Sort directories and files alphabetically
     directories.sort((a, b) => 
       a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
     );
+    imageFiles.sort((a, b) => 
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+    );
+
+    // Combine: directories first, then image files
+    const allEntries = [...directories, ...imageFiles];
 
     // Calculate parent path
     const parentPath = resolvedPath === "/" ? null : path.dirname(resolvedPath);
@@ -143,7 +172,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       currentPath: resolvedPath,
       parentPath,
-      entries: directories,
+      entries: allEntries,
       roots: getRoots(),
     } satisfies BrowseResponse);
   } catch (error) {
