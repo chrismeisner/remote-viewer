@@ -80,7 +80,7 @@ export async function PUT(request: NextRequest) {
 
     // Allow null to clear the folder configuration
     if (mediaRoot === null || mediaRoot === "") {
-      await saveConfig({ mediaRoot: null });
+      await saveConfig({ mediaRoot: null, coversFolder: null });
       clearConfigCache();
       clearMediaCaches();
       
@@ -112,8 +112,9 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Save the config
-    await saveConfig({ mediaRoot: resolved });
+    // Save the config (preserve coversFolder if it exists)
+    const currentConfig = await loadConfig();
+    await saveConfig({ mediaRoot: resolved, coversFolder: currentConfig.coversFolder });
     clearConfigCache();
     clearMediaCaches();
 
