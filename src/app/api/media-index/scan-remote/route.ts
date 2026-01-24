@@ -311,6 +311,8 @@ export async function POST() {
       modifiedAt?: string;
       probeFailedAt?: string;
       dateAdded?: string;
+      videoCodec?: string;
+      audioCodec?: string;
     };
     const existingItems = new Map<string, CachedItem>();
     try {
@@ -327,6 +329,8 @@ export async function POST() {
             modifiedAt: item.modifiedAt,
             probeFailedAt: item.probeFailedAt,
             dateAdded: item.dateAdded,
+            videoCodec: item.videoCodec,
+            audioCodec: item.audioCodec,
           });
         }
         console.log(`Loaded ${existingItems.size} existing items from remote index`);
