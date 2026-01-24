@@ -145,9 +145,10 @@ export async function validateMediaPath(
 
 /**
  * Get the effective covers folder path.
- * Priority: config.coversFolder > <mediaRoot>/.remote-viewer/covers > null
+ * Priority: config.coversFolder > <mediaRoot>/.remote-viewer/covers > data/local/covers (fallback for remote mode)
+ * Always returns a valid path.
  */
-export async function getEffectiveCoversFolder(): Promise<string | null> {
+export async function getEffectiveCoversFolder(): Promise<string> {
   const config = await loadConfig();
   
   // Custom covers folder configured
@@ -161,7 +162,8 @@ export async function getEffectiveCoversFolder(): Promise<string | null> {
     return path.join(getDataFolderForMediaRoot(mediaRoot), "covers");
   }
   
-  return null;
+  // No media root configured (remote/FTP mode) - use local fallback
+  return path.join(process.cwd(), "data", "local", "covers");
 }
 
 /**

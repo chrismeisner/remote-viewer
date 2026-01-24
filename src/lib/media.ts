@@ -43,10 +43,10 @@ async function resolveMediaRoot(): Promise<string | null> {
 /**
  * Get the data folder path based on current config.
  * Uses: <mediaRoot>/.remote-viewer/ if configured
- * Falls back to data/local/ ONLY if no media root is configured.
+ * Falls back to data/local/ when no media root is configured (e.g., remote/FTP mode).
  */
 async function resolveDataRoot(): Promise<string | null> {
-  // Reuse cached value when available
+  // Reuse cached value when available (but only if non-null)
   if (cachedDataRoot) return cachedDataRoot;
 
   const mediaRoot = await getEffectiveMediaRoot();
@@ -64,12 +64,13 @@ async function resolveDataRoot(): Promise<string | null> {
       return dataRoot;
     } catch (error) {
       console.warn("Media data path is not writable:", error);
-      // Don't fall back - let the error propagate so user knows to fix config
-      return null;
+      // Fall back to data/local even if media root is configured but not writable
+      // This handles the remote/FTP mode case
     }
   }
 
-  // No media root configured - use local fallback
+  // No media root configured or not writable - use local fallback
+  // This allows metadata storage in remote/FTP mode
   const fallbackRoot = path.join(process.cwd(), "data", "local");
   try {
     await fs.mkdir(fallbackRoot, { recursive: true });
@@ -100,7 +101,7 @@ async function getMediaMetadataFilePath(): Promise<string | null> {
   return path.join(dataRoot, "media-metadata.json");
 }
 
-async function getCoversFolderPath(): Promise<string | null> {
+async function getCoversFolderPath(): Promise<string> {
   return getEffectiveCoversFolder();
 }
 
@@ -376,7 +377,7 @@ export async function saveFullSchedule(schedule: Schedule): Promise<Schedule> {
   }
   
   if (!scheduleFile) {
-    throw new Error("No media folder configured. Please configure a folder in Source settings.");
+    throw new Error("Unable to save schedule: data folder is not accessible.");
   }
   
   validateSchedule(schedule);
@@ -1284,12 +1285,13 @@ export async function loadMediaMetadata(): Promise<MediaMetadataStore> {
 
 /**
  * Save media metadata to the JSON file.
+ * Falls back to data/local/ when no media root is configured (remote/FTP mode).
  */
 export async function saveMediaMetadata(metadata: MediaMetadataStore): Promise<void> {
   const metadataFile = await getMediaMetadataFilePath();
   
   if (!metadataFile) {
-    throw new Error("No media folder configured. Please configure a folder in Source settings.");
+    throw new Error("Unable to save metadata: data folder is not accessible.");
   }
   
   await fs.mkdir(path.dirname(metadataFile), { recursive: true });
@@ -1424,25 +1426,29 @@ const ALLOWED_COVER_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
 /**
  * Get path to covers folder for external use.
- * Returns null if no media folder configured.
+ * Always returns a valid path (uses fallback for remote/FTP mode).
  */
-export async function getLocalCoversFolderPath(): Promise<string | null> {
+export async function getLocalCoversFolderPath(): Promise<string> {
   return getCoversFolderPath();
 }
 
 /**
  * Ensure the covers folder exists.
+ * Always returns a valid path (uses fallback for remote/FTP mode).
  */
-export async function ensureCoversFolderExists(): Promise<string | null> {
+export async function ensureCoversFolderExists(): Promise<string> {
   const coversFolder = await getCoversFolderPath();
-  if (!coversFolder) return null;
+  
+  // This should always have a value now due to fallback in getEffectiveCoversFolder
+  if (!coversFolder) {
+    throw new Error("Unable to determine covers folder path");
+  }
   
   try {
     await fs.mkdir(coversFolder, { recursive: true });
     return coversFolder;
   } catch (error) {
-    console.warn("Failed to create covers folder:", error);
-    return null;
+    throw new Error(`Failed to create covers folder: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -1451,7 +1457,6 @@ export async function ensureCoversFolderExists(): Promise<string | null> {
  */
 export async function listCoverImages(): Promise<string[]> {
   const coversFolder = await getCoversFolderPath();
-  if (!coversFolder) return [];
   
   try {
     const entries = await fs.readdir(coversFolder, { withFileTypes: true });
@@ -1480,7 +1485,6 @@ export async function listCoverImages(): Promise<string[]> {
  */
 export async function getCoverImagePath(filename: string): Promise<string | null> {
   const coversFolder = await getCoversFolderPath();
-  if (!coversFolder) return null;
   
   // Security: prevent path traversal
   const safeName = path.basename(filename);
@@ -1515,9 +1519,6 @@ export async function saveCoverImage(
   data: Buffer,
 ): Promise<string> {
   const coversFolder = await ensureCoversFolderExists();
-  if (!coversFolder) {
-    throw new Error("No media folder configured. Please configure a folder in Source settings.");
-  }
   
   // Security: use only the base filename and validate extension
   const safeName = path.basename(filename);
