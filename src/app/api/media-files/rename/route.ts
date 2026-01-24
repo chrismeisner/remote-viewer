@@ -1,5 +1,5 @@
 import path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import { NextResponse } from "next/server";
 import { Client } from "basic-ftp";
 import { requireFtpConfig, getRemoteBaseDir } from "@/lib/ftp";
@@ -135,13 +135,14 @@ export async function POST(request: Request) {
         const manifestPath = path.posix.basename(remotePath); // e.g., "media-index.json"
         const chunks: Buffer[] = [];
         
-        await client.downloadTo(
-          {
-            write: (chunk: Buffer) => { chunks.push(chunk); return true; },
-            end: () => {},
-          } as NodeJS.WritableStream,
-          manifestPath
-        );
+        const writable = new Writable({
+          write(chunk: Buffer, _encoding, callback) {
+            chunks.push(chunk);
+            callback();
+          },
+        });
+        
+        await client.downloadTo(writable, manifestPath);
         
         const manifestContent = Buffer.concat(chunks).toString("utf-8");
         const manifest: MediaIndex = JSON.parse(manifestContent);
