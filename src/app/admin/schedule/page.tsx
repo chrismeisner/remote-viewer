@@ -1684,36 +1684,6 @@ function shouldShowConvert(file: MediaFile): boolean {
   return false;
 }
 
-function needsFullReencode(file: MediaFile): boolean {
-  const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
-  const filename = file.relPath.toLowerCase();
-  
-  // Legacy formats that always need full re-encode
-  const fullReencodeExtensions = ["avi", "wmv", "asf", "flv", "mpeg", "mpg", "vob", "ogv", "ogg", "3gp", "3g2"];
-  
-  // Check if file has H.264 indicator (these play in browsers)
-  const isH264 = filename.includes("x264") || 
-                 filename.includes("h264") || 
-                 filename.includes("h.264") ||
-                 filename.includes("avc");
-  
-  // AVI with H.264 only needs remux, not full re-encode
-  if (ext === "avi" && isH264) return false;
-  
-  // Other legacy extensions need full re-encode
-  if (fullReencodeExtensions.includes(ext)) return true;
-  
-  // x265/HEVC content needs re-encoding for browser compatibility
-  const isHevc = file.format?.toLowerCase()?.includes("hevc") || 
-                 file.format?.toLowerCase()?.includes("x265") ||
-                 filename.includes("x265") ||
-                 filename.includes("hevc") ||
-                 filename.includes("h265") ||
-                 filename.includes("h.265");
-  
-  return isHevc;
-}
-
 function getConversionDescription(file: MediaFile): string {
   const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
   const filename = file.relPath.toLowerCase();
