@@ -2532,20 +2532,16 @@ export default function MediaAdminPage() {
                           title="Select/deselect all visible files"
                         />
                       </th>
-                      <th className="px-3 py-2 font-semibold">File</th>
-                      <th className="px-3 py-2 font-semibold min-w-[150px]">Title</th>
-                      <th className="px-3 py-2 font-semibold w-16 text-center">Year</th>
-                      <th className="px-3 py-2 font-semibold min-w-[120px]">Director</th>
-                      <th className="px-3 py-2 font-semibold min-w-[100px]">Category</th>
+                      <th className="px-3 py-2 font-semibold w-16 text-center">Cover</th>
+                      <th className="px-3 py-2 font-semibold w-48">File</th>
                       <th className="px-3 py-2 font-semibold w-20 text-left">
                         Format
-                      </th>
-                      <th className="px-3 py-2 font-semibold w-20 text-left">
-                        Audio
                       </th>
                       <th className="px-3 py-2 font-semibold w-28 text-left">
                         Supported
                       </th>
+                      <th className="px-3 py-2 font-semibold min-w-[150px]">Title</th>
+                      <th className="px-3 py-2 font-semibold w-16 text-center">Year</th>
                       <th className="px-3 py-2 font-semibold w-24 text-right">
                         Duration
                       </th>
@@ -2558,6 +2554,9 @@ export default function MediaAdminPage() {
                     {filteredFiles.map((file) => {
                       const meta = allMetadata[file.relPath] || {};
                       const isSelected = selectedForConversion.has(file.relPath);
+                      const resolvedCoverUrl = meta.coverUrl 
+                        || (meta.coverPath ? `/api/local-image?path=${encodeURIComponent(meta.coverPath)}` : null)
+                        || (meta.coverLocal ? `/api/covers/${encodeURIComponent(meta.coverLocal)}` : null);
                       return (
                         <tr key={file.relPath} className={isSelected ? "bg-emerald-500/5" : ""}>
                           <td className="px-3 py-2">
@@ -2569,31 +2568,33 @@ export default function MediaAdminPage() {
                             />
                           </td>
                           <td className="px-3 py-2">
+                            {resolvedCoverUrl ? (
+                              <img 
+                                src={resolvedCoverUrl} 
+                                alt={meta.title || file.relPath}
+                                className="w-12 h-12 object-cover rounded border border-white/10"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <div className="w-12 h-12 bg-white/5 rounded border border-white/10 flex items-center justify-center text-neutral-600 text-xs">
+                                —
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 max-w-[192px]">
                             <button
                               type="button"
-                              className="text-left underline decoration-dotted underline-offset-2 hover:text-emerald-200"
+                              className="text-left underline decoration-dotted underline-offset-2 hover:text-emerald-200 truncate block w-full"
                               onClick={() => setSelectedFile(file)}
+                              title={file.relPath}
                             >
                               {file.relPath}
                             </button>
                           </td>
-                          <td className="px-3 py-2 text-neutral-200">
-                            {meta.title || <span className="text-neutral-500">—</span>}
-                          </td>
-                          <td className="px-3 py-2 text-center text-neutral-200">
-                            {meta.year || <span className="text-neutral-500">—</span>}
-                          </td>
-                          <td className="px-3 py-2 text-neutral-200">
-                            {meta.director || <span className="text-neutral-500">—</span>}
-                          </td>
-                          <td className="px-3 py-2 text-neutral-200">
-                            {meta.category || <span className="text-neutral-500">—</span>}
-                          </td>
                           <td className="px-3 py-2 text-left text-neutral-200 uppercase">
                             {file.format || "—"}
-                          </td>
-                          <td className="px-3 py-2 text-left text-neutral-200 uppercase">
-                            {file.audioCodec || "—"}
                           </td>
                           <td className="px-3 py-2 text-left">
                             <span
@@ -2611,6 +2612,12 @@ export default function MediaAdminPage() {
                                   ? "No (audio)"
                                   : "No"}
                             </span>
+                          </td>
+                          <td className="px-3 py-2 text-neutral-200">
+                            {meta.title || <span className="text-neutral-500">—</span>}
+                          </td>
+                          <td className="px-3 py-2 text-center text-neutral-200">
+                            {meta.year || <span className="text-neutral-500">—</span>}
                           </td>
                           <td className="px-3 py-2 text-right text-neutral-200">
                             {formatDuration(file.durationSeconds)}
