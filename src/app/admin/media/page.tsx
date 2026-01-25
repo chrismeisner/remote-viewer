@@ -3062,7 +3062,7 @@ function getConversionDescription(file: MediaFile): string {
     const baseDesc = file.frameRateMode === "vfr" 
       ? "Variable frame rate (VFR) detected"
       : "Variable frame rate suspected";
-    return `${baseDesc} — will re-encode to constant frame rate (CFR) with audio sync correction to prevent playback drift.`;
+    return `${baseDesc} — will re-encode to CFR with continuous audio resampling (aresample async=1000) to prevent drift during playback.`;
   }
   
   // Check if already optimal
@@ -3177,16 +3177,24 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
   const aacEncode = "-c:a aac -ac 2 -b:a 192k";
   const faststart = "-movflags +faststart";
   
+  // Input flags for fixing broken timestamps:
+  // - fflags +genpts: Regenerate presentation timestamps from scratch
+  const inputFlags = fixSync ? "-fflags +genpts" : "";
+  
   // Sync-fixing flags for VFR content:
-  // - vsync cfr: Force constant frame rate output
-  // - async 1: Resync audio to video timestamps
-  const syncFix = fixSync ? "-vsync cfr -async 1" : "";
+  // - fps_mode cfr: Force constant frame rate output (modern replacement for deprecated -vsync cfr)
+  // - aresample filter with async=1000: Continuously resamples audio to stay in sync,
+  //   correcting up to 1000 samples/sec of drift (much better than old -async 1 which only corrects once)
+  // - first_pts=0: Ensures audio starts aligned with video
+  const syncVideoFix = fixSync ? "-fps_mode cfr" : "";
+  const syncAudioFilter = fixSync ? '-af "aresample=async=1000:first_pts=0"' : "";
   
   // If VFR is detected, we need to re-encode even if otherwise optimal
   // because stream copy won't fix the frame timing issues
   if (fixSync) {
     // VFR files need full re-encode to fix sync
-    return `ffmpeg -n -i ${inputPath} ${h264Encode} ${syncFix} ${aacEncode} ${faststart} ${outputPath}`;
+    // Order: input flags, input, video encode, fps mode, audio filter, audio encode, faststart, output
+    return `ffmpeg -n ${inputFlags} -i ${inputPath} ${h264Encode} ${syncVideoFix} ${syncAudioFilter} ${aacEncode} ${faststart} ${outputPath}`;
   }
   
   // Already optimal files - just copy with faststart for streaming optimization
