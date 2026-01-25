@@ -19,6 +19,10 @@ type MediaFile = {
   videoCodec?: string;
   audioCodec?: string;
   dateAdded?: string;
+  // Frame rate info for health checks
+  rFrameRate?: string;
+  avgFrameRate?: string;
+  frameRateMode?: "cfr" | "vfr" | "unknown";
 };
 
 type MediaType = "film" | "tv" | "documentary" | "sports" | "concert" | "other";
@@ -34,6 +38,7 @@ type MediaMetadata = {
   season?: number | null;
   episode?: number | null;
   dateAdded?: string | null;
+  lastUpdated?: string | null;
   coverUrl?: string | null;
   coverLocal?: string | null;
   coverPath?: string | null; // Full filesystem path for local mode
@@ -627,7 +632,7 @@ function MediaDetailModal({
         {/* Media Details */}
         <div className="border-t border-white/10 bg-neutral-800/30 px-5 py-4">
           <h3 className="text-xs uppercase tracking-widest text-neutral-500 mb-3">Media Details</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-4">
             <div>
               <p className="text-xs text-neutral-500 mb-1">Format</p>
               <p className="text-sm font-medium text-neutral-200 uppercase">
@@ -678,7 +683,14 @@ function MediaDetailModal({
                 {mediaSource === "remote" ? "CDN" : "Local"}
               </span>
             </div>
+            <div>
+              <p className="text-xs text-neutral-500 mb-1">Health</p>
+              <MediaHealthBadge file={item} />
+            </div>
           </div>
+          
+          {/* Health Details - Show if there are issues */}
+          <MediaHealthDetails file={item} />
 
           {/* Supported version indicator for unsupported files */}
           {!isBrowserSupported(item) && (
@@ -739,7 +751,9 @@ function MediaDetailModal({
                 {copiedCommand ? "Copied!" : "Copy conversion command"}
               </button>
               <span className={`text-xs px-2 py-1 rounded-full ${
-                isAlreadyOptimal(item)
+                needsSyncFix(item)
+                  ? "bg-red-500/20 text-red-200"
+                  : isAlreadyOptimal(item)
                   ? "bg-emerald-500/20 text-emerald-200"
                   : needsFullReencode(item)
                   ? "bg-amber-500/20 text-amber-200"
@@ -747,7 +761,9 @@ function MediaDetailModal({
                   ? "bg-emerald-500/20 text-emerald-200"
                   : "bg-blue-500/20 text-blue-200"
               }`}>
-                {isAlreadyOptimal(item) 
+                {needsSyncFix(item)
+                  ? "Sync fix"
+                  : isAlreadyOptimal(item) 
                   ? "Already optimal" 
                   : needsFullReencode(item) 
                   ? "Full re-encode" 
@@ -1188,6 +1204,16 @@ function MediaDetailModal({
                   <span className="text-sm text-neutral-500">—</span>
                 )}
               </div>
+              
+              {/* Last Updated */}
+              {metadata.lastUpdated && (
+                <div>
+                  <p className="text-xs text-neutral-500 mb-1">Last Updated</p>
+                  <p className="text-sm text-neutral-400">
+                    {new Date(metadata.lastUpdated).toLocaleString()}
+                  </p>
+                </div>
+              )}
               
             </div>
           )}
@@ -2691,6 +2717,184 @@ export default function MediaAdminPage() {
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Media Health Components
+   ───────────────────────────────────────────────────────────────────────────── */
+
+function MediaHealthBadge({ file }: { file: MediaFile }) {
+  const health = computeMediaHealth(file);
+  const status = getMediaHealthStatusLabel(health);
+  
+  const colorClasses = {
+    green: "bg-emerald-500/20 text-emerald-200",
+    yellow: "bg-amber-500/20 text-amber-200",
+    red: "bg-red-500/20 text-red-200",
+  };
+  
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${colorClasses[status.color]}`}
+      title={status.label}
+    >
+      {status.shortLabel}
+    </span>
+  );
+}
+
+function MediaHealthDetails({ file }: { file: MediaFile }) {
+  const health = computeMediaHealth(file);
+  
+  if (health.isHealthy) {
+    return null;
+  }
+  
+  return (
+    <div className="mt-4 pt-3 border-t border-white/5">
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+        <p className="text-xs font-semibold text-amber-200 mb-2 flex items-center gap-1.5">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          Media Health Issues Detected
+        </p>
+        <ul className="space-y-1.5 text-xs text-amber-100/80">
+          {health.issues.map((issue, idx) => (
+            <li key={idx} className="flex items-start gap-2">
+              <span className="text-amber-300 mt-0.5">•</span>
+              <span>{getMediaHealthIssueDescription(issue)}</span>
+            </li>
+          ))}
+        </ul>
+        {health.avgFps && (
+          <p className="mt-2 text-xs text-neutral-400">
+            Frame rate: {health.avgFps.toFixed(2)} fps
+            {file.frameRateMode && ` (${file.frameRateMode.toUpperCase()})`}
+          </p>
+        )}
+        <p className="mt-2 text-xs text-amber-200/60">
+          Re-encoding with the conversion command below will fix these issues.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function computeMediaHealth(file: MediaFile): MediaHealthStatus {
+  const issues: MediaHealthIssue[] = [];
+  
+  // Parse average frame rate for additional checks
+  const avgFps = file.avgFrameRate ? parseFrameRate(file.avgFrameRate) : null;
+  
+  // Check for VFR
+  if (file.frameRateMode === "vfr") {
+    issues.push("vfr");
+  } else if (file.frameRateMode === "unknown" && file.rFrameRate && file.avgFrameRate) {
+    // If we have rates but couldn't determine mode, check for suspicious patterns
+    const rFps = parseFrameRate(file.rFrameRate);
+    if (rFps && avgFps && Math.abs(rFps - avgFps) > 0.5) {
+      issues.push("vfr_suspected");
+    }
+  }
+  
+  // Check for unusually low frame rate (could indicate issues)
+  if (avgFps !== null && avgFps > 0 && avgFps < 15) {
+    issues.push("low_fps");
+  }
+  
+  // Check for audio codecs known to cause sync issues in browsers
+  const problematicAudioCodecs = ["ac3", "eac3", "dts", "truehd", "flac", "pcm"];
+  if (file.audioCodec) {
+    const codec = file.audioCodec.toLowerCase();
+    if (problematicAudioCodecs.some(p => codec.includes(p))) {
+      issues.push("audio_mismatch");
+    }
+  }
+  
+  return {
+    isHealthy: issues.length === 0,
+    issues,
+    frameRateMode: file.frameRateMode,
+    avgFps: avgFps ?? undefined,
+  };
+}
+
+type MediaHealthStatus = {
+  isHealthy: boolean;
+  issues: MediaHealthIssue[];
+  frameRateMode?: "cfr" | "vfr" | "unknown";
+  avgFps?: number;
+};
+
+type MediaHealthIssue = 
+  | "vfr"           // Variable frame rate detected
+  | "vfr_suspected" // VFR likely based on frame rate mismatch
+  | "low_fps"       // Unusually low frame rate
+  | "audio_mismatch"; // Audio codec that may cause sync issues
+
+function getMediaHealthIssueDescription(issue: MediaHealthIssue): string {
+  switch (issue) {
+    case "vfr":
+      return "Variable frame rate (VFR) detected — may cause audio sync drift over time";
+    case "vfr_suspected":
+      return "Variable frame rate suspected — could cause audio sync issues";
+    case "low_fps":
+      return "Unusually low frame rate — may affect playback smoothness";
+    case "audio_mismatch":
+      return "Audio codec may cause sync issues in browsers";
+    default:
+      return "Unknown issue";
+  }
+}
+
+function getMediaHealthStatusLabel(health: MediaHealthStatus): { 
+  label: string; 
+  color: "green" | "yellow" | "red";
+  shortLabel: string;
+} {
+  if (health.isHealthy) {
+    return { label: "Healthy", color: "green", shortLabel: "OK" };
+  }
+  
+  // VFR is the most serious issue for sync
+  if (health.issues.includes("vfr")) {
+    return { label: "VFR Detected", color: "red", shortLabel: "VFR" };
+  }
+  
+  if (health.issues.includes("vfr_suspected")) {
+    return { label: "VFR Suspected", color: "yellow", shortLabel: "VFR?" };
+  }
+  
+  if (health.issues.includes("audio_mismatch")) {
+    return { label: "Audio Issue", color: "yellow", shortLabel: "Audio" };
+  }
+  
+  return { label: "Issues Found", color: "yellow", shortLabel: "!" };
+}
+
+function parseFrameRate(value: string): number | null {
+  if (!value || value === "0/0") return null;
+  const parts = value.split("/");
+  if (parts.length === 2) {
+    const num = Number(parts[0]);
+    const den = Number(parts[1]);
+    if (Number.isFinite(num) && Number.isFinite(den) && den !== 0) {
+      return num / den;
+    }
+  }
+  const asNum = Number(value);
+  return Number.isFinite(asNum) ? asNum : null;
+}
+
+// Check if media has health issues that require sync-safe conversion
+function needsSyncFix(file: MediaFile): boolean {
+  const health = computeMediaHealth(file);
+  return health.issues.includes("vfr") || health.issues.includes("vfr_suspected");
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Helper Functions
+   ───────────────────────────────────────────────────────────────────────────── */
+
 function formatDuration(seconds: number): string {
   const minutes = Math.round(seconds / 60);
   if (minutes >= 60) {
@@ -2850,6 +3054,15 @@ function getConversionDescription(file: MediaFile): string {
                  filename.includes("h.264") ||
                  filename.includes("avc");
   
+  // Check for VFR/sync issues first - these need full re-encode regardless of other factors
+  const fixSync = needsSyncFix(file);
+  if (fixSync) {
+    const baseDesc = file.frameRateMode === "vfr" 
+      ? "Variable frame rate (VFR) detected"
+      : "Variable frame rate suspected";
+    return `${baseDesc} — will re-encode to constant frame rate (CFR) with audio sync correction to prevent playback drift.`;
+  }
+  
   // Check if already optimal
   if (isAlreadyOptimal(file)) {
     return "Already in optimal format (MP4 + H.264 + AAC). Re-running will create a copy with optimized streaming flags.";
@@ -2931,12 +3144,15 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
   const base = file.relPath.replace(/\.[^/.]+$/, "");
   const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
   
+  // Check if we need sync-safe conversion (VFR detected)
+  const fixSync = needsSyncFix(file);
+  
   // Determine output filename suffix based on conversion type
   let outName: string;
   if (ext === "mp4" || ext === "m4v") {
-    if (needsFullReencode(file)) {
-      outName = `${base}_h264.mp4`;  // Re-encoded from HEVC to H.264
-    } else if (isAlreadyOptimal(file)) {
+    if (needsFullReencode(file) || fixSync) {
+      outName = `${base}_h264.mp4`;  // Re-encoded from HEVC to H.264, or VFR fix
+    } else if (isAlreadyOptimal(file) && !fixSync) {
       outName = `${base}_optimized.mp4`;  // Already optimal, just adding faststart
     } else {
       outName = `${base}_aac.mp4`;   // Audio-only conversion
@@ -2958,6 +3174,18 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
   const h264Encode = "-c:v libx264 -profile:v high -level 4.1 -pix_fmt yuv420p -preset medium -crf 18";
   const aacEncode = "-c:a aac -ac 2 -b:a 192k";
   const faststart = "-movflags +faststart";
+  
+  // Sync-fixing flags for VFR content:
+  // - vsync cfr: Force constant frame rate output
+  // - async 1: Resync audio to video timestamps
+  const syncFix = fixSync ? "-vsync cfr -async 1" : "";
+  
+  // If VFR is detected, we need to re-encode even if otherwise optimal
+  // because stream copy won't fix the frame timing issues
+  if (fixSync) {
+    // VFR files need full re-encode to fix sync
+    return `ffmpeg -n -i ${inputPath} ${h264Encode} ${syncFix} ${aacEncode} ${faststart} ${outputPath}`;
+  }
   
   // Already optimal files - just copy with faststart for streaming optimization
   if (isAlreadyOptimal(file)) {

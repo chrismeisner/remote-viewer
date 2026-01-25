@@ -130,7 +130,25 @@ type ProbeInfo = {
   videoCodec?: string;
   audioCodec?: string;
   mtimeMs: number;
+  // Frame rate info for VFR detection
+  rFrameRate?: string;      // Real frame rate from stream (can vary)
+  avgFrameRate?: string;    // Average frame rate
+  frameRateMode?: "cfr" | "vfr" | "unknown";
 };
+
+// Media health status for sync issue detection
+export type MediaHealthStatus = {
+  isHealthy: boolean;
+  issues: MediaHealthIssue[];
+  frameRateMode?: "cfr" | "vfr" | "unknown";
+  avgFps?: number;
+};
+
+export type MediaHealthIssue = 
+  | "vfr"           // Variable frame rate detected
+  | "vfr_suspected" // VFR likely based on frame rate mismatch
+  | "low_fps"       // Unusually low frame rate
+  | "audio_mismatch"; // Audio codec that may cause sync issues
 
 export type ScheduledItem = {
   relPath: string;
@@ -142,6 +160,10 @@ export type ScheduledItem = {
   supportedViaCompanion: boolean;
   videoCodec?: string;
   audioCodec?: string;
+  // Frame rate info for health checks
+  rFrameRate?: string;
+  avgFrameRate?: string;
+  frameRateMode?: "cfr" | "vfr" | "unknown";
 };
 
 // Media metadata types
@@ -158,6 +180,7 @@ export type MediaMetadataItem = {
   season?: number | null;
   episode?: number | null;
   dateAdded?: string | null; // ISO date string when file was first added to library
+  lastUpdated?: string | null; // ISO date string when metadata was last updated
   coverUrl?: string | null; // URL to external/uploaded cover image
   coverLocal?: string | null; // Filename of local cover in covers folder (for remote mode)
   coverPath?: string | null; // Full filesystem path to local image (for local mode)
@@ -801,6 +824,9 @@ export async function getScheduleItems(options?: { refresh?: boolean }): Promise
       title: titleFromPath(file.relPath),
       videoCodec: probeInfo?.videoCodec,
       audioCodec: probeInfo?.audioCodec,
+      rFrameRate: probeInfo?.rFrameRate,
+      avgFrameRate: probeInfo?.avgFrameRate,
+      frameRateMode: probeInfo?.frameRateMode,
     });
   }
 
@@ -926,6 +952,9 @@ async function getProbeInfo(
         : DURATION_FALLBACK_SECONDS,
     videoCodec: probed.videoCodec,
     audioCodec: probed.audioCodec,
+    rFrameRate: probed.rFrameRate,
+    avgFrameRate: probed.avgFrameRate,
+    frameRateMode: probed.frameRateMode,
     mtimeMs,
   };
 
@@ -935,7 +964,14 @@ async function getProbeInfo(
 
 async function probeMediaInfo(
   absPath: string,
-): Promise<{ durationSeconds: number | null; videoCodec?: string; audioCodec?: string }> {
+): Promise<{ 
+  durationSeconds: number | null; 
+  videoCodec?: string; 
+  audioCodec?: string;
+  rFrameRate?: string;
+  avgFrameRate?: string;
+  frameRateMode?: "cfr" | "vfr" | "unknown";
+}> {
   try {
     const ffprobePath = await resolveFfprobePath();
     const { stdout } = await execFileAsync(ffprobePath, [
@@ -950,14 +986,14 @@ async function probeMediaInfo(
 
     const parsed = JSON.parse(stdout);
     const duration = extractDurationSeconds(parsed);
-    const { videoCodec, audioCodec } = extractCodecNames(parsed);
+    const { videoCodec, audioCodec, rFrameRate, avgFrameRate, frameRateMode } = extractCodecNames(parsed);
 
     if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) {
       console.warn("ffprobe missing duration, returning 0", absPath);
-      return { durationSeconds: null, videoCodec, audioCodec };
+      return { durationSeconds: null, videoCodec, audioCodec, rFrameRate, avgFrameRate, frameRateMode };
     }
 
-    return { durationSeconds: duration, videoCodec, audioCodec };
+    return { durationSeconds: duration, videoCodec, audioCodec, rFrameRate, avgFrameRate, frameRateMode };
   } catch (error) {
     console.warn("ffprobe failed", absPath, error);
   }
@@ -1292,6 +1328,9 @@ function extractDurationSeconds(probeJson: unknown): number | null {
 function extractCodecNames(probeJson: unknown): {
   videoCodec?: string;
   audioCodec?: string;
+  rFrameRate?: string;
+  avgFrameRate?: string;
+  frameRateMode?: "cfr" | "vfr" | "unknown";
 } {
   if (!probeJson || typeof probeJson !== "object") return {};
   const obj = probeJson as { streams?: unknown };
@@ -1299,6 +1338,36 @@ function extractCodecNames(probeJson: unknown): {
 
   const videoStream = streams.find((s) => s?.codec_type === "video");
   const audioStream = streams.find((s) => s?.codec_type === "audio");
+
+  // Extract frame rate info for VFR detection
+  const rFrameRate = typeof videoStream?.r_frame_rate === "string" 
+    ? videoStream.r_frame_rate 
+    : undefined;
+  const avgFrameRate = typeof videoStream?.avg_frame_rate === "string" 
+    ? videoStream.avg_frame_rate 
+    : undefined;
+
+  // Determine frame rate mode
+  let frameRateMode: "cfr" | "vfr" | "unknown" = "unknown";
+  if (rFrameRate && avgFrameRate) {
+    const rFps = parseFps(rFrameRate);
+    const avgFps = parseFps(avgFrameRate);
+    
+    if (rFps !== null && avgFps !== null && rFps > 0 && avgFps > 0) {
+      // If r_frame_rate and avg_frame_rate differ significantly, likely VFR
+      // A difference of more than 1% suggests VFR
+      const diff = Math.abs(rFps - avgFps) / Math.max(rFps, avgFps);
+      if (diff < 0.01) {
+        frameRateMode = "cfr";
+      } else if (diff > 0.05) {
+        // More than 5% difference is strong indicator of VFR
+        frameRateMode = "vfr";
+      } else {
+        // Between 1-5% - could be slight variation, mark as potentially VFR
+        frameRateMode = "vfr";
+      }
+    }
+  }
 
   return {
     videoCodec:
@@ -1313,6 +1382,9 @@ function extractCodecNames(probeJson: unknown): {
         : typeof audioStream?.codec_tag_string === "string"
           ? audioStream.codec_tag_string
           : undefined,
+    rFrameRate,
+    avgFrameRate,
+    frameRateMode,
   };
 }
 
@@ -1328,6 +1400,105 @@ function parseFps(value: string): number | null {
   }
   const asNum = Number(value);
   return Number.isFinite(asNum) ? asNum : null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Media Health Check Functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute media health status based on probe info.
+ * Identifies potential issues that could cause audio/video sync drift.
+ */
+export function computeMediaHealth(opts: {
+  frameRateMode?: "cfr" | "vfr" | "unknown";
+  avgFrameRate?: string;
+  rFrameRate?: string;
+  audioCodec?: string;
+  videoCodec?: string;
+}): MediaHealthStatus {
+  const issues: MediaHealthIssue[] = [];
+  
+  // Parse average frame rate for additional checks
+  const avgFps = opts.avgFrameRate ? parseFps(opts.avgFrameRate) : null;
+  
+  // Check for VFR
+  if (opts.frameRateMode === "vfr") {
+    issues.push("vfr");
+  } else if (opts.frameRateMode === "unknown" && opts.rFrameRate && opts.avgFrameRate) {
+    // If we have rates but couldn't determine mode, check for suspicious patterns
+    const rFps = parseFps(opts.rFrameRate);
+    if (rFps && avgFps && Math.abs(rFps - avgFps) > 0.5) {
+      issues.push("vfr_suspected");
+    }
+  }
+  
+  // Check for unusually low frame rate (could indicate issues)
+  if (avgFps !== null && avgFps > 0 && avgFps < 15) {
+    issues.push("low_fps");
+  }
+  
+  // Check for audio codecs known to cause sync issues in browsers
+  const problematicAudioCodecs = ["ac3", "eac3", "dts", "truehd", "flac", "pcm"];
+  if (opts.audioCodec) {
+    const codec = opts.audioCodec.toLowerCase();
+    if (problematicAudioCodecs.some(p => codec.includes(p))) {
+      issues.push("audio_mismatch");
+    }
+  }
+  
+  return {
+    isHealthy: issues.length === 0,
+    issues,
+    frameRateMode: opts.frameRateMode,
+    avgFps: avgFps ?? undefined,
+  };
+}
+
+/**
+ * Get a human-readable description of a media health issue.
+ */
+export function getHealthIssueDescription(issue: MediaHealthIssue): string {
+  switch (issue) {
+    case "vfr":
+      return "Variable frame rate (VFR) - may cause audio sync drift over time";
+    case "vfr_suspected":
+      return "Variable frame rate suspected - could cause audio sync issues";
+    case "low_fps":
+      return "Unusually low frame rate - may affect playback smoothness";
+    case "audio_mismatch":
+      return "Audio codec may not be well-supported by browsers";
+    default:
+      return "Unknown issue";
+  }
+}
+
+/**
+ * Get health status label for UI display.
+ */
+export function getHealthStatusLabel(health: MediaHealthStatus): { 
+  label: string; 
+  color: "green" | "yellow" | "red";
+  shortLabel: string;
+} {
+  if (health.isHealthy) {
+    return { label: "Healthy", color: "green", shortLabel: "OK" };
+  }
+  
+  // VFR is the most serious issue for sync
+  if (health.issues.includes("vfr")) {
+    return { label: "VFR Detected", color: "red", shortLabel: "VFR" };
+  }
+  
+  if (health.issues.includes("vfr_suspected")) {
+    return { label: "VFR Suspected", color: "yellow", shortLabel: "VFR?" };
+  }
+  
+  if (health.issues.includes("audio_mismatch")) {
+    return { label: "Audio Issue", color: "yellow", shortLabel: "Audio" };
+  }
+  
+  return { label: "Issues Found", color: "yellow", shortLabel: "!" };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1461,6 +1632,9 @@ export async function updateMediaItemMetadata(
   if (updates.coverPath !== undefined) updated.coverPath = updates.coverPath;
   if (updates.tags !== undefined) updated.tags = updates.tags;
   
+  // Set lastUpdated timestamp
+  updated.lastUpdated = new Date().toISOString();
+  
   // Clean up null/undefined values for cleaner JSON
   const cleaned: MediaMetadataItem = {};
   if (updated.title != null) cleaned.title = updated.title;
@@ -1476,6 +1650,7 @@ export async function updateMediaItemMetadata(
   if (updated.coverLocal != null) cleaned.coverLocal = updated.coverLocal;
   if (updated.coverPath != null) cleaned.coverPath = updated.coverPath;
   if (updated.tags != null && updated.tags.length > 0) cleaned.tags = updated.tags;
+  if (updated.lastUpdated != null) cleaned.lastUpdated = updated.lastUpdated;
   
   // Only store if there's actual data
   if (Object.keys(cleaned).length > 0) {
@@ -1623,6 +1798,9 @@ export async function updateMediaItemMetadataBySource(
   if (updates.coverPath !== undefined) updated.coverPath = updates.coverPath;
   if (updates.tags !== undefined) updated.tags = updates.tags;
   
+  // Set lastUpdated timestamp
+  updated.lastUpdated = new Date().toISOString();
+  
   // Clean up null/undefined values for cleaner JSON
   const cleaned: MediaMetadataItem = {};
   if (updated.title != null) cleaned.title = updated.title;
@@ -1638,6 +1816,7 @@ export async function updateMediaItemMetadataBySource(
   if (updated.coverLocal != null) cleaned.coverLocal = updated.coverLocal;
   if (updated.coverPath != null) cleaned.coverPath = updated.coverPath;
   if (updated.tags != null && updated.tags.length > 0) cleaned.tags = updated.tags;
+  if (updated.lastUpdated != null) cleaned.lastUpdated = updated.lastUpdated;
   
   // Only store if there's actual data
   if (Object.keys(cleaned).length > 0) {

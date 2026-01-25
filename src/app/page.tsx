@@ -434,6 +434,53 @@ export default function Home() {
     return () => clearTimeout(timeout);
   }, [nowPlaying?.endsAt]);
 
+  // Audio/video drift detection and auto-resync
+  // Checks every 15 seconds if playback has drifted from expected position
+  // This catches VFR content or other sources of drift before it becomes noticeable
+  useEffect(() => {
+    if (!nowPlaying) return;
+    
+    const DRIFT_CHECK_INTERVAL_MS = 15000; // Check every 15 seconds
+    const DRIFT_THRESHOLD_SECONDS = 2; // Resync if drifted more than 2 seconds
+    
+    const checkDrift = () => {
+      const video = videoRef.current;
+      if (!video || video.paused || !video.duration) return;
+      
+      const expected = computeExpectedOffset(nowPlaying);
+      const actual = video.currentTime;
+      const drift = actual - expected; // Positive = ahead, negative = behind
+      const absDrift = Math.abs(drift);
+      
+      if (absDrift > DRIFT_THRESHOLD_SECONDS) {
+        console.log("[player] drift detected, resyncing", {
+          expected: expected.toFixed(2),
+          actual: actual.toFixed(2),
+          drift: drift.toFixed(2),
+          direction: drift > 0 ? "ahead" : "behind",
+        });
+        
+        try {
+          video.currentTime = expected;
+          desiredOffsetRef.current = expected;
+        } catch (err) {
+          console.warn("[player] drift resync failed", err);
+        }
+      }
+    };
+    
+    // Initial check after a short delay (let video stabilize first)
+    const initialTimeout = setTimeout(checkDrift, 5000);
+    
+    // Periodic checks
+    const interval = setInterval(checkDrift, DRIFT_CHECK_INTERVAL_MS);
+    
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
+  }, [nowPlaying]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;

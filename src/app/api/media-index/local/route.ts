@@ -62,6 +62,10 @@ export async function POST() {
         title: item.title,
         videoCodec: item.videoCodec,
         audioCodec: item.audioCodec,
+        // Frame rate info for health checks
+        rFrameRate: item.rFrameRate,
+        avgFrameRate: item.avgFrameRate,
+        frameRateMode: item.frameRateMode,
       })),
     };
 
