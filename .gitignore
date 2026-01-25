@@ -28,6 +28,7 @@
 # local config and data (user-specific paths and metadata)
 /data/local/config.json
 /data/local/media-metadata.json
+/data/local/schedule.json
 
 # debug
 npm-debug.log*

@@ -14,7 +14,13 @@ import { normalizeChannelId, isFtpConfigured, uploadJsonToFtp } from "@/lib/ftp"
 export const runtime = "nodejs";
 
 type ScheduleData = {
-  channels: Record<string, { slots?: unknown[]; shortName?: string; active?: boolean }>;
+  channels: Record<string, { 
+    type?: "24hour" | "looping";
+    slots?: unknown[]; 
+    playlist?: unknown[];
+    shortName?: string; 
+    active?: boolean;
+  }>;
 };
 
 // ==================== REMOTE HELPERS ====================
@@ -55,12 +61,20 @@ function channelsFromSchedule(schedule: ScheduleData | null): ChannelInfo[] {
   if (!schedule?.channels) return [];
   
   const channels = Object.entries(schedule.channels)
-    .map(([id, ch]) => ({
-      id,
-      shortName: ch.shortName,
-      active: ch.active ?? true,
-      scheduledCount: Array.isArray(ch.slots) ? ch.slots.length : 0,
-    }));
+    .map(([id, ch]) => {
+      const scheduleType = ch.type || "24hour";
+      const scheduledCount = scheduleType === "looping"
+        ? (Array.isArray(ch.playlist) ? ch.playlist.length : 0)
+        : (Array.isArray(ch.slots) ? ch.slots.length : 0);
+      
+      return {
+        id,
+        shortName: ch.shortName,
+        active: ch.active ?? true,
+        scheduledCount,
+        type: scheduleType as "24hour" | "looping",
+      };
+    });
   
   return sortChannelsNumerically(channels);
 }
@@ -117,8 +131,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const id = typeof body?.id === "string" ? body.id.trim() : "";
     const shortName = typeof body?.shortName === "string" ? body.shortName.trim() : undefined;
+    const scheduleType = body?.type === "looping" ? "looping" : "24hour";
 
-    console.log("[Channels API POST] Parsed body:", { id, shortName, rawBody: body });
+    console.log("[Channels API POST] Parsed body:", { id, shortName, type: scheduleType, rawBody: body });
 
     if (!id) {
       return NextResponse.json({ error: "Channel ID is required" }, { status: 400 });
@@ -140,18 +155,26 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Channel already exists" }, { status: 400 });
       }
 
-      schedule.channels[normalizedId] = {
-        slots: [],
-        shortName: shortName || undefined,
-        active: true,
-      };
+      schedule.channels[normalizedId] = scheduleType === "looping"
+        ? {
+            type: "looping",
+            playlist: [],
+            shortName: shortName || undefined,
+            active: true,
+          }
+        : {
+            type: "24hour",
+            slots: [],
+            shortName: shortName || undefined,
+            active: true,
+          };
 
       await pushRemoteSchedule(schedule);
       // Use in-memory schedule data (don't refetch - CDN might have propagation delay)
       const channels = channelsFromSchedule(schedule);
 
       return NextResponse.json({
-        channel: { id: normalizedId, shortName, active: true },
+        channel: { id: normalizedId, shortName, active: true, type: scheduleType },
         channels,
         source,
       });
@@ -162,11 +185,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Channel already exists" }, { status: 400 });
       }
 
-      const result = await createChannel(normalizedId, shortName);
+      const result = await createChannel(normalizedId, shortName, scheduleType);
       const channels = await listChannels("local");
 
       return NextResponse.json({
-        channel: { id: result.channel, shortName: result.shortName, active: true },
+        channel: { id: result.channel, shortName: result.shortName, active: true, type: result.type },
         channels,
         source,
       });

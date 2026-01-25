@@ -5,8 +5,22 @@ export type ScheduleSlot = {
   title?: string;
 };
 
+// Schedule type determines how content is scheduled
+// - "24hour": Traditional time-slot based scheduling (default)
+// - "looping": Continuous loop of playlist items based on global clock
+export type ScheduleType = "24hour" | "looping";
+
+// Playlist item for looping schedules
+export type PlaylistItem = {
+  file: string; // relative path inside MEDIA_ROOT
+  title?: string;
+  durationSeconds: number; // Required - must be verified before adding
+};
+
 export type ChannelSchedule = {
-  slots: ScheduleSlot[];
+  type?: ScheduleType; // Default "24hour" for backward compatibility
+  slots?: ScheduleSlot[]; // For "24hour" type
+  playlist?: PlaylistItem[]; // For "looping" type
   shortName?: string;
   active?: boolean; // Default true if undefined
 };
@@ -60,8 +74,25 @@ export function effectiveEndSeconds(startSeconds: number, endSeconds: number): n
 
 export function validateChannelSchedule(schedule: ChannelSchedule, channelId?: string) {
   const prefix = channelId ? `Channel ${channelId}: ` : "";
-  if (!schedule || !Array.isArray(schedule.slots)) {
-    throw new Error(`${prefix}Schedule requires slots`);
+  
+  if (!schedule) {
+    throw new Error(`${prefix}Schedule is required`);
+  }
+
+  const scheduleType = schedule.type || "24hour";
+
+  if (scheduleType === "looping") {
+    // Validate looping schedule
+    validateLoopingSchedule(schedule, prefix);
+  } else {
+    // Validate 24hour schedule (default)
+    validate24HourSchedule(schedule, prefix);
+  }
+}
+
+function validate24HourSchedule(schedule: ChannelSchedule, prefix: string) {
+  if (!Array.isArray(schedule.slots)) {
+    throw new Error(`${prefix}24hour schedule requires slots array`);
   }
 
   let previous = -1;
@@ -85,6 +116,22 @@ export function validateChannelSchedule(schedule: ChannelSchedule, channelId?: s
     previous = startSeconds;
     if (!slot.file) {
       throw new Error(`${prefix}Missing file path at ${slot.start}`);
+    }
+  }
+}
+
+function validateLoopingSchedule(schedule: ChannelSchedule, prefix: string) {
+  if (!Array.isArray(schedule.playlist)) {
+    throw new Error(`${prefix}Looping schedule requires playlist array`);
+  }
+
+  for (let i = 0; i < schedule.playlist.length; i++) {
+    const item = schedule.playlist[i];
+    if (!item.file) {
+      throw new Error(`${prefix}Playlist item ${i + 1} is missing file path`);
+    }
+    if (typeof item.durationSeconds !== "number" || item.durationSeconds <= 0) {
+      throw new Error(`${prefix}Playlist item "${item.file}" has invalid duration (must be positive number)`);
     }
   }
 }

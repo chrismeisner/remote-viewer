@@ -9,11 +9,14 @@ import {
   type MediaSource,
 } from "@/constants/media";
 
+type ScheduleType = "24hour" | "looping";
+
 type Channel = {
   id: string;
   shortName?: string;
   active?: boolean;
   scheduledCount?: number;
+  type?: ScheduleType;
 };
 
 export default function ChannelAdminPage() {
@@ -22,6 +25,7 @@ export default function ChannelAdminPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [newId, setNewId] = useState("");
   const [newShortName, setNewShortName] = useState("");
+  const [newType, setNewType] = useState<ScheduleType>("24hour");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [mediaSource, setMediaSource] = useState<MediaSource | null>(null); // Start as null until synced
@@ -152,14 +156,20 @@ export default function ChannelAdminPage() {
       const res = await fetch(`/api/channels?source=${mediaSource}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, shortName: newShortName.trim() || undefined }),
+        body: JSON.stringify({ 
+          id, 
+          shortName: newShortName.trim() || undefined,
+          type: newType,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create");
       setChannels(data.channels || []);
       setNewId("");
       setNewShortName("");
-      setMessage(`Channel "${id}" created`);
+      setNewType("24hour");
+      const typeLabel = newType === "looping" ? "looping" : "24-hour";
+      setMessage(`Channel "${id}" created (${typeLabel} schedule)`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create");
     } finally {
@@ -324,6 +334,15 @@ export default function ChannelAdminPage() {
           className="w-48 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-neutral-100 placeholder:text-neutral-500"
           onKeyDown={(e) => e.key === "Enter" && handleCreate()}
         />
+        <select
+          value={newType}
+          onChange={(e) => setNewType(e.target.value as ScheduleType)}
+          className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-neutral-100"
+          title="Schedule type"
+        >
+          <option value="24hour">24-Hour Schedule</option>
+          <option value="looping">Looping Playlist</option>
+        </select>
         <button
           onClick={handleCreate}
           disabled={saving === "create" || !newId.trim()}
@@ -372,7 +391,8 @@ export default function ChannelAdminPage() {
                 <tr>
                   <th className="w-24 px-3 py-2 text-left font-semibold">Number</th>
                   <th className="px-3 py-2 text-left font-semibold">Name</th>
-                  <th className="w-24 px-3 py-2 text-center font-semibold">Scheduled</th>
+                  <th className="w-28 px-3 py-2 text-center font-semibold">Type</th>
+                  <th className="w-24 px-3 py-2 text-center font-semibold">Items</th>
                   <th className="w-24 px-3 py-2 text-left font-semibold">Status</th>
                   <th className="w-48 px-3 py-2 text-right font-semibold">Actions</th>
                 </tr>
@@ -391,6 +411,15 @@ export default function ChannelAdminPage() {
                       ) : (
                         <span className="text-xs text-neutral-500">—</span>
                       )}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                        channel.type === "looping"
+                          ? "bg-purple-500/20 text-purple-200"
+                          : "bg-blue-500/20 text-blue-200"
+                      }`}>
+                        {channel.type === "looping" ? "Looping" : "24-Hour"}
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-center">
                       <span className={`text-sm font-medium ${
@@ -417,10 +446,17 @@ export default function ChannelAdminPage() {
                     <td className="px-3 py-2 text-right">
                       <div className="flex justify-end gap-2">
                         <Link
-                          href={`/admin/schedule?channel=${encodeURIComponent(channel.id)}`}
-                          className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                          href={channel.type === "looping" 
+                            ? `/admin/playlist/${encodeURIComponent(channel.id)}`
+                            : `/admin/schedule/${encodeURIComponent(channel.id)}`
+                          }
+                          className={`rounded-md border px-2 py-1 text-xs font-semibold transition hover:border-white/30 hover:bg-white/10 ${
+                            channel.type === "looping"
+                              ? "border-purple-400/50 bg-purple-500/20 text-purple-100 hover:border-purple-300"
+                              : "border-white/15 bg-white/5 text-neutral-100"
+                          }`}
                         >
-                          Schedule
+                          {channel.type === "looping" ? "Playlist" : "Schedule"}
                         </Link>
                         <button
                           onClick={() => openEditModal(channel)}

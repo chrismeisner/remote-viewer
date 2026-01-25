@@ -15,7 +15,7 @@ type ChannelInfo = {
   scheduledCount?: number;
 };
 
-export default function ScheduleIndexPage() {
+export default function PlaylistIndexPage() {
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +49,7 @@ export default function ScheduleIndexPage() {
       try {
         const res = await fetch(`/api/channels?source=${encodeURIComponent(mediaSource)}`);
         const json = await res.json();
-
+        
         if (!cancelled) {
           const channelList: ChannelInfo[] = Array.isArray(json.channels)
             ? json.channels.map((ch: unknown) => {
@@ -73,8 +73,8 @@ export default function ScheduleIndexPage() {
     return () => { cancelled = true; };
   }, [mediaSource]);
 
-  const scheduleChannels = useMemo(() =>
-    channels.filter(c => c.type !== "looping"),
+  const loopingChannels = useMemo(() => 
+    channels.filter(c => c.type === "looping"),
     [channels]
   );
 
@@ -82,13 +82,13 @@ export default function ScheduleIndexPage() {
     <div className="flex flex-col gap-6 text-neutral-100">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">Schedule Admin</p>
+          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">Playlist Admin</p>
           <p className="text-sm text-neutral-400">
-            Select a 24-hour channel to manage its schedule.
+            Select a looping channel to manage its playlist.
           </p>
         </div>
-        <span className="rounded-full px-3 py-1 text-xs font-semibold bg-blue-500/20 text-blue-200">
-          24-Hour
+        <span className="rounded-full px-3 py-1 text-xs font-semibold bg-purple-500/20 text-purple-200">
+          Looping
         </span>
       </div>
 
@@ -103,37 +103,37 @@ export default function ScheduleIndexPage() {
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-6">
           <p className="text-red-200">{error}</p>
         </div>
-      ) : scheduleChannels.length === 0 ? (
+      ) : loopingChannels.length === 0 ? (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 text-center">
-          <p className="text-amber-200">No 24-hour channels found.</p>
+          <p className="text-amber-200">No looping channels found.</p>
           <p className="text-sm text-amber-300/70 mt-2">
-            Create a 24-hour channel in the <Link href="/admin/channels" className="underline">Channels</Link> page first.
+            Create a looping channel in the <Link href="/admin/channels" className="underline">Channels</Link> page first.
           </p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {scheduleChannels.map((channel) => (
+          {loopingChannels.map((channel) => (
             <Link
               key={channel.id}
-              href={`/admin/schedule/${encodeURIComponent(channel.id)}`}
-              className="group rounded-xl border border-blue-500/30 bg-blue-500/10 p-5 transition hover:border-blue-400/50 hover:bg-blue-500/20"
+              href={`/admin/playlist/${encodeURIComponent(channel.id)}`}
+              className="group rounded-xl border border-purple-500/30 bg-purple-500/10 p-5 transition hover:border-purple-400/50 hover:bg-purple-500/20"
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-lg font-semibold text-blue-100 group-hover:text-white">
+                  <p className="text-lg font-semibold text-purple-100 group-hover:text-white">
                     {channel.shortName || `Channel ${channel.id}`}
                   </p>
-                  <p className="text-sm text-blue-300/70 mt-1">
+                  <p className="text-sm text-purple-300/70 mt-1">
                     ID: {channel.id}
                   </p>
                 </div>
-                <span className="text-blue-300 text-xl">📅</span>
+                <span className="text-purple-300 text-xl">🔁</span>
               </div>
               <div className="mt-4 flex items-center justify-between">
-                <span className="text-xs text-blue-300/60">
-                  {channel.scheduledCount ?? 0} item{(channel.scheduledCount ?? 0) !== 1 ? "s" : ""} scheduled
+                <span className="text-xs text-purple-300/60">
+                  {channel.scheduledCount ?? 0} item{(channel.scheduledCount ?? 0) !== 1 ? "s" : ""} in playlist
                 </span>
-                <span className="text-xs text-blue-200 group-hover:text-white">
+                <span className="text-xs text-purple-200 group-hover:text-white">
                   Edit →
                 </span>
               </div>
@@ -145,8 +145,8 @@ export default function ScheduleIndexPage() {
       {/* Quick tip */}
       <div className="rounded-lg border border-white/10 bg-white/5 p-4">
         <p className="text-xs text-neutral-400">
-          <span className="text-neutral-300 font-medium">Tip:</span> 24-hour schedules play items at specific times each day (UTC).
-          For continuous looping playlists, use the <Link href="/admin/playlist" className="underline">Playlist</Link> page.
+          <span className="text-neutral-300 font-medium">Tip:</span> Looping playlists play continuously based on a global clock. 
+          Everyone watching the same channel sees the same content at the same time.
         </p>
       </div>
     </div>

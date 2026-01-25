@@ -1855,18 +1855,11 @@ export default function MediaAdminPage() {
   const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported" | "needs-conversion">(
     "supported",
   );
-  const [locationFilter, setLocationFilter] = useState<"all" | "in-folder" | "in-root">("all");
+  const [locationFilter, setLocationFilter] = useState<"all" | "in-folder" | "in-root">("in-root");
   const [searchQuery, setSearchQuery] = useState("");
   const [manifestUpdatedAt, setManifestUpdatedAt] = useState<string | null>(null);
   const [mediaRoot, setMediaRoot] = useState<string>("media");
   const [allMetadata, setAllMetadata] = useState<Record<string, MediaMetadata>>({});
-  
-  // Bulk AI fill state
-  const [bulkAiRunning, setBulkAiRunning] = useState(false);
-  const [bulkAiProgress, setBulkAiProgress] = useState({ current: 0, total: 0, currentFile: "" });
-  const bulkAiCancelledRef = useRef(false);
-  const [aiConfiguredGlobal, setAiConfiguredGlobal] = useState(false);
-  const [bulkAiSupportedOnly, setBulkAiSupportedOnly] = useState(true);
   
   // Bulk conversion command state
   const [selectedForConversion, setSelectedForConversion] = useState<Set<string>>(new Set());
@@ -1917,137 +1910,6 @@ export default function MediaAdminPage() {
         // Ignore errors, metadata is optional
       });
   }, [mediaRefreshToken]);
-
-  // Check if AI is configured (for bulk fill button)
-  useEffect(() => {
-    fetch("/api/media-metadata/ai-lookup")
-      .then((res) => res.json())
-      .then((data) => setAiConfiguredGlobal(data.configured === true))
-      .catch(() => setAiConfiguredGlobal(false));
-  }, []);
-
-  // Bulk AI fill function
-  const handleBulkAiFill = async (onlyEmpty: boolean) => {
-    // Filter files to process
-    let filesToProcess = onlyEmpty
-      ? filteredFiles.filter((f) => {
-          const meta = allMetadata[f.relPath];
-          // Consider "empty" if no title is set
-          return !meta?.title;
-        })
-      : filteredFiles;
-    
-    // Apply supported-only filter if checked
-    if (bulkAiSupportedOnly) {
-      filesToProcess = filesToProcess.filter((f) => isBrowserSupported(f));
-    }
-
-    if (filesToProcess.length === 0) {
-      setError(onlyEmpty ? "All visible files already have metadata" : "No files to process");
-      return;
-    }
-
-    setBulkAiRunning(true);
-    bulkAiCancelledRef.current = false;
-    setBulkAiProgress({ current: 0, total: filesToProcess.length, currentFile: "" });
-
-    let successCount = 0;
-    let errorCount = 0;
-    let wasCancelled = false;
-
-    for (let i = 0; i < filesToProcess.length; i++) {
-      // Check if cancelled
-      if (bulkAiCancelledRef.current) {
-        wasCancelled = true;
-        break;
-      }
-
-      const file = filesToProcess[i];
-      setBulkAiProgress({ current: i + 1, total: filesToProcess.length, currentFile: file.relPath });
-
-      try {
-        // Get existing metadata for context
-        const existingMeta = allMetadata[file.relPath] || {};
-        const existingMetadata: Record<string, unknown> = {};
-        if (existingMeta.title) existingMetadata.title = existingMeta.title;
-        if (existingMeta.year) existingMetadata.year = existingMeta.year;
-        if (existingMeta.director) existingMetadata.director = existingMeta.director;
-        if (existingMeta.category) existingMetadata.category = existingMeta.category;
-        if (existingMeta.makingOf) existingMetadata.makingOf = existingMeta.makingOf;
-        if (existingMeta.plot) existingMetadata.plot = existingMeta.plot;
-        if (existingMeta.type) existingMetadata.type = existingMeta.type;
-        if (existingMeta.season) existingMetadata.season = existingMeta.season;
-        if (existingMeta.episode) existingMetadata.episode = existingMeta.episode;
-
-        // Call AI lookup with existing metadata context
-        const lookupRes = await fetch("/api/media-metadata/ai-lookup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            filename: file.relPath,
-            existingMetadata: Object.keys(existingMetadata).length > 0 ? existingMetadata : undefined,
-          }),
-        });
-        const lookupData = await lookupRes.json();
-
-        if (!lookupRes.ok) {
-          console.warn(`AI lookup failed for ${file.relPath}:`, lookupData.error);
-          errorCount++;
-          continue;
-        }
-
-        // Save the metadata
-        const saveRes = await fetch("/api/media-metadata", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            file: file.relPath,
-            title: lookupData.title || null,
-            year: lookupData.year || null,
-            director: lookupData.director || null,
-            category: lookupData.category || null,
-            makingOf: lookupData.makingOf || null,
-            plot: lookupData.plot || null,
-            type: lookupData.type || null,
-            season: lookupData.season || null,
-            episode: lookupData.episode || null,
-          }),
-        });
-        const saveData = await saveRes.json();
-
-        if (saveRes.ok) {
-          // Update local state
-          setAllMetadata((prev) => ({
-            ...prev,
-            [file.relPath]: saveData.metadata,
-          }));
-          successCount++;
-        } else {
-          console.warn(`Save failed for ${file.relPath}:`, saveData.error);
-          errorCount++;
-        }
-
-        // Small delay to avoid rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      } catch (err) {
-        console.error(`Error processing ${file.relPath}:`, err);
-        errorCount++;
-      }
-    }
-
-    setBulkAiRunning(false);
-    setBulkAiProgress({ current: 0, total: 0, currentFile: "" });
-    
-    if (wasCancelled) {
-      setMessage(`Cancelled. Processed ${successCount} files before stopping.`);
-    } else {
-      setMessage(`Done! Filled ${successCount} files${errorCount > 0 ? `, ${errorCount} errors` : ""}.`);
-    }
-  };
-
-  const cancelBulkAiFill = () => {
-    bulkAiCancelledRef.current = true;
-  };
 
   // Toggle individual file selection for conversion
   const toggleFileSelection = (relPath: string) => {
@@ -2327,75 +2189,14 @@ export default function MediaAdminPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {aiConfiguredGlobal && !bulkAiRunning && (
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={bulkAiSupportedOnly}
-                    onChange={(e) => setBulkAiSupportedOnly(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
-                  />
-                  Supported only
-                </label>
-                <div className="relative group">
-                  <button
-                    onClick={() => handleBulkAiFill(true)}
-                    disabled={loading || filteredFiles.length === 0}
-                    className="flex items-center gap-1.5 rounded-md border border-blue-300/50 bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30 disabled:opacity-50"
-                    title="Use AI to fill metadata for files without titles"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Fill Empty with AI
-                  </button>
-                  {/* Dropdown for "Fill All" option */}
-                  <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-10">
-                    <button
-                      onClick={() => handleBulkAiFill(false)}
-                      disabled={loading || filteredFiles.length === 0}
-                      className="whitespace-nowrap rounded-md border border-amber-300/50 bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-50 transition hover:border-amber-200 hover:bg-amber-500/30 disabled:opacity-50"
-                      title="Re-fill ALL visible files with AI (overwrites existing)"
-                    >
-                      Fill All (overwrite)
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {bulkAiRunning && (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 text-xs text-blue-300">
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>
-                    {bulkAiProgress.current}/{bulkAiProgress.total}
-                  </span>
-                </div>
-                <div className="max-w-[200px] truncate text-xs text-neutral-400" title={bulkAiProgress.currentFile}>
-                  {bulkAiProgress.currentFile.split("/").pop()}
-                </div>
-                <button
-                  onClick={cancelBulkAiFill}
-                  className="rounded-md border border-red-300/50 bg-red-500/20 px-2 py-1 text-xs font-semibold text-red-50 transition hover:border-red-200 hover:bg-red-500/30"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-            {!bulkAiRunning && (
-              <button
-                onClick={refreshMediaList}
-                disabled={loading}
-                className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
-                title="Refresh the media library"
-              >
-                {loading ? "Refreshing…" : "Refresh"}
-              </button>
-            )}
+            <button
+              onClick={refreshMediaList}
+              disabled={loading}
+              className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
+              title="Refresh the media library"
+            >
+              {loading ? "Refreshing…" : "Refresh"}
+            </button>
             {mediaSource === "remote" && (
               <div className="flex items-center gap-2">
                 <button
@@ -2533,7 +2334,7 @@ export default function MediaAdminPage() {
                         />
                       </th>
                       <th className="px-3 py-2 font-semibold w-16 text-center">Cover</th>
-                      <th className="px-3 py-2 font-semibold w-48">File</th>
+                      <th className="px-3 py-2 font-semibold w-64">File</th>
                       <th className="px-3 py-2 font-semibold w-20 text-left">
                         Format
                       </th>
@@ -2583,7 +2384,7 @@ export default function MediaAdminPage() {
                               </div>
                             )}
                           </td>
-                          <td className="px-3 py-2 max-w-[192px]">
+                          <td className="px-3 py-2 max-w-[256px]">
                             <button
                               type="button"
                               className="text-left underline decoration-dotted underline-offset-2 hover:text-emerald-200 truncate block w-full"

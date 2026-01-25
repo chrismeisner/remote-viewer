@@ -37,16 +37,29 @@ export async function PUT(request: NextRequest) {
     try {
       const payload = (await request.json()) as ChannelSchedule;
       const channelId = normalizeChannelId(channel);
+      const scheduleType = payload.type || "24hour";
 
       // Load existing schedule from remote
       const fullSchedule = await loadFullSchedule("remote");
 
       // Update the channel's schedule - preserve existing shortName, active, etc.
       const existingChannel = fullSchedule.channels[channelId] || {};
-      fullSchedule.channels[channelId] = {
-        ...existingChannel,
-        slots: payload.slots,
-      };
+      
+      if (scheduleType === "looping") {
+        fullSchedule.channels[channelId] = {
+          ...existingChannel,
+          type: "looping",
+          playlist: payload.playlist,
+          slots: undefined,
+        };
+      } else {
+        fullSchedule.channels[channelId] = {
+          ...existingChannel,
+          type: "24hour",
+          slots: payload.slots,
+          playlist: undefined,
+        };
+      }
 
       // Normalize schedule for pushing (ensure active field is explicit)
       const normalizedSchedule = normalizeScheduleForPush(fullSchedule);

@@ -9,6 +9,8 @@ import {
   ChannelSchedule,
   Schedule,
   ScheduleSlot,
+  ScheduleType,
+  PlaylistItem,
   parseTimeToSeconds,
   validateChannelSchedule,
   validateSchedule,
@@ -421,10 +423,25 @@ export async function saveSchedule(
 
   // Update the channel's schedule - preserve existing shortName, active, etc.
   const existingChannel = fullSchedule.channels[channelId] || {};
-  fullSchedule.channels[channelId] = {
-    ...existingChannel,
-    slots: schedule.slots,
-  };
+  const scheduleType: ScheduleType = schedule.type || existingChannel.type || "24hour";
+  
+  if (scheduleType === "looping") {
+    fullSchedule.channels[channelId] = {
+      ...existingChannel,
+      type: "looping",
+      playlist: schedule.playlist,
+      // Clear slots for looping channels
+      slots: undefined,
+    };
+  } else {
+    fullSchedule.channels[channelId] = {
+      ...existingChannel,
+      type: "24hour",
+      slots: schedule.slots,
+      // Clear playlist for 24hour channels
+      playlist: undefined,
+    };
+  }
 
   // Save back
   await saveFullSchedule(fullSchedule);
@@ -444,7 +461,14 @@ export async function loadSchedule(
     return null;
   }
   
-  return { slots: channelSchedule.slots };
+  // Return full channel schedule including type and playlist for looping channels
+  return {
+    type: channelSchedule.type,
+    slots: channelSchedule.slots,
+    playlist: channelSchedule.playlist,
+    shortName: channelSchedule.shortName,
+    active: channelSchedule.active,
+  };
 }
 
 export type ChannelInfo = {
@@ -452,6 +476,7 @@ export type ChannelInfo = {
   shortName?: string;
   active?: boolean; // Default true if undefined
   scheduledCount?: number; // Number of scheduled items in this channel
+  type?: ScheduleType; // "24hour" (default) or "looping"
 };
 
 export async function listChannels(source: MediaSource = "local"): Promise<ChannelInfo[]> {
@@ -461,18 +486,26 @@ export async function listChannels(source: MediaSource = "local"): Promise<Chann
 
   const channels: ChannelInfo[] = Object.entries(fullSchedule.channels).map(
     ([id, schedule]) => {
+      const scheduleType: ScheduleType = schedule.type || "24hour";
+      // Count items based on schedule type
+      const scheduledCount = scheduleType === "looping"
+        ? schedule.playlist?.length ?? 0
+        : schedule.slots?.length ?? 0;
+      
       console.log("[Media Lib] listChannels - processing channel:", {
         id,
         shortName: schedule.shortName,
+        type: scheduleType,
         hasShortName: "shortName" in schedule,
         scheduleKeys: Object.keys(schedule),
-        slotCount: schedule.slots?.length ?? 0,
+        scheduledCount,
       });
       return {
         id,
         shortName: schedule.shortName,
         active: schedule.active ?? true, // Default to active if not set
-        scheduledCount: schedule.slots?.length ?? 0,
+        scheduledCount,
+        type: scheduleType,
       };
     },
   );
@@ -501,31 +534,50 @@ export async function listActiveChannels(source: MediaSource = "local"): Promise
 export async function createChannel(
   channel?: string,
   shortName?: string,
-): Promise<{ channel: string; schedule: ChannelSchedule; shortName?: string }> {
-  console.log("[Media Lib] createChannel called", { channel, shortName });
+  type?: ScheduleType,
+): Promise<{ channel: string; schedule: ChannelSchedule; shortName?: string; type?: ScheduleType }> {
+  console.log("[Media Lib] createChannel called", { channel, shortName, type });
   const id = normalizeChannelId(channel);
+  const scheduleType: ScheduleType = type || "24hour";
 
   // If it already exists, return the current schedule (or empty).
   const existing = await loadSchedule(id);
   if (existing) {
     const fullSchedule = await loadLocalFullSchedule();
-    const existingShortName = fullSchedule.channels[id]?.shortName;
-    console.log("[Media Lib] createChannel - channel exists, returning existing:", { id, existingShortName });
-    return { channel: id, schedule: existing, shortName: existingShortName };
+    const existingChannel = fullSchedule.channels[id];
+    console.log("[Media Lib] createChannel - channel exists, returning existing:", { 
+      id, 
+      existingShortName: existingChannel?.shortName,
+      existingType: existingChannel?.type,
+    });
+    return { 
+      channel: id, 
+      schedule: existing, 
+      shortName: existingChannel?.shortName,
+      type: existingChannel?.type || "24hour",
+    };
   }
 
   // Load full schedule and add new channel
   const fullSchedule = await loadLocalFullSchedule();
-  const newChannelData: ChannelSchedule = { slots: [], shortName: shortName?.trim() || undefined };
+  const newChannelData: ChannelSchedule = scheduleType === "looping"
+    ? { type: "looping", playlist: [], shortName: shortName?.trim() || undefined }
+    : { type: "24hour", slots: [], shortName: shortName?.trim() || undefined };
+  
   console.log("[Media Lib] createChannel - creating new channel:", { id, newChannelData });
   fullSchedule.channels[id] = newChannelData;
   
   console.log("[Media Lib] createChannel - saving fullSchedule with channels:", 
-    Object.entries(fullSchedule.channels).map(([cid, data]) => ({ id: cid, shortName: data.shortName }))
+    Object.entries(fullSchedule.channels).map(([cid, data]) => ({ id: cid, shortName: data.shortName, type: data.type }))
   );
   await saveFullSchedule(fullSchedule);
 
-  return { channel: id, schedule: { slots: [] }, shortName: shortName?.trim() || undefined };
+  return { 
+    channel: id, 
+    schedule: newChannelData, 
+    shortName: shortName?.trim() || undefined,
+    type: scheduleType,
+  };
 }
 
 export async function deleteChannel(channel?: string): Promise<void> {
@@ -613,6 +665,22 @@ async function getScheduledNowPlaying(
   const schedule = await loadSchedule(channel, source);
   if (!schedule) return null;
 
+  const scheduleType: ScheduleType = schedule.type || "24hour";
+
+  // Branch based on schedule type
+  if (scheduleType === "looping") {
+    return getLoopingNowPlaying(schedule, now, source);
+  }
+
+  // Default: 24hour slot-based scheduling
+  return get24HourNowPlaying(schedule, now, source);
+}
+
+async function get24HourNowPlaying(
+  schedule: ChannelSchedule,
+  now: number,
+  source: MediaSource,
+): Promise<NowPlaying | null> {
   // For remote source, always use remote media items; for local, use local files
   const fileEntries =
     source === "remote"
@@ -637,6 +705,50 @@ async function getScheduledNowPlaying(
   }
 
   // No active slot - show blue screen (return null)
+  return null;
+}
+
+/**
+ * Get now playing for a looping schedule.
+ * The playlist loops infinitely based on epoch time.
+ * Everyone watching sees the same thing at the same time.
+ */
+async function getLoopingNowPlaying(
+  schedule: ChannelSchedule,
+  now: number,
+  source: MediaSource,
+): Promise<NowPlaying | null> {
+  const playlist = schedule.playlist;
+  if (!playlist || playlist.length === 0) return null;
+
+  // Calculate total playlist duration
+  const totalDuration = playlist.reduce((sum, item) => sum + item.durationSeconds, 0);
+  if (totalDuration <= 0) return null;
+
+  // Get current position in the infinite loop based on epoch seconds
+  const nowSeconds = Math.floor(now / 1000);
+  const positionInLoop = nowSeconds % totalDuration;
+
+  // Find which item is playing and at what offset
+  let accumulated = 0;
+  for (const item of playlist) {
+    if (positionInLoop < accumulated + item.durationSeconds) {
+      const offsetSeconds = positionInLoop - accumulated;
+      const remainingSeconds = item.durationSeconds - offsetSeconds;
+      
+      return {
+        title: item.title || titleFromPath(item.file),
+        relPath: item.file,
+        durationSeconds: item.durationSeconds,
+        startOffsetSeconds: offsetSeconds,
+        endsAt: now + remainingSeconds * 1000,
+        src: buildMediaUrl(item.file),
+      };
+    }
+    accumulated += item.durationSeconds;
+  }
+
+  // Should never reach here, but just in case
   return null;
 }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadSchedule, saveSchedule } from "@/lib/media";
-import { DailySchedule } from "@/lib/schedule";
+import { ChannelSchedule } from "@/lib/schedule";
 
 export const runtime = "nodejs";
 
@@ -19,7 +19,7 @@ export async function PUT(
 ) {
   const { channel } = await params;
   try {
-    const payload = (await request.json()) as DailySchedule;
+    const payload = (await request.json()) as ChannelSchedule;
     const saved = await saveSchedule(payload, channel);
     return NextResponse.json({ schedule: saved });
   } catch (error) {
