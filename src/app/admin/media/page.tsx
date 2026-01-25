@@ -1489,6 +1489,20 @@ function CoverImageSection({
                   />
                 </label>
               </div>
+              {/* Show resolved URL when a cover is selected */}
+              {coverLocal && (
+                <p className="text-xs text-neutral-500 mt-1.5 font-mono break-all">
+                  <span className="text-neutral-600">URL: </span>
+                  <a 
+                    href={`${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(coverLocal)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300 hover:underline"
+                  >
+                    {`${REMOTE_MEDIA_BASE}covers/${coverLocal}`}
+                  </a>
+                </p>
+              )}
             </div>
           )}
 
