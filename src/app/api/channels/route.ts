@@ -313,8 +313,7 @@ export async function PATCH(request: NextRequest) {
             }
             
             // Save the updated schedule
-            const { saveSchedule } = await import("@/lib/schedule");
-            await saveSchedule(fullSchedule, "local");
+            await saveFullSchedule(fullSchedule);
           }
         }
       }
