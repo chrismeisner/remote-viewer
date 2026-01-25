@@ -295,11 +295,44 @@ export async function resolveMediaPath(relPath: string): Promise<string> {
 // Load the full schedule file
 export async function loadFullSchedule(
   source: MediaSource = "local",
+  options?: { forceFtpRead?: boolean }
 ): Promise<Schedule> {
   if (source === "remote") {
+    // For most read operations, CDN is fine and faster.
+    // Use forceFtpRead when you need absolute consistency.
+    if (options?.forceFtpRead) {
+      return loadRemoteFullScheduleFromFtp();
+    }
     return loadRemoteFullSchedule();
   }
   return loadLocalFullSchedule();
+}
+
+/**
+ * Load schedule directly from FTP (not CDN).
+ * Use this when you need the most up-to-date data and can't use cached CDN.
+ * NOTE: For write operations, prefer atomicJsonUpdate in ftp.ts which handles
+ * locking and prevents race conditions.
+ */
+async function loadRemoteFullScheduleFromFtp(): Promise<Schedule> {
+  const { downloadJsonFromFtp, isFtpConfigured } = await import("@/lib/ftp");
+  
+  if (!isFtpConfigured()) {
+    console.warn("FTP not configured, falling back to CDN");
+    return loadRemoteFullSchedule();
+  }
+  
+  try {
+    const schedule = await downloadJsonFromFtp<Schedule>("schedule.json");
+    if (!schedule) {
+      return { channels: {} };
+    }
+    validateSchedule(schedule);
+    return schedule;
+  } catch (error) {
+    console.warn("Failed to load schedule from FTP, falling back to CDN:", error);
+    return loadRemoteFullSchedule();
+  }
 }
 
 async function loadLocalFullSchedule(): Promise<Schedule> {

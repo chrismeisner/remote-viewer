@@ -2,6 +2,57 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { Client } from "basic-ftp";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FTP Mutex for preventing race conditions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Simple mutex implementation for serializing FTP operations.
+ * This prevents race conditions when multiple requests try to modify the same file.
+ */
+class FtpMutex {
+  private locks = new Map<string, Promise<void>>();
+  
+  /**
+   * Acquire a lock for a specific file.
+   * Returns a release function that must be called when done.
+   */
+  async acquire(filename: string): Promise<() => void> {
+    // Wait for any existing lock on this file
+    const existingLock = this.locks.get(filename);
+    if (existingLock) {
+      await existingLock;
+    }
+    
+    // Create a new lock
+    let release: () => void = () => {};
+    const lockPromise = new Promise<void>((resolve) => {
+      release = () => {
+        this.locks.delete(filename);
+        resolve();
+      };
+    });
+    
+    this.locks.set(filename, lockPromise);
+    return release;
+  }
+  
+  /**
+   * Execute a function with exclusive access to a file.
+   */
+  async withLock<T>(filename: string, fn: () => Promise<T>): Promise<T> {
+    const release = await this.acquire(filename);
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+}
+
+// Global mutex instance for FTP operations
+const ftpMutex = new FtpMutex();
+
 export type FtpConfig = {
   host: string | undefined;
   user: string | undefined;
@@ -260,6 +311,88 @@ export async function listFtpDirectory(subPath: string): Promise<string[]> {
   } finally {
     client.close();
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Atomic FTP Operations (Read-Modify-Write with Locking)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Atomically read, modify, and write a JSON file on FTP.
+ * This prevents race conditions by:
+ * 1. Acquiring a mutex lock
+ * 2. Reading directly from FTP (not CDN)
+ * 3. Applying the modifier function
+ * 4. Writing back to FTP
+ * 5. Releasing the lock
+ * 
+ * @param filename - The JSON file to modify (relative to FTP base directory)
+ * @param modifier - Function that receives current data and returns modified data
+ * @param defaultValue - Default value if file doesn't exist
+ * @returns The modified data
+ */
+export async function atomicJsonUpdate<T>(
+  filename: string,
+  modifier: (current: T) => T | Promise<T>,
+  defaultValue: T
+): Promise<T> {
+  return ftpMutex.withLock(filename, async () => {
+    console.log(`[FTP Atomic] Starting atomic update for ${filename}`);
+    
+    // Read current data directly from FTP (not CDN)
+    let current: T;
+    try {
+      const downloaded = await downloadJsonFromFtp<T>(filename);
+      current = downloaded ?? defaultValue;
+      console.log(`[FTP Atomic] Read current data from FTP for ${filename}`);
+    } catch (error) {
+      console.log(`[FTP Atomic] File not found or error reading ${filename}, using default`);
+      current = defaultValue;
+    }
+    
+    // Apply modification
+    const modified = await modifier(current);
+    
+    // Write back to FTP
+    await uploadJsonToFtp(filename, modified);
+    console.log(`[FTP Atomic] Successfully wrote updated data to ${filename}`);
+    
+    return modified;
+  });
+}
+
+/**
+ * Read a JSON file directly from FTP with locking.
+ * Use this instead of fetching from CDN when you need current data.
+ * 
+ * @param filename - The JSON file to read
+ * @param defaultValue - Default value if file doesn't exist
+ * @returns The file data or default value
+ */
+export async function readJsonFromFtpWithLock<T>(
+  filename: string,
+  defaultValue: T
+): Promise<T> {
+  return ftpMutex.withLock(filename, async () => {
+    const downloaded = await downloadJsonFromFtp<T>(filename);
+    return downloaded ?? defaultValue;
+  });
+}
+
+/**
+ * Write a JSON file to FTP with locking.
+ * Use this for simple overwrites where you don't need to read first.
+ * 
+ * @param filename - The JSON file to write
+ * @param data - The data to write
+ */
+export async function writeJsonToFtpWithLock<T>(
+  filename: string,
+  data: T
+): Promise<string> {
+  return ftpMutex.withLock(filename, async () => {
+    return uploadJsonToFtp(filename, data);
+  });
 }
 
 // Re-export filename utilities from client-safe module

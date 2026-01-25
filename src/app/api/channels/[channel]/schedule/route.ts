@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadSchedule, saveSchedule, loadFullSchedule } from "@/lib/media";
+import { loadSchedule, saveSchedule } from "@/lib/media";
 import { ChannelSchedule, Schedule } from "@/lib/schedule";
 import type { MediaSource } from "@/constants/media";
-import { isFtpConfigured, uploadJsonToFtp, normalizeChannelId } from "@/lib/ftp";
+import { isFtpConfigured, normalizeChannelId, atomicJsonUpdate } from "@/lib/ftp";
 
 export const runtime = "nodejs";
 
@@ -60,33 +60,35 @@ export async function PUT(
       const channelId = normalizeChannelId(channel);
       const scheduleType = payload.type || "24hour";
 
-      // Load existing schedule from remote
-      const fullSchedule = await loadFullSchedule("remote");
+      // Use atomic operation to prevent race conditions
+      // This reads directly from FTP, modifies, and writes back with locking
+      await atomicJsonUpdate<Schedule>(
+        "schedule.json",
+        (fullSchedule) => {
+          // Update the channel's schedule - preserve existing shortName, active, etc.
+          const existingChannel = fullSchedule.channels[channelId] || {};
 
-      // Update the channel's schedule - preserve existing shortName, active, etc.
-      const existingChannel = fullSchedule.channels[channelId] || {};
+          if (scheduleType === "looping") {
+            fullSchedule.channels[channelId] = {
+              ...existingChannel,
+              type: "looping",
+              playlist: payload.playlist,
+              slots: undefined,
+            };
+          } else {
+            fullSchedule.channels[channelId] = {
+              ...existingChannel,
+              type: "24hour",
+              slots: payload.slots,
+              playlist: undefined,
+            };
+          }
 
-      if (scheduleType === "looping") {
-        fullSchedule.channels[channelId] = {
-          ...existingChannel,
-          type: "looping",
-          playlist: payload.playlist,
-          slots: undefined,
-        };
-      } else {
-        fullSchedule.channels[channelId] = {
-          ...existingChannel,
-          type: "24hour",
-          slots: payload.slots,
-          playlist: undefined,
-        };
-      }
-
-      // Normalize schedule for pushing (ensure active field is explicit)
-      const normalizedSchedule = normalizeScheduleForPush(fullSchedule);
-
-      // Push directly to FTP
-      await uploadJsonToFtp("schedule.json", normalizedSchedule);
+          // Normalize schedule for pushing (ensure active field is explicit)
+          return normalizeScheduleForPush(fullSchedule);
+        },
+        { channels: {} }
+      );
 
       return NextResponse.json({ schedule: payload, source: "remote" });
     } catch (error) {

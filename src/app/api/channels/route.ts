@@ -10,7 +10,7 @@ import {
   saveFullSchedule,
   type ChannelInfo,
 } from "@/lib/media";
-import { normalizeChannelId, isFtpConfigured, uploadJsonToFtp } from "@/lib/ftp";
+import { normalizeChannelId, isFtpConfigured, atomicJsonUpdate } from "@/lib/ftp";
 
 export const runtime = "nodejs";
 
@@ -26,7 +26,11 @@ type ScheduleData = {
 
 // ==================== REMOTE HELPERS ====================
 
-async function fetchRemoteSchedule(): Promise<ScheduleData | null> {
+// NOTE: For READ operations (GET), we still use CDN fetch for performance.
+// For WRITE operations (POST/PATCH/DELETE), we use atomicJsonUpdate which
+// reads directly from FTP to prevent race conditions.
+
+async function fetchRemoteScheduleForRead(): Promise<ScheduleData | null> {
   try {
     // Add timestamp to bust CDN caches
     const url = `${REMOTE_MEDIA_BASE}schedule.json?t=${Date.now()}`;
@@ -39,7 +43,7 @@ async function fetchRemoteSchedule(): Promise<ScheduleData | null> {
 }
 
 async function listRemoteChannels(): Promise<ChannelInfo[]> {
-  const schedule = await fetchRemoteSchedule();
+  const schedule = await fetchRemoteScheduleForRead();
   return channelsFromSchedule(schedule);
 }
 
@@ -78,13 +82,6 @@ function channelsFromSchedule(schedule: ScheduleData | null): ChannelInfo[] {
     });
   
   return sortChannelsNumerically(channels);
-}
-
-async function pushRemoteSchedule(schedule: ScheduleData): Promise<void> {
-  if (!isFtpConfigured()) {
-    throw new Error("FTP not configured");
-  }
-  await uploadJsonToFtp("schedule.json", schedule);
 }
 
 // ==================== GET ====================
@@ -150,29 +147,41 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "FTP not configured" }, { status: 400 });
       }
 
-      const schedule = await fetchRemoteSchedule() || { channels: {} };
-      
-      if (schedule.channels[normalizedId]) {
+      // Use atomic operation to prevent race conditions
+      // This reads directly from FTP, modifies, and writes back with locking
+      let channelExists = false;
+      const updatedSchedule = await atomicJsonUpdate<ScheduleData>(
+        "schedule.json",
+        (schedule) => {
+          if (schedule.channels[normalizedId]) {
+            channelExists = true;
+            return schedule; // No change if channel exists
+          }
+
+          schedule.channels[normalizedId] = scheduleType === "looping"
+            ? {
+                type: "looping",
+                playlist: [],
+                shortName: shortName || undefined,
+                active: true,
+              }
+            : {
+                type: "24hour",
+                slots: [],
+                shortName: shortName || undefined,
+                active: true,
+              };
+          return schedule;
+        },
+        { channels: {} }
+      );
+
+      if (channelExists) {
         return NextResponse.json({ error: "Channel already exists" }, { status: 400 });
       }
 
-      schedule.channels[normalizedId] = scheduleType === "looping"
-        ? {
-            type: "looping",
-            playlist: [],
-            shortName: shortName || undefined,
-            active: true,
-          }
-        : {
-            type: "24hour",
-            slots: [],
-            shortName: shortName || undefined,
-            active: true,
-          };
-
-      await pushRemoteSchedule(schedule);
-      // Use in-memory schedule data (don't refetch - CDN might have propagation delay)
-      const channels = channelsFromSchedule(schedule);
+      // Use the returned schedule data (fresh from FTP, not CDN)
+      const channels = channelsFromSchedule(updatedSchedule);
 
       return NextResponse.json({
         channel: { id: normalizedId, shortName, active: true, type: scheduleType },
@@ -223,54 +232,76 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: "FTP not configured" }, { status: 400 });
       }
 
-      const schedule = await fetchRemoteSchedule();
-      if (!schedule?.channels[id]) {
+      // Use atomic operation to prevent race conditions
+      let channelNotFound = false;
+      let targetIdExists = false;
+      let finalTargetId = id;
+
+      const updatedSchedule = await atomicJsonUpdate<ScheduleData>(
+        "schedule.json",
+        (schedule) => {
+          if (!schedule.channels[id]) {
+            channelNotFound = true;
+            return schedule; // No change if channel not found
+          }
+
+          let targetId = id;
+
+          // Handle rename
+          if (newIdRaw) {
+            const normalizedNewId = normalizeChannelId(newIdRaw);
+            if (normalizedNewId && normalizedNewId !== id) {
+              if (schedule.channels[normalizedNewId]) {
+                targetIdExists = true;
+                return schedule; // No change if target ID exists
+              }
+              schedule.channels[normalizedNewId] = schedule.channels[id];
+              delete schedule.channels[id];
+              targetId = normalizedNewId;
+            }
+          }
+
+          finalTargetId = targetId;
+
+          // Handle type change - this clears the schedule
+          const currentType = schedule.channels[targetId].type || "24hour";
+          if (newType && newType !== currentType) {
+            const channelData = schedule.channels[targetId];
+            if (newType === "looping") {
+              // Converting to looping: remove slots, add empty playlist
+              delete channelData.slots;
+              channelData.playlist = [];
+              channelData.type = "looping";
+            } else {
+              // Converting to 24hour: remove playlist, add empty slots
+              delete channelData.playlist;
+              channelData.slots = [];
+              channelData.type = "24hour";
+            }
+          }
+
+          // Update properties
+          if (shortName !== undefined) schedule.channels[targetId].shortName = shortName || undefined;
+          if (active !== undefined) schedule.channels[targetId].active = active;
+
+          return schedule;
+        },
+        { channels: {} }
+      );
+
+      if (channelNotFound) {
         return NextResponse.json({ error: "Channel not found" }, { status: 404 });
       }
-
-      let targetId = id;
-
-      // Handle rename
-      if (newIdRaw) {
-        const normalizedNewId = normalizeChannelId(newIdRaw);
-        if (normalizedNewId && normalizedNewId !== id) {
-          if (schedule.channels[normalizedNewId]) {
-            return NextResponse.json({ error: "Channel ID already exists" }, { status: 400 });
-          }
-          schedule.channels[normalizedNewId] = schedule.channels[id];
-          delete schedule.channels[id];
-          targetId = normalizedNewId;
-        }
+      if (targetIdExists) {
+        return NextResponse.json({ error: "Channel ID already exists" }, { status: 400 });
       }
 
-      // Handle type change - this clears the schedule
-      const currentType = schedule.channels[targetId].type || "24hour";
-      if (newType && newType !== currentType) {
-        const channelData = schedule.channels[targetId];
-        if (newType === "looping") {
-          // Converting to looping: remove slots, add empty playlist
-          delete channelData.slots;
-          channelData.playlist = [];
-          channelData.type = "looping";
-        } else {
-          // Converting to 24hour: remove playlist, add empty slots
-          delete channelData.playlist;
-          channelData.slots = [];
-          channelData.type = "24hour";
-        }
-      }
-
-      // Update properties
-      if (shortName !== undefined) schedule.channels[targetId].shortName = shortName || undefined;
-      if (active !== undefined) schedule.channels[targetId].active = active;
-
-      await pushRemoteSchedule(schedule);
-      // Use in-memory schedule data (don't refetch - CDN might have propagation delay)
-      const channels = channelsFromSchedule(schedule);
-      const updated = channels.find(c => c.id === targetId);
+      // Use the returned schedule data (fresh from FTP, not CDN)
+      const channels = channelsFromSchedule(updatedSchedule);
+      const updated = channels.find(c => c.id === finalTargetId);
 
       return NextResponse.json({
-        channel: updated || { id: targetId, active: true },
+        channel: updated || { id: finalTargetId, active: true },
         channels,
         source,
       });
@@ -356,15 +387,28 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({ error: "FTP not configured" }, { status: 400 });
       }
 
-      const schedule = await fetchRemoteSchedule();
-      if (!schedule?.channels[id]) {
+      // Use atomic operation to prevent race conditions
+      let channelNotFound = false;
+      const updatedSchedule = await atomicJsonUpdate<ScheduleData>(
+        "schedule.json",
+        (schedule) => {
+          if (!schedule.channels[id]) {
+            channelNotFound = true;
+            return schedule; // No change if channel not found
+          }
+
+          delete schedule.channels[id];
+          return schedule;
+        },
+        { channels: {} }
+      );
+
+      if (channelNotFound) {
         return NextResponse.json({ error: "Channel not found" }, { status: 404 });
       }
 
-      delete schedule.channels[id];
-      await pushRemoteSchedule(schedule);
-      // Use in-memory schedule data (don't refetch - CDN might have propagation delay)
-      const channels = channelsFromSchedule(schedule);
+      // Use the returned schedule data (fresh from FTP, not CDN)
+      const channels = channelsFromSchedule(updatedSchedule);
 
       return NextResponse.json({ ok: true, channels, source });
     } else {

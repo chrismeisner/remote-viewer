@@ -1,35 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { REMOTE_MEDIA_BASE } from "@/constants/media";
 import {
   saveFullSchedule,
   loadFullSchedule,
   clearMediaCaches,
 } from "@/lib/media";
-import { isFtpConfigured, uploadJsonToFtp } from "@/lib/ftp";
+import { isFtpConfigured, writeJsonToFtpWithLock, downloadJsonFromFtp } from "@/lib/ftp";
 
 export const runtime = "nodejs";
 
 type ScheduleData = {
   channels: Record<string, { slots?: unknown[]; shortName?: string; active?: boolean }>;
 };
-
-async function fetchRemoteSchedule(): Promise<ScheduleData | null> {
-  try {
-    const url = `${REMOTE_MEDIA_BASE}schedule.json?t=${Date.now()}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-async function pushRemoteSchedule(schedule: ScheduleData): Promise<string> {
-  if (!isFtpConfigured()) {
-    throw new Error("FTP not configured");
-  }
-  return await uploadJsonToFtp("schedule.json", schedule);
-}
 
 /**
  * POST /api/channels/reset?source=local|remote
@@ -49,15 +30,21 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "FTP not configured" }, { status: 400 });
       }
 
-      // Check current state before reset
-      const currentSchedule = await fetchRemoteSchedule();
-      const currentChannelCount = currentSchedule ? Object.keys(currentSchedule.channels || {}).length : 0;
+      // Check current state before reset (read directly from FTP, not CDN)
+      let currentChannelCount = 0;
+      try {
+        const currentSchedule = await downloadJsonFromFtp<ScheduleData>("schedule.json");
+        currentChannelCount = currentSchedule ? Object.keys(currentSchedule.channels || {}).length : 0;
+      } catch {
+        // File might not exist
+        currentChannelCount = 0;
+      }
       console.log("[Reset API] Remote - current channel count:", currentChannelCount);
 
-      // Push empty schedule to remote
+      // Push empty schedule to remote with locking
       console.log("[Reset API] Remote - uploading empty schedule.json via FTP");
       const emptySchedule: ScheduleData = { channels: {} };
-      const uploadedPath = await pushRemoteSchedule(emptySchedule);
+      const uploadedPath = await writeJsonToFtpWithLock("schedule.json", emptySchedule);
       console.log("[Reset API] Remote - uploaded to:", uploadedPath);
 
       // Note: We can't verify immediately due to CDN caching, but the FTP upload succeeded
