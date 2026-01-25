@@ -1354,16 +1354,19 @@ function extractCodecNames(probeJson: unknown): {
     const avgFps = parseFps(avgFrameRate);
     
     if (rFps !== null && avgFps !== null && rFps > 0 && avgFps > 0) {
-      // If r_frame_rate and avg_frame_rate differ significantly, likely VFR
-      // A difference of more than 1% suggests VFR
+      // If r_frame_rate and avg_frame_rate differ, could indicate VFR
+      // Even small differences (>0.5%) can cause audio drift over long playback
+      // True CFR files should have nearly identical rates (<0.5% difference)
       const diff = Math.abs(rFps - avgFps) / Math.max(rFps, avgFps);
-      if (diff < 0.01) {
+      if (diff < 0.005) {
+        // Less than 0.5% difference - definitely CFR
         frameRateMode = "cfr";
-      } else if (diff > 0.05) {
-        // More than 5% difference is strong indicator of VFR
+      } else if (diff < 0.02) {
+        // 0.5% to 2% - slight variation, mark as suspected VFR
+        // This catches files like 29.77fps vs 29.97fps that can cause drift
         frameRateMode = "vfr";
       } else {
-        // Between 1-5% - could be slight variation, mark as potentially VFR
+        // More than 2% difference - definitely VFR
         frameRateMode = "vfr";
       }
     }

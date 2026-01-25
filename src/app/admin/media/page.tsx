@@ -2976,6 +2976,8 @@ function isAlreadyOptimal(file: MediaFile): boolean {
   if (ext !== "mp4" && ext !== "m4v") return false;
   if (hasUnsupportedAudio(file)) return false;
   if (needsFullReencode(file)) return false;
+  // VFR files need re-encoding for sync, not optimal even if format is correct
+  if (needsSyncFix(file)) return false;
   // Check if audio is already AAC
   const audioCodec = file.audioCodec?.toLowerCase() || "";
   if (audioCodec && audioCodec !== "aac") return false;

@@ -434,52 +434,64 @@ export default function Home() {
     return () => clearTimeout(timeout);
   }, [nowPlaying?.endsAt]);
 
-  // Audio/video drift detection and auto-resync
-  // Checks every 15 seconds if playback has drifted from expected position
-  // This catches VFR content or other sources of drift before it becomes noticeable
-  useEffect(() => {
-    if (!nowPlaying) return;
+  // Manual hard resync to fix audio/video desync
+  // VFR content and some codecs can cause audio to drift from video over time.
+  // Unlike a soft seek, this forces the browser to reload the media source,
+  // which resets both audio and video decoders - similar to changing channels.
+  const performHardResync = () => {
+    const video = videoRef.current;
+    if (!video || !nowPlaying) return;
     
-    const DRIFT_CHECK_INTERVAL_MS = 15000; // Check every 15 seconds
-    const DRIFT_THRESHOLD_SECONDS = 2; // Resync if drifted more than 2 seconds
+    const expected = computeExpectedOffset(nowPlaying);
     
-    const checkDrift = () => {
-      const video = videoRef.current;
-      if (!video || video.paused || !video.duration) return;
+    console.log("[player] performing manual hard resync", {
+      currentTime: video.currentTime?.toFixed(2),
+      expectedTime: expected.toFixed(2),
+      src: nowPlaying.relPath,
+    });
+    
+    // Store current state
+    const wasMuted = video.muted;
+    const currentVolume = video.volume;
+    const currentSrc = video.src;
+    
+    try {
+      // Force full reload by removing and re-adding source
+      // This resets both audio and video decoders
+      video.pause();
+      video.src = "";
+      video.load();
       
-      const expected = computeExpectedOffset(nowPlaying);
-      const actual = video.currentTime;
-      const drift = actual - expected; // Positive = ahead, negative = behind
-      const absDrift = Math.abs(drift);
-      
-      if (absDrift > DRIFT_THRESHOLD_SECONDS) {
-        console.log("[player] drift detected, resyncing", {
-          expected: expected.toFixed(2),
-          actual: actual.toFixed(2),
-          drift: drift.toFixed(2),
-          direction: drift > 0 ? "ahead" : "behind",
-        });
+      // Small delay to ensure cleanup, then reload
+      setTimeout(() => {
+        video.src = currentSrc;
+        video.load();
         
-        try {
-          video.currentTime = expected;
-          desiredOffsetRef.current = expected;
-        } catch (err) {
-          console.warn("[player] drift resync failed", err);
-        }
-      }
-    };
-    
-    // Initial check after a short delay (let video stabilize first)
-    const initialTimeout = setTimeout(checkDrift, 5000);
-    
-    // Periodic checks
-    const interval = setInterval(checkDrift, DRIFT_CHECK_INTERVAL_MS);
-    
-    return () => {
-      clearTimeout(initialTimeout);
-      clearInterval(interval);
-    };
-  }, [nowPlaying]);
+        const handleReloaded = () => {
+          video.removeEventListener("loadedmetadata", handleReloaded);
+          
+          // Restore state and seek to correct position
+          video.muted = wasMuted;
+          video.volume = currentVolume;
+          video.currentTime = computeExpectedOffset(nowPlaying);
+          desiredOffsetRef.current = video.currentTime;
+          
+          video.play().catch((err) => {
+            console.warn("[player] hard resync play failed", err);
+          });
+          
+          console.log("[player] hard resync complete", {
+            newTime: video.currentTime?.toFixed(2),
+          });
+        };
+        
+        video.addEventListener("loadedmetadata", handleReloaded);
+      }, 50);
+      
+    } catch (err) {
+      console.warn("[player] hard resync failed", err);
+    }
+  };
 
   useEffect(() => {
     const video = videoRef.current;
@@ -734,6 +746,12 @@ export default function Home() {
       if (key === "f") {
         event.preventDefault();
         toggleFullscreen();
+        return;
+      }
+
+      if (key === "s") {
+        event.preventDefault();
+        performHardResync();
         return;
       }
 
@@ -1046,7 +1064,7 @@ export default function Home() {
       <div className="flex w-full flex-nowrap gap-2 sm:flex-wrap">
         <button
           onClick={() => setCrtEnabled((c) => !c)}
-          className={`inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
+          className={`inline-flex min-w-0 flex-1 basis-1/4 items-center justify-center rounded-md border px-3 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
             crtEnabled
               ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
               : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -1057,7 +1075,7 @@ export default function Home() {
         <button
           onClick={() => setMuted((m) => !m)}
           aria-pressed={muted}
-          className={`inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
+          className={`inline-flex min-w-0 flex-1 basis-1/4 items-center justify-center rounded-md border px-3 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
             muted
               ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
               : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -1067,9 +1085,17 @@ export default function Home() {
         </button>
         <button
           onClick={toggleFullscreen}
-          className="inline-flex min-w-0 flex-1 basis-1/3 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+          className="inline-flex min-w-0 flex-1 basis-1/4 items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
         >
           {isFullscreen ? "Exit" : "Fullscreen"}
+        </button>
+        <button
+          onClick={performHardResync}
+          disabled={!nowPlaying}
+          className="inline-flex min-w-0 flex-1 basis-1/4 items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto sm:flex-none"
+          title="Resync audio/video if out of sync"
+        >
+          Sync
         </button>
       </div>
       <button
@@ -1274,6 +1300,7 @@ export default function Home() {
             <li className="flex justify-between gap-4"><span>Mute</span><span className="font-mono text-neutral-100">m</span></li>
             <li className="flex justify-between gap-4"><span>CRT Effect</span><span className="font-mono text-neutral-100">c</span></li>
             <li className="flex justify-between gap-4"><span>Fullscreen</span><span className="font-mono text-neutral-100">f</span></li>
+            <li className="flex justify-between gap-4"><span>Sync audio</span><span className="font-mono text-neutral-100">s</span></li>
           </ul>
         </div>
         <p className="mt-4 text-sm font-semibold text-neutral-200">Launch preferences</p>
