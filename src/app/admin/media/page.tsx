@@ -1650,17 +1650,67 @@ function CoverImageSection({
 function ScanReportModal({
   report,
   onClose,
+  onRecheck,
+  onUpdateReport,
 }: {
   report: ScanReport;
   onClose: () => void;
+  onRecheck?: (relPath: string) => Promise<{ success: boolean; probeSuccess?: boolean; file?: FileResult; message?: string }>;
+  onUpdateReport?: (updatedReport: ScanReport) => void;
 }) {
   const [showAllFiles, setShowAllFiles] = useState(false);
+  const [recheckingFile, setRecheckingFile] = useState<string | null>(null);
   const { stats, fileResults, message } = report;
   
   // Separate files into categories
   const filesWithIssues = fileResults.filter(f => !f.probeSuccess || f.durationSeconds === 0);
   const filesFixed = fileResults.filter(f => f.wasReprobed && f.probeSuccess && f.durationSeconds > 0);
   const filesOk = fileResults.filter(f => f.probeSuccess && f.durationSeconds > 0);
+
+  // Handle recheck button click
+  const handleRecheck = async (relPath: string) => {
+    if (!onRecheck || !onUpdateReport) return;
+    
+    setRecheckingFile(relPath);
+    try {
+      const result = await onRecheck(relPath);
+      
+      if (result.success && result.file) {
+        // Update the fileResults with the new probe result
+        const updatedFileResults = fileResults.map(f => {
+          if (f.file === relPath) {
+            return {
+              ...f,
+              durationSeconds: result.file!.durationSeconds,
+              probeSuccess: result.file!.probeSuccess,
+              probeError: result.file!.probeError,
+              wasReprobed: true,
+            };
+          }
+          return f;
+        });
+        
+        // Recalculate stats
+        const newStats = {
+          ...stats,
+          withDuration: updatedFileResults.filter(f => f.durationSeconds > 0).length,
+          zeroDuration: updatedFileResults.filter(f => f.durationSeconds === 0).length,
+          probeSuccessCount: updatedFileResults.filter(f => f.probeSuccess).length,
+          probeFailCount: updatedFileResults.filter(f => !f.probeSuccess).length,
+        };
+        
+        onUpdateReport({
+          fileResults: updatedFileResults,
+          stats: newStats,
+          message: message,
+        });
+      }
+    } catch (err) {
+      console.error("Recheck failed:", err);
+    } finally {
+      setRecheckingFile(null);
+    }
+  };
   
   // Handle escape key to close modal
   useEffect(() => {
@@ -1836,7 +1886,32 @@ function ScanReportModal({
                         {file.probeError || "Duration: 0m"}
                       </p>
                     </div>
-                    <div className="flex-shrink-0">
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {onRecheck && (
+                        <button
+                          onClick={() => handleRecheck(file.file)}
+                          disabled={recheckingFile !== null}
+                          className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          title="Retry probing this file now"
+                        >
+                          {recheckingFile === file.file ? (
+                            <>
+                              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Checking...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              Recheck
+                            </>
+                          )}
+                        </button>
+                      )}
                       <span className="text-xs px-2 py-1 rounded bg-neutral-700 text-neutral-300 uppercase">
                         {file.format}
                       </span>
@@ -2433,6 +2508,7 @@ export default function MediaAdminPage() {
                       </th>
                       <th className="px-3 py-2 font-semibold min-w-[150px]">Title</th>
                       <th className="px-3 py-2 font-semibold w-16 text-center">Year</th>
+                      <th className="px-3 py-2 font-semibold min-w-[120px]">Tags</th>
                       <th className="px-3 py-2 font-semibold w-24 text-right">
                         Duration
                       </th>
@@ -2510,6 +2586,22 @@ export default function MediaAdminPage() {
                           <td className="px-3 py-2 text-center text-neutral-200">
                             {meta.year || <span className="text-neutral-500">—</span>}
                           </td>
+                          <td className="px-3 py-2 text-neutral-200">
+                            {meta.tags && meta.tags.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {meta.tags.map((tag, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-block px-2 py-0.5 text-xs rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/20"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-neutral-500">—</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right text-neutral-200">
                             {formatDuration(file.durationSeconds)}
                           </td>
@@ -2578,6 +2670,25 @@ export default function MediaAdminPage() {
         <ScanReportModal
           report={scanReport}
           onClose={() => setScanReport(null)}
+          onRecheck={async (relPath) => {
+            const res = await fetch("/api/media-index/recheck", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ relPath }),
+            });
+            const data = await res.json();
+            if (data.success && data.probeSuccess) {
+              // Refresh the media list since the index was updated
+              refreshMediaList();
+            }
+            return {
+              success: data.success,
+              probeSuccess: data.probeSuccess,
+              file: data.file,
+              message: data.message,
+            };
+          }}
+          onUpdateReport={(updatedReport) => setScanReport(updatedReport)}
         />
       )}
     </div>
