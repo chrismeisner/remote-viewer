@@ -8,6 +8,7 @@ import {
   REMOTE_MEDIA_BASE,
 } from "@/constants/media";
 import { Modal, ModalTitle, ModalFooter, ModalButton } from "@/components/Modal";
+import { ChangelogModal } from "@/components/ChangelogModal";
 
 const MUTED_PREF_KEY = "player-muted-default";
 const CRT_PREF_KEY = "player-crt-default";
@@ -33,6 +34,13 @@ type ChannelInfo = {
   id: string;
   shortName?: string;
   active?: boolean;
+};
+
+type ChangelogEntry = {
+  id: string;
+  date: string;
+  message: string;
+  category: "addition" | "update" | "removal" | "note";
 };
 
 export default function Home() {
@@ -61,11 +69,16 @@ export default function Home() {
   const [showHeader, setShowHeader] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showWelcome, setShowWelcome] = useState(true);
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
   
   // Channel overlay state for CRT-style display
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
   const [overlayChannel, setOverlayChannel] = useState<ChannelInfo | null>(null);
   const overlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Track if we've already checked for changelog updates this session
+  const changelogCheckedRef = useRef(false);
   
   // Numeric input buffer for multi-digit channel selection (like a real TV remote)
   const [channelInputBuffer, setChannelInputBuffer] = useState("");
@@ -91,6 +104,46 @@ export default function Home() {
 
   // Video loading state - show blue screen while buffering
   const [isVideoLoading, setIsVideoLoading] = useState(false);
+  // Check for today's changelog entries on mount
+  useEffect(() => {
+    if (changelogCheckedRef.current) return;
+    
+    const checkChangelog = async () => {
+      try {
+        const res = await fetch(`/api/changelog?source=${mediaSource}`);
+        if (!res.ok) return;
+        
+        const data = await res.json();
+        const entries = data.changelog?.entries || [];
+        
+        if (entries.length === 0) return;
+        
+        // Get today's date in local timezone (YYYY-MM-DD format)
+        const today = new Date();
+        const todayStr = today.toLocaleDateString("en-CA"); // en-CA gives YYYY-MM-DD format
+        
+        // Filter entries that match today's date
+        const todaysEntries = entries.filter((entry: ChangelogEntry) => {
+          const entryDate = new Date(entry.date);
+          const entryStr = entryDate.toLocaleDateString("en-CA");
+          return entryStr === todayStr;
+        });
+        
+        if (todaysEntries.length > 0) {
+          setChangelogEntries(todaysEntries);
+          // Don't show immediately - wait for welcome modal to close
+        }
+        
+        changelogCheckedRef.current = true;
+      } catch (error) {
+        console.warn("Failed to check changelog", error);
+        changelogCheckedRef.current = true;
+      }
+    };
+    
+    checkChangelog();
+  }, [mediaSource]);
+
   // Reset playback context when channel changes to ensure fresh offsets.
   useEffect(() => {
     previousNowPlayingRef.current = null;
@@ -848,8 +901,15 @@ export default function Home() {
   const overlayChannelId = overlayChannel?.id
     ? overlayChannel.id.toString().padStart(2, "0")
     : "";
-  const closeWelcome = () => setShowWelcome(false);
+  const closeWelcome = () => {
+    setShowWelcome(false);
+    // After closing welcome modal, check if we should show changelog
+    if (!changelogCheckedRef.current && changelogEntries.length > 0) {
+      setShowChangelog(true);
+    }
+  };
   const closeChannelInfo = () => setShowChannelInfo(false);
+  const closeChangelog = () => setShowChangelog(false);
   // Chromeless is controlled by the header toggle only.
   // The remote visibility must never change player sizing/layout.
   const isChromeless = !showHeader;
@@ -1134,6 +1194,12 @@ export default function Home() {
           <ModalButton onClick={closeWelcome}>Got it</ModalButton>
         </ModalFooter>
       </Modal>
+
+      <ChangelogModal 
+        open={showChangelog} 
+        onClose={closeChangelog}
+        entries={changelogEntries}
+      />
     </div>
   );
 }

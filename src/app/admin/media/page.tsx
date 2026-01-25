@@ -2003,13 +2003,12 @@ export default function MediaAdminPage() {
   const [scanningRemote, setScanningRemote] = useState(false);
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const [scanReport, setScanReport] = useState<ScanReport | null>(null);
-  const [formatFilter, setFormatFilter] = useState<string>("all");
-  const [audioFilter, setAudioFilter] = useState<string>("all");
   const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported" | "needs-conversion">(
     "supported",
   );
   const [locationFilter, setLocationFilter] = useState<"all" | "in-folder" | "in-root">("in-root");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"filename" | "title" | "year" | "duration" | "dateAdded">("filename");
   const [manifestUpdatedAt, setManifestUpdatedAt] = useState<string | null>(null);
   const [mediaRoot, setMediaRoot] = useState<string>("media");
   const [allMetadata, setAllMetadata] = useState<Record<string, MediaMetadata>>({});
@@ -2168,33 +2167,44 @@ export default function MediaAdminPage() {
     };
   }, [mediaSource, mediaRefreshToken]);
 
-  const sortedFiles = useMemo(
-    () =>
-      [...files].sort((a, b) =>
-        a.relPath.localeCompare(b.relPath, undefined, { sensitivity: "base" }),
-      ),
-    [files],
-  );
+  const sortedFiles = useMemo(() => {
+    return [...files].sort((a, b) => {
+      const metaA = allMetadata[a.relPath] || {};
+      const metaB = allMetadata[b.relPath] || {};
 
-  const availableFormats = useMemo(() => {
-    const formats = new Set<string>();
-    files.forEach((file) => {
-      if (file.format) {
-        formats.add(file.format.toUpperCase());
+      switch (sortBy) {
+        case "filename":
+          return a.relPath.localeCompare(b.relPath, undefined, { sensitivity: "base" });
+        
+        case "title": {
+          const titleA = metaA.title || a.relPath;
+          const titleB = metaB.title || b.relPath;
+          return titleA.localeCompare(titleB, undefined, { sensitivity: "base" });
+        }
+        
+        case "year": {
+          const yearA = metaA.year || 0;
+          const yearB = metaB.year || 0;
+          // Sort descending (newest first)
+          return yearB - yearA;
+        }
+        
+        case "duration":
+          // Sort descending (longest first)
+          return b.durationSeconds - a.durationSeconds;
+        
+        case "dateAdded": {
+          const dateA = metaA.dateAdded || a.dateAdded || "";
+          const dateB = metaB.dateAdded || b.dateAdded || "";
+          // Sort descending (newest first)
+          return dateB.localeCompare(dateA);
+        }
+        
+        default:
+          return a.relPath.localeCompare(b.relPath, undefined, { sensitivity: "base" });
       }
     });
-    return Array.from(formats).sort();
-  }, [files]);
-
-  const availableAudioCodecs = useMemo(() => {
-    const codecs = new Set<string>();
-    files.forEach((file) => {
-      if (file.audioCodec) {
-        codecs.add(file.audioCodec.toUpperCase());
-      }
-    });
-    return Array.from(codecs).sort();
-  }, [files]);
+  }, [files, sortBy, allMetadata]);
 
   const filteredFiles = useMemo(() => {
     const terms = searchQuery
@@ -2204,17 +2214,6 @@ export default function MediaAdminPage() {
       .filter(Boolean);
 
     return sortedFiles.filter((file) => {
-      // Format filter
-      if (formatFilter !== "all" && (file.format || "").toUpperCase() !== formatFilter) {
-        return false;
-      }
-      // Audio filter
-      if (
-        audioFilter !== "all" &&
-        (file.audioCodec ? file.audioCodec.toUpperCase() : "") !== audioFilter
-      ) {
-        return false;
-      }
       // Support filter
       const browserSupported = isBrowserSupported(file);
       if (supportedFilter === "supported" && !browserSupported) return false;
@@ -2252,7 +2251,7 @@ export default function MediaAdminPage() {
       }
       return true;
     });
-  }, [sortedFiles, formatFilter, audioFilter, supportedFilter, locationFilter, searchQuery, allMetadata]);
+  }, [sortedFiles, supportedFilter, locationFilter, searchQuery, allMetadata]);
 
   const totalDurationSeconds = useMemo(
     () => sortedFiles.reduce((sum, f) => sum + (f.durationSeconds || 0), 0),
@@ -2416,33 +2415,17 @@ export default function MediaAdminPage() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-neutral-400">Format</label>
+            <label className="text-xs text-neutral-400">Sort by</label>
             <select
-              value={formatFilter}
-              onChange={(e) => setFormatFilter(e.target.value)}
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
               className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100"
             >
-              <option value="all">All</option>
-              {availableFormats.map((fmt) => (
-                <option key={fmt} value={fmt}>
-                  {fmt}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-neutral-400">Audio</label>
-            <select
-              value={audioFilter}
-              onChange={(e) => setAudioFilter(e.target.value)}
-              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100"
-            >
-              <option value="all">All</option>
-              {availableAudioCodecs.map((codec) => (
-                <option key={codec} value={codec}>
-                  {codec}
-                </option>
-              ))}
+              <option value="filename">Filename</option>
+              <option value="title">Title</option>
+              <option value="year">Year</option>
+              <option value="duration">Duration</option>
+              <option value="dateAdded">Date Added</option>
             </select>
           </div>
           <div className="flex items-center gap-2">
