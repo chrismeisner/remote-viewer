@@ -151,6 +151,117 @@ export async function downloadJsonFromFtp<T = unknown>(
   }
 }
 
+/**
+ * Upload a binary file (e.g., image) to the FTP server.
+ * @param subPath - Path relative to the base directory (e.g., "covers/image.jpg")
+ * @param data - Buffer containing the file data
+ * @returns The full remote path where the file was uploaded
+ */
+export async function uploadFileToFtp(
+  subPath: string,
+  data: Buffer
+): Promise<string> {
+  const { host, user, password, port, remotePath, secure } = requireFtpConfig();
+
+  const baseDir = getRemoteBaseDir(remotePath);
+  const targetPath = path.posix.join(baseDir, subPath);
+  const targetDir = path.posix.dirname(targetPath);
+
+  const client = new Client(15000);
+  try {
+    await client.access({ host, port, user, password, secure });
+    
+    // Ensure the directory exists
+    if (targetDir && targetDir !== ".") {
+      await client.ensureDir(targetDir);
+    }
+    
+    const stream = Readable.from([data]);
+    await client.uploadFrom(stream, targetPath);
+    return targetPath;
+  } finally {
+    client.close();
+  }
+}
+
+/**
+ * Check if a directory exists on the FTP server.
+ * @param subPath - Path relative to the base directory (e.g., "covers")
+ * @returns true if the directory exists, false otherwise
+ */
+export async function ftpDirectoryExists(subPath: string): Promise<boolean> {
+  const { host, user, password, port, remotePath, secure } = requireFtpConfig();
+
+  const baseDir = getRemoteBaseDir(remotePath);
+  const targetPath = path.posix.join(baseDir, subPath);
+
+  const client = new Client(15000);
+  try {
+    await client.access({ host, port, user, password, secure });
+    
+    // Try to change to the directory - this will fail if it doesn't exist
+    try {
+      await client.cd(targetPath);
+      return true;
+    } catch {
+      return false;
+    }
+  } finally {
+    client.close();
+  }
+}
+
+/**
+ * Ensure a directory exists on the FTP server, creating it if needed.
+ * @param subPath - Path relative to the base directory (e.g., "covers")
+ * @returns The full remote path of the directory
+ */
+export async function ensureFtpDirectory(subPath: string): Promise<string> {
+  const { host, user, password, port, remotePath, secure } = requireFtpConfig();
+
+  const baseDir = getRemoteBaseDir(remotePath);
+  const targetPath = path.posix.join(baseDir, subPath);
+
+  const client = new Client(15000);
+  try {
+    await client.access({ host, port, user, password, secure });
+    await client.ensureDir(targetPath);
+    return targetPath;
+  } finally {
+    client.close();
+  }
+}
+
+/**
+ * List files in a directory on the FTP server.
+ * @param subPath - Path relative to the base directory (e.g., "covers")
+ * @returns Array of filenames in the directory
+ */
+export async function listFtpDirectory(subPath: string): Promise<string[]> {
+  const { host, user, password, port, remotePath, secure } = requireFtpConfig();
+
+  const baseDir = getRemoteBaseDir(remotePath);
+  const targetPath = path.posix.join(baseDir, subPath);
+
+  const client = new Client(15000);
+  try {
+    await client.access({ host, port, user, password, secure });
+    
+    // Try to list the directory
+    try {
+      const list = await client.list(targetPath);
+      return list
+        .filter(item => item.type === 1) // Type 1 = file
+        .map(item => item.name);
+    } catch {
+      // Directory doesn't exist or can't be listed
+      return [];
+    }
+  } finally {
+    client.close();
+  }
+}
+
 // Re-export filename utilities from client-safe module
 // These can be used in server code as well
 export { cleanupFilename, needsFilenameCleanup } from "./filename-utils";

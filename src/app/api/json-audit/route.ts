@@ -3,7 +3,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { getEffectiveMediaRoot, getDataFolderForMediaRoot } from "@/lib/config";
 import { REMOTE_MEDIA_BASE } from "@/constants/media";
-import { isFtpConfigured, uploadJsonToFtp } from "@/lib/ftp";
+import { isFtpConfigured, uploadJsonToFtp, ftpDirectoryExists, ensureFtpDirectory } from "@/lib/ftp";
 import { clearMediaCaches } from "@/lib/media";
 
 export const runtime = "nodejs";
@@ -201,6 +201,33 @@ async function auditRemoteMode(): Promise<AuditResult> {
     }
   }
 
+  // Check for covers folder on FTP
+  if (canFix) {
+    try {
+      const coversExists = await ftpDirectoryExists("covers");
+      files.push({
+        name: "covers/",
+        exists: coversExists,
+        url: `${REMOTE_MEDIA_BASE}covers/`,
+      });
+      
+      if (!coversExists) {
+        issues.push({
+          id: "missing-covers-folder",
+          file: "covers/",
+          severity: "warning",
+          title: "Covers folder not found",
+          description: "The covers folder doesn't exist on the remote server. Create it to enable cover image uploads.",
+          fixable: true,
+          fixAction: "create-covers-folder",
+        });
+      }
+    } catch (err) {
+      console.error("[JSON Audit] Failed to check covers folder:", err);
+      // Don't fail the audit if we can't check the covers folder
+    }
+  }
+
   const summary = {
     total: issues.length,
     errors: issues.filter(i => i.severity === "error").length,
@@ -361,6 +388,27 @@ async function auditLocalMode(): Promise<AuditResult> {
     }
   }
 
+  // Check for local covers folder
+  const coversPath = path.join(dataFolder, "covers");
+  const coversExists = await fileExists(coversPath);
+  files.push({
+    name: "covers/",
+    exists: coversExists,
+    path: coversPath,
+  });
+  
+  if (!coversExists) {
+    issues.push({
+      id: "missing-covers-folder",
+      file: "covers/",
+      severity: "info",
+      title: "Covers folder not found",
+      description: "The local covers folder doesn't exist. It will be created automatically when you upload a cover image.",
+      fixable: true,
+      fixAction: "create-covers-folder",
+    });
+  }
+
   const summary = {
     total: issues.length,
     errors: issues.filter(i => i.severity === "error").length,
@@ -494,18 +542,35 @@ async function handleRemoteFix(action: string) {
       return NextResponse.json({ success: true, message: `Normalized ${fixed} channel(s)` });
     }
 
+    case "create-covers-folder": {
+      try {
+        await ensureFtpDirectory("covers");
+        return NextResponse.json({ success: true, message: "Created covers folder on remote server" });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ success: false, message: `Failed to create covers folder: ${msg}` }, { status: 500 });
+      }
+    }
+
     case "fresh-start": {
       // Push clean files
       await uploadJsonToFtp("schedule.json", { channels: {} });
       await uploadJsonToFtp("media-index.json", { items: [], generatedAt: new Date().toISOString() });
       await uploadJsonToFtp("media-metadata.json", { items: {} });
 
+      // Ensure covers folder exists
+      try {
+        await ensureFtpDirectory("covers");
+      } catch (err) {
+        console.warn("[Fresh Start] Could not create covers folder:", err);
+      }
+
       // Clear caches
       clearMediaCaches();
 
       return NextResponse.json({
         success: true,
-        message: "Fresh start complete. Pushed empty schedule.json, media-index.json, and media-metadata.json"
+        message: "Fresh start complete. Pushed empty schedule.json, media-index.json, media-metadata.json, and created covers folder"
       });
     }
 
@@ -617,6 +682,17 @@ async function handleLocalFix(action: string) {
       return NextResponse.json({ success: true, message: `Removed ${removedCount} stale entries` });
     }
 
+    case "create-covers-folder": {
+      const coversPath = path.join(dataFolder, "covers");
+      try {
+        await fs.mkdir(coversPath, { recursive: true });
+        return NextResponse.json({ success: true, message: "Created covers folder" });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ success: false, message: `Failed to create covers folder: ${msg}` }, { status: 500 });
+      }
+    }
+
     case "fresh-start": {
       await fs.mkdir(dataFolder, { recursive: true });
 
@@ -624,6 +700,9 @@ async function handleLocalFix(action: string) {
       await fs.writeFile(path.join(dataFolder, "schedule.json"), JSON.stringify({ channels: {} }, null, 2));
       await fs.writeFile(path.join(dataFolder, "media-index.json"), JSON.stringify({ items: [], generatedAt: new Date().toISOString() }, null, 2));
       await fs.writeFile(path.join(dataFolder, "media-metadata.json"), JSON.stringify({ items: {} }, null, 2));
+      
+      // Create covers folder
+      await fs.mkdir(path.join(dataFolder, "covers"), { recursive: true });
 
       // Delete deprecated files
       const toDelete = ["channels.json"];

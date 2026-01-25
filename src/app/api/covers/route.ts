@@ -12,39 +12,74 @@ import {
   validateCoversPath,
   clearConfigCache,
 } from "@/lib/config";
+import {
+  isFtpConfigured,
+  uploadFileToFtp,
+  listFtpDirectory,
+} from "@/lib/ftp";
+import { REMOTE_MEDIA_BASE } from "@/constants/media";
 
 export const runtime = "nodejs";
 
 /**
  * GET /api/covers
  * 
- * List all available cover images in the local covers folder.
+ * List all available cover images.
  * 
  * Query params:
+ *   - source: "local" | "remote" - which source to list covers from (default: local)
  *   - config=true: Include folder configuration info
  * 
  * Returns:
  *   - covers: array of { filename, url }
  *   - coversFolder: current covers folder path (if config=true)
  *   - isCustomFolder: whether a custom folder is configured (if config=true)
+ *   - ftpConfigured: whether FTP is configured (for remote source)
  */
 export async function GET(request: NextRequest) {
   try {
+    const source = request.nextUrl.searchParams.get("source") || "local";
     const includeConfig = request.nextUrl.searchParams.get("config") === "true";
     
-    const coverFiles = await listCoverImages();
+    let coverFiles: string[] = [];
+    let ftpConfigured = false;
+    
+    if (source === "remote") {
+      // List covers from FTP server
+      ftpConfigured = isFtpConfigured();
+      if (ftpConfigured) {
+        try {
+          coverFiles = await listFtpDirectory("covers");
+          // Filter to only image files
+          coverFiles = coverFiles.filter(f => 
+            /\.(jpg|jpeg|png|webp|gif)$/i.test(f)
+          );
+        } catch (err) {
+          console.error("[Covers] Failed to list FTP covers:", err);
+          // Return empty list if FTP fails
+          coverFiles = [];
+        }
+      }
+    } else {
+      // List local covers
+      coverFiles = await listCoverImages();
+    }
     
     const covers = coverFiles.map((filename) => ({
       filename,
-      url: buildCoverUrl(filename),
+      url: source === "remote" 
+        ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(filename)}`
+        : buildCoverUrl(filename),
     }));
     
     const response: Record<string, unknown> = {
       covers,
       count: covers.length,
+      source,
+      ftpConfigured,
     };
     
-    if (includeConfig) {
+    if (includeConfig && source === "local") {
       const config = await loadConfig();
       const effectiveFolder = await getEffectiveCoversFolder();
       response.coversFolder = effectiveFolder;
@@ -65,25 +100,38 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/covers
  * 
- * Upload a new cover image to the local covers folder.
+ * Upload a new cover image.
  * 
  * Body: multipart/form-data with:
  *   - file: the image file to upload
  *   - filename: (optional) custom filename to use (otherwise uses original name)
+ *   - source: "local" | "remote" - where to upload (default: "local")
+ *     - "local": saves to local covers folder
+ *     - "remote": uploads to FTP server's covers folder
  * 
  * Returns:
  *   - filename: the saved filename
  *   - url: the URL to access the cover
+ *   - source: the source where the cover was saved
  */
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
     const customFilename = formData.get("filename");
+    const source = formData.get("source")?.toString() || "local";
     
     if (!file || !(file instanceof File)) {
       return NextResponse.json(
         { error: "Missing required 'file' field" },
+        { status: 400 },
+      );
+    }
+    
+    // Check FTP configuration for remote uploads
+    if (source === "remote" && !isFtpConfigured()) {
+      return NextResponse.json(
+        { error: "FTP not configured. Cannot upload to remote." },
         { status: 400 },
       );
     }
@@ -138,12 +186,25 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Save the cover
-    const savedFilename = await saveCoverImage(filename, buffer);
+    let savedFilename: string;
+    let url: string;
+    
+    if (source === "remote") {
+      // Upload to FTP server
+      const remotePath = `covers/${filename}`;
+      await uploadFileToFtp(remotePath, buffer);
+      savedFilename = filename;
+      url = `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(filename)}`;
+    } else {
+      // Save to local covers folder
+      savedFilename = await saveCoverImage(filename, buffer);
+      url = buildCoverUrl(savedFilename);
+    }
     
     return NextResponse.json({
       filename: savedFilename,
-      url: buildCoverUrl(savedFilename),
+      url,
+      source,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

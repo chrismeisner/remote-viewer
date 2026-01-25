@@ -192,7 +192,7 @@ function MediaDetailModal({
     // Fetch both metadata and available covers in parallel
     Promise.all([
       fetch(`/api/media-metadata?file=${encodeURIComponent(item.relPath)}&source=${mediaSource}`).then((res) => res.json()),
-      fetch("/api/covers").then((res) => res.json()),
+      fetch(`/api/covers?source=${mediaSource}`).then((res) => res.json()),
     ])
       .then(([metaData, coversData]) => {
         if (!cancelled) {
@@ -1295,7 +1295,7 @@ function CoverImageSection({
     }
   };
 
-  // Upload new cover (for remote mode)
+  // Upload new cover (for remote mode - uploads to FTP)
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1306,6 +1306,7 @@ function CoverImageSection({
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("source", mediaSource); // Pass source so API knows where to upload
 
       const res = await fetch("/api/covers", {
         method: "POST",
@@ -1315,7 +1316,7 @@ function CoverImageSection({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
 
-      // Add to local covers list and select it
+      // Add to covers list and select it
       setLocalCovers((prev) => {
         const exists = prev.some((c) => c.filename === data.filename);
         if (exists) return prev;
