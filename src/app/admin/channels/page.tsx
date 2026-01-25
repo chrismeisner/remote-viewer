@@ -161,6 +161,7 @@ export default function ChannelAdminPage() {
           id, 
           shortName: newShortName.trim() || undefined,
           type: newType,
+          active: false,
         }),
       });
       const data = await res.json();

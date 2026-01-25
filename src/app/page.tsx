@@ -25,6 +25,22 @@ type NowPlaying = {
   serverTimeMs?: number;
 };
 
+type MediaMetadata = {
+  title?: string | null;
+  year?: number | null;
+  director?: string | null;
+  category?: string | null;
+  makingOf?: string | null;
+  plot?: string | null;
+  type?: "film" | "tv" | "documentary" | "sports" | "concert" | "other" | null;
+  season?: number | null;
+  episode?: number | null;
+  coverUrl?: string | null;
+  coverLocal?: string | null;
+  coverPath?: string | null;
+  tags?: string[] | null;
+};
+
 type NowPlayingResponse = {
   nowPlaying: NowPlaying | null;
   serverTimeMs?: number;
@@ -71,6 +87,9 @@ export default function Home() {
   const [showWelcome, setShowWelcome] = useState(true);
   const [showChangelog, setShowChangelog] = useState(false);
   const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [infoMetadata, setInfoMetadata] = useState<MediaMetadata | null>(null);
+  const [infoLoading, setInfoLoading] = useState(false);
   
   // Channel overlay state for CRT-style display
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
@@ -673,7 +692,26 @@ export default function Home() {
 
       if (key === "i") {
         event.preventDefault();
-        setShowChannelInfo((prev) => !prev);
+        // Toggle info modal and fetch metadata if opening
+        if (!showInfoModal && nowPlaying) {
+          setShowInfoModal(true);
+          setInfoLoading(true);
+          setInfoMetadata(null);
+          
+          // Fetch metadata for current item
+          fetch(`/api/media-metadata?file=${encodeURIComponent(nowPlaying.relPath)}&source=${mediaSource}`)
+            .then(res => res.json())
+            .then(data => {
+              setInfoMetadata(data.metadata || {});
+              setInfoLoading(false);
+            })
+            .catch(() => {
+              setInfoMetadata({});
+              setInfoLoading(false);
+            });
+        } else {
+          setShowInfoModal(false);
+        }
         return;
       }
 
@@ -699,6 +737,7 @@ export default function Home() {
         event.preventDefault();
         if (showWelcome) setShowWelcome(false);
         if (showChannelInfo) setShowChannelInfo(false);
+        if (showInfoModal) setShowInfoModal(false);
         return;
       }
 
@@ -795,7 +834,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [channels, channel, muted, volume, channelInputBuffer]);
+  }, [channels, channel, muted, volume, channelInputBuffer, showInfoModal, nowPlaying, mediaSource]);
 
   const resolvedSrc = (np: NowPlaying | null) =>
     np ? withMediaSource(np, mediaSource).src : "";
@@ -910,6 +949,15 @@ export default function Home() {
   };
   const closeChannelInfo = () => setShowChannelInfo(false);
   const closeChangelog = () => setShowChangelog(false);
+  const closeInfoModal = () => setShowInfoModal(false);
+  
+  // Helper to build cover image URL
+  const buildCoverImageUrl = (metadata: MediaMetadata): string | null => {
+    if (metadata.coverUrl) return metadata.coverUrl;
+    if (metadata.coverLocal) return `/api/covers/${encodeURIComponent(metadata.coverLocal)}`;
+    if (metadata.coverPath) return `/api/local-image?path=${encodeURIComponent(metadata.coverPath)}`;
+    return null;
+  };
   // Chromeless is controlled by the header toggle only.
   // The remote visibility must never change player sizing/layout.
   const isChromeless = !showHeader;
@@ -1144,6 +1192,7 @@ export default function Home() {
           <ul className="mt-3 space-y-2 text-sm text-neutral-200">
             <li className="flex justify-between gap-4"><span>Show helper</span><span className="font-mono text-neutral-100">/</span></li>
             <li className="flex justify-between gap-4"><span>Show remote</span><span className="font-mono text-neutral-100">r</span></li>
+            <li className="flex justify-between gap-4"><span>Show info</span><span className="font-mono text-neutral-100">i</span></li>
             <li className="flex justify-between gap-4"><span>Channel up</span><span className="font-mono text-neutral-100">↑</span></li>
             <li className="flex justify-between gap-4"><span>Channel down</span><span className="font-mono text-neutral-100">↓</span></li>
             <li className="flex justify-between gap-4"><span>Volume up</span><span className="font-mono text-neutral-100">→</span></li>
@@ -1200,6 +1249,147 @@ export default function Home() {
         onClose={closeChangelog}
         entries={changelogEntries}
       />
+
+      <Modal open={showInfoModal} onClose={closeInfoModal} maxWidth="max-w-2xl">
+        <ModalTitle>Now Playing Info</ModalTitle>
+        {infoLoading ? (
+          <div className="mt-4 text-center text-neutral-400">
+            <p>Loading metadata...</p>
+          </div>
+        ) : nowPlaying ? (
+          <div className="mt-4 space-y-4">
+            {/* Cover art and basic info side by side */}
+            <div className="flex gap-4">
+              {/* Cover art */}
+              {infoMetadata && buildCoverImageUrl(infoMetadata) && (
+                <div className="flex-shrink-0">
+                  <img
+                    src={buildCoverImageUrl(infoMetadata)!}
+                    alt="Cover art"
+                    className="w-32 h-48 object-cover rounded border border-white/10"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+              
+              {/* Basic info */}
+              <div className="flex-1 space-y-2">
+                <div>
+                  <p className="text-xs text-neutral-500">Title</p>
+                  <p className="text-base font-semibold text-neutral-100">
+                    {infoMetadata?.title || nowPlaying.title}
+                  </p>
+                </div>
+                
+                {infoMetadata?.year && (
+                  <div>
+                    <p className="text-xs text-neutral-500">Year</p>
+                    <p className="text-sm text-neutral-200">{infoMetadata.year}</p>
+                  </div>
+                )}
+                
+                {infoMetadata?.type && (
+                  <div>
+                    <p className="text-xs text-neutral-500">Type</p>
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                      infoMetadata.type === "film" ? "bg-purple-500/20 text-purple-200" :
+                      infoMetadata.type === "tv" ? "bg-blue-500/20 text-blue-200" :
+                      infoMetadata.type === "documentary" ? "bg-amber-500/20 text-amber-200" :
+                      infoMetadata.type === "sports" ? "bg-green-500/20 text-green-200" :
+                      infoMetadata.type === "concert" ? "bg-pink-500/20 text-pink-200" :
+                      "bg-neutral-500/20 text-neutral-200"
+                    }`}>
+                      {infoMetadata.type === "film" ? "Film" :
+                       infoMetadata.type === "tv" ? "TV Show" :
+                       infoMetadata.type === "documentary" ? "Documentary" :
+                       infoMetadata.type === "sports" ? "Sports" :
+                       infoMetadata.type === "concert" ? "Concert" :
+                       "Other"}
+                    </span>
+                  </div>
+                )}
+                
+                {infoMetadata?.director && (
+                  <div>
+                    <p className="text-xs text-neutral-500">Director</p>
+                    <p className="text-sm text-neutral-200">{infoMetadata.director}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Additional metadata */}
+            {(infoMetadata?.season || infoMetadata?.episode) && (
+              <div className="flex gap-4 text-sm">
+                {infoMetadata.season && (
+                  <div>
+                    <span className="text-neutral-500">Season:</span>{" "}
+                    <span className="text-neutral-200">{infoMetadata.season}</span>
+                  </div>
+                )}
+                {infoMetadata.episode && (
+                  <div>
+                    <span className="text-neutral-500">Episode:</span>{" "}
+                    <span className="text-neutral-200">{infoMetadata.episode}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {infoMetadata?.category && (
+              <div>
+                <p className="text-xs text-neutral-500">Category</p>
+                <p className="text-sm text-neutral-200">{infoMetadata.category}</p>
+              </div>
+            )}
+
+            {infoMetadata?.makingOf && (
+              <div>
+                <p className="text-xs text-neutral-500">Making Of</p>
+                <p className="text-sm text-neutral-200">{infoMetadata.makingOf}</p>
+              </div>
+            )}
+
+            {infoMetadata?.plot && (
+              <div>
+                <p className="text-xs text-neutral-500">Plot</p>
+                <p className="text-sm text-neutral-300 leading-relaxed">{infoMetadata.plot}</p>
+              </div>
+            )}
+
+            {infoMetadata?.tags && infoMetadata.tags.length > 0 && (
+              <div>
+                <p className="text-xs text-neutral-500 mb-2">Tags</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {infoMetadata.tags.map((tag, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-block px-2 py-0.5 rounded-full bg-white/10 text-xs text-neutral-200"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* File info */}
+            <div className="pt-3 border-t border-white/10">
+              <p className="text-xs text-neutral-500">File</p>
+              <p className="text-xs text-neutral-400 font-mono break-all">{nowPlaying.relPath}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 text-center text-neutral-400">
+            <p>No content currently playing</p>
+          </div>
+        )}
+        <ModalFooter>
+          <ModalButton onClick={closeInfoModal}>Close</ModalButton>
+        </ModalFooter>
+      </Modal>
     </div>
   );
 }

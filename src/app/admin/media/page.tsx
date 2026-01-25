@@ -1251,9 +1251,10 @@ function CoverImageSection({
   }, [metadata.coverUrl, metadata.coverLocal, metadata.coverPath]);
 
   // Get the resolved cover URL for preview
+  // For remote mode, coverLocal should resolve to remote server URL
   const resolvedCoverUrl = coverUrl 
-    || (coverPath ? `/api/local-image?path=${encodeURIComponent(coverPath)}` : null)
-    || (coverLocal ? `/api/covers/${encodeURIComponent(coverLocal)}` : null);
+    || (coverPath && mediaSource === "local" ? `/api/local-image?path=${encodeURIComponent(coverPath)}` : null)
+    || (coverLocal ? (mediaSource === "remote" ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(coverLocal)}` : `/api/covers/${encodeURIComponent(coverLocal)}`) : null);
   
   const hasChanges = 
     coverUrl !== (metadata.coverUrl || "") || 
@@ -2506,9 +2507,10 @@ export default function MediaAdminPage() {
                     {filteredFiles.map((file) => {
                       const meta = allMetadata[file.relPath] || {};
                       const isSelected = selectedForConversion.has(file.relPath);
+                      // Resolve cover URL - for remote mode, coverLocal should point to remote server
                       const resolvedCoverUrl = meta.coverUrl 
-                        || (meta.coverPath ? `/api/local-image?path=${encodeURIComponent(meta.coverPath)}` : null)
-                        || (meta.coverLocal ? `/api/covers/${encodeURIComponent(meta.coverLocal)}` : null);
+                        || (meta.coverPath && mediaSource === "local" ? `/api/local-image?path=${encodeURIComponent(meta.coverPath)}` : null)
+                        || (meta.coverLocal ? (mediaSource === "remote" ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(meta.coverLocal)}` : `/api/covers/${encodeURIComponent(meta.coverLocal)}`) : null);
                       return (
                         <tr key={file.relPath} className={isSelected ? "bg-emerald-500/5" : ""}>
                           <td className="px-3 py-2">
