@@ -1414,115 +1414,104 @@ function CoverImageSection({
         <div className="flex-1 space-y-3">
           {isLocal ? (
             /* Local Mode: Browse filesystem for images */
-            <div>
-              <label className="block text-xs text-neutral-500 mb-1">Local Image File</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={coverPath}
-                  onChange={(e) => {
-                    setCoverPath(e.target.value);
-                    if (e.target.value) {
-                      setCoverUrl("");
-                      setCoverLocal("");
-                    }
-                  }}
-                  placeholder="/path/to/cover.jpg"
-                  className="flex-1 rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300"
-                />
-                <button
-                  onClick={openImageBrowser}
-                  className="rounded-md border border-white/20 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-neutral-300 hover:bg-white/10 transition flex items-center gap-1.5"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                  </svg>
-                  Browse
-                </button>
+            <>
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Local Image File</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={coverPath}
+                    onChange={(e) => {
+                      setCoverPath(e.target.value);
+                      if (e.target.value) {
+                        setCoverUrl("");
+                        setCoverLocal("");
+                      }
+                    }}
+                    placeholder="/path/to/cover.jpg"
+                    className="flex-1 rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300"
+                  />
+                  <button
+                    onClick={openImageBrowser}
+                    className="rounded-md border border-white/20 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-neutral-300 hover:bg-white/10 transition flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    Browse
+                  </button>
+                </div>
+                {coverPath && (
+                  <p className="text-xs text-neutral-500 mt-1 truncate" title={coverPath}>
+                    {coverPath.split("/").pop()}
+                  </p>
+                )}
               </div>
-              {coverPath && (
-                <p className="text-xs text-neutral-500 mt-1 truncate" title={coverPath}>
-                  {coverPath.split("/").pop()}
-                </p>
-              )}
-            </div>
-          ) : (
-            /* Remote Mode: Upload or select from covers folder */
-            <div>
-              <label className="block text-xs text-neutral-500 mb-1">Covers Folder</label>
-              <div className="flex gap-2">
-                <select
-                  value={coverLocal}
+
+              {/* URL input (local mode only) */}
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Or Cover URL</label>
+                <input
+                  type="url"
+                  value={coverUrl}
                   onChange={(e) => {
-                    setCoverLocal(e.target.value);
+                    setCoverUrl(e.target.value);
                     if (e.target.value) {
-                      setCoverUrl("");
+                      setCoverLocal("");
                       setCoverPath("");
                     }
                   }}
-                  className="flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-sm text-neutral-100 outline-none focus:border-emerald-300"
-                >
-                  <option value="">— None —</option>
-                  {localCovers.map((cover) => (
-                    <option key={cover.filename} value={cover.filename}>
-                      {cover.filename}
-                    </option>
-                  ))}
-                </select>
-                <label className="cursor-pointer rounded-md border border-white/20 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-neutral-300 hover:bg-white/10 transition flex items-center gap-1.5">
-                  {uploading ? (
-                    <span>Uploading...</span>
-                  ) : (
-                    <>
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                      </svg>
-                      Upload
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    onChange={handleUpload}
-                    disabled={uploading}
-                    className="hidden"
-                  />
-                </label>
+                  placeholder="https://example.com/cover.jpg"
+                  className="w-full rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300"
+                />
               </div>
-              {/* Show resolved URL when a cover is selected */}
+            </>
+          ) : (
+            /* Remote Mode: Upload only */
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1">Upload Cover</label>
+              <label className="cursor-pointer rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-neutral-300 hover:bg-white/10 transition flex items-center justify-center gap-2">
+                {uploading ? (
+                  <span>Uploading...</span>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Upload Image
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleUpload}
+                  disabled={uploading}
+                  className="hidden"
+                />
+              </label>
+              {/* Show resolved URL when a cover is uploaded */}
               {coverLocal && (
-                <p className="text-xs text-neutral-500 mt-1.5 font-mono break-all">
-                  <span className="text-neutral-600">URL: </span>
-                  <a 
-                    href={`${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(coverLocal)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:text-blue-300 hover:underline"
-                  >
-                    {`${REMOTE_MEDIA_BASE}covers/${coverLocal}`}
-                  </a>
-                </p>
+                <div className="mt-2 p-2 rounded-md bg-emerald-500/10 border border-emerald-400/30">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-emerald-300 font-medium mb-1">Cover uploaded</p>
+                      <a 
+                        href={`${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(coverLocal)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-400 hover:text-blue-300 hover:underline break-all"
+                      >
+                        {`${REMOTE_MEDIA_BASE}covers/${coverLocal}`}
+                      </a>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           )}
-
-          {/* URL input (always available) */}
-          <div>
-            <label className="block text-xs text-neutral-500 mb-1">Or Cover URL</label>
-            <input
-              type="url"
-              value={coverUrl}
-              onChange={(e) => {
-                setCoverUrl(e.target.value);
-                if (e.target.value) {
-                  setCoverLocal("");
-                  setCoverPath("");
-                }
-              }}
-              placeholder="https://example.com/cover.jpg"
-              className="w-full rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300"
-            />
-          </div>
 
           {/* Status messages */}
           {error && <p className="text-xs text-red-300">{error}</p>}

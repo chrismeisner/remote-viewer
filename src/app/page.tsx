@@ -873,9 +873,26 @@ export default function Home() {
           const channelIds = channelList.map(c => c.id);
           if (channelList.length > 0) {
             if (!channel || !channelIds.includes(channel)) {
-              const firstChannel = channelList[0];
-              setChannel(firstChannel.id);
-              triggerChannelOverlay(firstChannel);
+              // Check for URL parameter to set initial channel
+              let initialChannelId: string | null = null;
+              
+              if (typeof window !== 'undefined' && !initialChannelSet.current) {
+                const urlParams = new URLSearchParams(window.location.search);
+                const channelParam = urlParams.get('channel');
+                if (channelParam && channelIds.includes(channelParam)) {
+                  initialChannelId = channelParam;
+                  initialChannelSet.current = true;
+                  console.log('[player] starting on channel from URL param:', channelParam);
+                }
+              }
+              
+              // Use URL param channel if valid, otherwise use first channel
+              const targetChannel = initialChannelId 
+                ? channelList.find(c => c.id === initialChannelId) || channelList[0]
+                : channelList[0];
+              
+              setChannel(targetChannel.id);
+              triggerChannelOverlay(targetChannel);
               setRefreshToken((token) => token + 1);
             }
           } else {
