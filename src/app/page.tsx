@@ -869,35 +869,45 @@ export default function Home() {
         const channelList = normalizeChannels(data.channels);
         if (!cancelled) {
           setChannels(channelList);
-          // Auto-select first channel if none selected or current channel no longer exists
+          
           const channelIds = channelList.map(c => c.id);
-          if (channelList.length > 0) {
-            if (!channel || !channelIds.includes(channel)) {
-              // Check for URL parameter to set initial channel
-              let initialChannelId: string | null = null;
-              
-              if (typeof window !== 'undefined' && !initialChannelSet.current) {
-                const urlParams = new URLSearchParams(window.location.search);
-                const channelParam = urlParams.get('channel');
-                if (channelParam && channelIds.includes(channelParam)) {
-                  initialChannelId = channelParam;
-                  initialChannelSet.current = true;
-                  console.log('[player] starting on channel from URL param:', channelParam);
-                }
-              }
-              
-              // Use URL param channel if valid, otherwise use first channel
-              const targetChannel = initialChannelId 
-                ? channelList.find(c => c.id === initialChannelId) || channelList[0]
-                : channelList[0];
-              
-              setChannel(targetChannel.id);
-              triggerChannelOverlay(targetChannel);
-              setRefreshToken((token) => token + 1);
-            }
-          } else {
+          
+          if (channelList.length === 0) {
             // No channels available
             setChannel(null);
+            return;
+          }
+          
+          // Determine if we need to set/change the channel
+          const needsChannelSelection = !channel || !channelIds.includes(channel);
+          
+          if (needsChannelSelection) {
+            let targetChannelId: string | null = null;
+            
+            // Check for URL parameter on first load only
+            if (typeof window !== 'undefined' && !initialChannelSet.current) {
+              const urlParams = new URLSearchParams(window.location.search);
+              const channelParam = urlParams.get('channel');
+              
+              // Mark that we've checked the URL param (do this regardless of validity)
+              initialChannelSet.current = true;
+              
+              if (channelParam && channelIds.includes(channelParam)) {
+                targetChannelId = channelParam;
+                console.log('[player] starting on channel from URL param:', channelParam);
+              } else if (channelParam) {
+                console.warn('[player] URL channel param invalid:', channelParam, 'available:', channelIds);
+              }
+            }
+            
+            // Use URL param channel if found, otherwise use first channel
+            const targetChannel = targetChannelId 
+              ? channelList.find(c => c.id === targetChannelId)!
+              : channelList[0];
+            
+            setChannel(targetChannel.id);
+            triggerChannelOverlay(targetChannel);
+            setRefreshToken((token) => token + 1);
           }
         }
       } catch (err) {
