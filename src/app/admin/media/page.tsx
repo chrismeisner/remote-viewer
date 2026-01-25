@@ -37,6 +37,7 @@ type MediaMetadata = {
   coverUrl?: string | null;
   coverLocal?: string | null;
   coverPath?: string | null; // Full filesystem path for local mode
+  tags?: string[] | null; // Flexible tags for actors, themes, keywords, etc.
 };
 
 type CoverOption = {
@@ -121,6 +122,8 @@ function MediaDetailModal({
   const [editType, setEditType] = useState<string>("");
   const [editSeason, setEditSeason] = useState<string>("");
   const [editEpisode, setEditEpisode] = useState<string>("");
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState<string>("");
   const [availableCovers, setAvailableCovers] = useState<CoverOption[]>([]);
   
   // AI lookup state
@@ -204,6 +207,7 @@ function MediaDetailModal({
             setEditType(metaData.metadata.type ?? "");
             setEditSeason(metaData.metadata.season?.toString() ?? "");
             setEditEpisode(metaData.metadata.episode?.toString() ?? "");
+            setEditTags(metaData.metadata.tags ?? []);
           }
           if (coversData.covers) {
             setAvailableCovers(coversData.covers);
@@ -298,6 +302,7 @@ function MediaDetailModal({
           type: editType || null,
           season: editSeason ? parseInt(editSeason, 10) : null,
           episode: editEpisode ? parseInt(editEpisode, 10) : null,
+          tags: editTags.length > 0 ? editTags : null,
         }),
       });
       const data = await res.json();
@@ -325,6 +330,8 @@ function MediaDetailModal({
     setEditType(metadata.type ?? "");
     setEditSeason(metadata.season?.toString() ?? "");
     setEditEpisode(metadata.episode?.toString() ?? "");
+    setEditTags(metadata.tags ?? []);
+    setNewTagInput("");
     setEditingMetadata(false);
     setMetadataError(null);
   };
@@ -1018,6 +1025,60 @@ function MediaDetailModal({
                   className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10 resize-none"
                 />
               </div>
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Tags <span className="text-neutral-600">(actors, themes, keywords)</span></label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {editTags.map((tag, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-emerald-200"
+                    >
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => setEditTags(editTags.filter((_, i) => i !== idx))}
+                        className="text-emerald-300 hover:text-emerald-100 transition"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newTagInput}
+                    onChange={(e) => setNewTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newTagInput.trim()) {
+                        e.preventDefault();
+                        const newTag = newTagInput.trim();
+                        if (!editTags.includes(newTag)) {
+                          setEditTags([...editTags, newTag]);
+                        }
+                        setNewTagInput("");
+                      }
+                    }}
+                    placeholder="Add a tag (press Enter)"
+                    className="flex-1 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newTagInput.trim()) {
+                        const newTag = newTagInput.trim();
+                        if (!editTags.includes(newTag)) {
+                          setEditTags([...editTags, newTag]);
+                        }
+                        setNewTagInput("");
+                      }
+                    }}
+                    className="rounded-md border border-white/20 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-300 transition hover:bg-white/10"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
               {metadataError && (
                 <p className="text-xs text-amber-300">{metadataError}</p>
               )}
@@ -1108,6 +1169,23 @@ function MediaDetailModal({
                 <p className="text-sm text-neutral-300">
                   {metadata.plot ?? <span className="text-neutral-500">—</span>}
                 </p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">Tags</p>
+                {metadata.tags && metadata.tags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {metadata.tags.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-emerald-200"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-sm text-neutral-500">—</span>
+                )}
               </div>
               
             </div>
@@ -2078,16 +2156,28 @@ export default function MediaAdminPage() {
         if (locationFilter === "in-folder" && !isInFolder) return false;
         if (locationFilter === "in-root" && isInFolder) return false;
       }
-      // Search query
+      // Search query - includes filename, title, and all metadata fields
       if (terms.length > 0) {
-        const haystack = `${file.relPath} ${file.title || ""}`.toLowerCase();
+        const meta = allMetadata[file.relPath] || {};
+        const tagsStr = meta.tags?.join(" ") || "";
+        const haystack = [
+          file.relPath,
+          file.title || "",
+          meta.title || "",
+          meta.director || "",
+          meta.category || "",
+          meta.makingOf || "",
+          meta.plot || "",
+          meta.year?.toString() || "",
+          tagsStr,
+        ].join(" ").toLowerCase();
         if (!terms.every((term) => haystack.includes(term))) {
           return false;
         }
       }
       return true;
     });
-  }, [sortedFiles, formatFilter, audioFilter, supportedFilter, locationFilter, searchQuery]);
+  }, [sortedFiles, formatFilter, audioFilter, supportedFilter, locationFilter, searchQuery, allMetadata]);
 
   const totalDurationSeconds = useMemo(
     () => sortedFiles.reduce((sum, f) => sum + (f.durationSeconds || 0), 0),
@@ -2246,7 +2336,7 @@ export default function MediaAdminPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter by filename..."
+              placeholder="Search files, tags, actors, plot..."
               className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
             />
           </div>

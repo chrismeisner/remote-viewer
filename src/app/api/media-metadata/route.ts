@@ -69,18 +69,26 @@ export async function GET(request: NextRequest) {
  * 
  * Body:
  *   - file: string (required) - the relPath of the media file
+ *   - title?: string | null
  *   - year?: number | null
  *   - director?: string | null
  *   - category?: string | null
+ *   - makingOf?: string | null
+ *   - plot?: string | null
+ *   - type?: string | null - one of: film, tv, documentary, sports, concert, other
+ *   - season?: number | null
+ *   - episode?: number | null
  *   - coverUrl?: string | null - URL to external cover image
  *   - coverLocal?: string | null - filename of local cover in covers folder
+ *   - coverPath?: string | null - full filesystem path for local mode
+ *   - tags?: string[] | null - array of tags (actors, themes, keywords, etc.)
  * 
  * Returns: updated metadata for the file
  */
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { file, title, year, director, category, makingOf, plot, type, season, episode, coverUrl, coverLocal, coverPath } = body;
+    const { file, title, year, director, category, makingOf, plot, type, season, episode, coverUrl, coverLocal, coverPath, tags } = body;
     
     if (!file || typeof file !== "string") {
       return NextResponse.json(
@@ -120,6 +128,16 @@ export async function PUT(request: NextRequest) {
         );
       }
     }
+
+    // Validate tags if provided (must be array of strings or null)
+    if (tags !== undefined && tags !== null) {
+      if (!Array.isArray(tags) || !tags.every((t: unknown) => typeof t === "string")) {
+        return NextResponse.json(
+          { error: "tags must be an array of strings" },
+          { status: 400 },
+        );
+      }
+    }
     
     const updates: Partial<MediaMetadataItem> = {};
     if (title !== undefined) updates.title = title === "" ? null : title;
@@ -134,6 +152,10 @@ export async function PUT(request: NextRequest) {
     if (coverUrl !== undefined) updates.coverUrl = coverUrl === "" ? null : coverUrl;
     if (coverLocal !== undefined) updates.coverLocal = coverLocal === "" ? null : coverLocal;
     if (coverPath !== undefined) updates.coverPath = coverPath === "" ? null : coverPath;
+    if (tags !== undefined) {
+      // Filter empty strings and trim values
+      updates.tags = tags === null ? null : tags.filter((t: string) => t.trim()).map((t: string) => t.trim());
+    }
     
     const updated = await updateMediaItemMetadata(file, updates);
     

@@ -161,6 +161,7 @@ export type MediaMetadataItem = {
   coverUrl?: string | null; // URL to external/uploaded cover image
   coverLocal?: string | null; // Filename of local cover in covers folder (for remote mode)
   coverPath?: string | null; // Full filesystem path to local image (for local mode)
+  tags?: string[] | null; // Flexible tags for actors, themes, keywords, etc.
 };
 
 export type MediaMetadataStore = {
@@ -1458,6 +1459,7 @@ export async function updateMediaItemMetadata(
   if (updates.coverUrl !== undefined) updated.coverUrl = updates.coverUrl;
   if (updates.coverLocal !== undefined) updated.coverLocal = updates.coverLocal;
   if (updates.coverPath !== undefined) updated.coverPath = updates.coverPath;
+  if (updates.tags !== undefined) updated.tags = updates.tags;
   
   // Clean up null/undefined values for cleaner JSON
   const cleaned: MediaMetadataItem = {};
@@ -1473,6 +1475,7 @@ export async function updateMediaItemMetadata(
   if (updated.coverUrl != null) cleaned.coverUrl = updated.coverUrl;
   if (updated.coverLocal != null) cleaned.coverLocal = updated.coverLocal;
   if (updated.coverPath != null) cleaned.coverPath = updated.coverPath;
+  if (updated.tags != null && updated.tags.length > 0) cleaned.tags = updated.tags;
   
   // Only store if there's actual data
   if (Object.keys(cleaned).length > 0) {

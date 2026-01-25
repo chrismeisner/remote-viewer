@@ -7,6 +7,7 @@ const navLinks = [
   { href: "/admin/media", label: "Media" },
   { href: "/admin/covers", label: "Covers" },
   { href: "/admin/channels", label: "Channels" },
+  { href: "/admin/changelog", label: "Changelog" },
   { href: "/admin/data-health", label: "Data Health" },
   { href: "/admin/ftp-test", label: "FTP Test" },
   { href: "/admin/styling", label: "Styling" },
