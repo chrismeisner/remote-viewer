@@ -114,10 +114,11 @@ async function auditRemoteMode(): Promise<AuditResult> {
   const files: AuditResult["files"] = [];
   const canFix = isFtpConfigured();
 
-  // Files to check (schedule.json is source of truth, channels.json is derived)
+  // Files to check
   const remoteFiles = [
     { name: "media-index.json", url: `${REMOTE_MEDIA_BASE}media-index.json` },
     { name: "schedule.json", url: `${REMOTE_MEDIA_BASE}schedule.json` },
+    { name: "media-metadata.json", url: `${REMOTE_MEDIA_BASE}media-metadata.json` },
   ];
   console.log("[JSON Audit] Checking remote files at:", REMOTE_MEDIA_BASE);
 
@@ -242,6 +243,7 @@ async function auditLocalMode(): Promise<AuditResult> {
   const jsonFiles = [
     { name: "schedule.json", path: path.join(dataFolder, "schedule.json") },
     { name: "media-index.json", path: path.join(dataFolder, "media-index.json") },
+    { name: "media-metadata.json", path: path.join(dataFolder, "media-metadata.json") },
   ];
 
   for (const file of jsonFiles) {
@@ -457,6 +459,13 @@ async function handleRemoteFix(action: string) {
         actions.push("Created media-index.json");
       }
       
+      // Check and create media-metadata.json
+      const metadataResult = await fetchRemoteJson<unknown>(`${REMOTE_MEDIA_BASE}media-metadata.json`);
+      if (!metadataResult.exists) {
+        await uploadJsonToFtp("media-metadata.json", { items: {} });
+        actions.push("Created media-metadata.json");
+      }
+      
       if (actions.length === 0) {
         return NextResponse.json({ success: true, message: "All files already exist" });
       }
@@ -489,13 +498,14 @@ async function handleRemoteFix(action: string) {
       // Push clean files
       await uploadJsonToFtp("schedule.json", { channels: {} });
       await uploadJsonToFtp("media-index.json", { items: [], generatedAt: new Date().toISOString() });
+      await uploadJsonToFtp("media-metadata.json", { items: {} });
 
       // Clear caches
       clearMediaCaches();
 
       return NextResponse.json({
         success: true,
-        message: "Fresh start complete. Pushed empty schedule.json and media-index.json"
+        message: "Fresh start complete. Pushed empty schedule.json, media-index.json, and media-metadata.json"
       });
     }
 
@@ -526,6 +536,12 @@ async function handleLocalFix(action: string) {
       if (!(await fileExists(mediaIndexPath))) {
         await fs.writeFile(mediaIndexPath, JSON.stringify({ items: [], generatedAt: new Date().toISOString() }, null, 2));
         actions.push("Created media-index.json");
+      }
+      
+      const metadataPath = path.join(dataFolder, "media-metadata.json");
+      if (!(await fileExists(metadataPath))) {
+        await fs.writeFile(metadataPath, JSON.stringify({ items: {} }, null, 2));
+        actions.push("Created media-metadata.json");
       }
       
       if (actions.length === 0) {
@@ -607,9 +623,10 @@ async function handleLocalFix(action: string) {
       // Create clean files
       await fs.writeFile(path.join(dataFolder, "schedule.json"), JSON.stringify({ channels: {} }, null, 2));
       await fs.writeFile(path.join(dataFolder, "media-index.json"), JSON.stringify({ items: [], generatedAt: new Date().toISOString() }, null, 2));
+      await fs.writeFile(path.join(dataFolder, "media-metadata.json"), JSON.stringify({ items: {} }, null, 2));
 
       // Delete deprecated files
-      const toDelete = ["channels.json", "media-metadata.json"];
+      const toDelete = ["channels.json"];
       for (const file of toDelete) {
         const filePath = path.join(dataFolder, file);
         if (await fileExists(filePath)) {

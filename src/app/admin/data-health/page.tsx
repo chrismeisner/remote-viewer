@@ -235,6 +235,7 @@ export default function DataHealthPage() {
         files: [
           { name: "schedule.json", exists: true },
           { name: "media-index.json", exists: true },
+          { name: "media-metadata.json", exists: true },
         ],
         canFix: true,
       });
@@ -510,6 +511,7 @@ export default function DataHealthPage() {
               <ul className="mt-2 ml-4 space-y-1 text-xs text-red-300 list-disc">
                 <li>Delete all channels and schedules</li>
                 <li>Clear the media index</li>
+                <li>Clear all media metadata (titles, years, covers, etc.)</li>
                 {!isRemote && <li>Remove deprecated files</li>}
               </ul>
               <p className="mt-3 text-xs text-red-200 font-semibold">This cannot be undone.</p>

@@ -191,7 +191,7 @@ function MediaDetailModal({
 
     // Fetch both metadata and available covers in parallel
     Promise.all([
-      fetch(`/api/media-metadata?file=${encodeURIComponent(item.relPath)}`).then((res) => res.json()),
+      fetch(`/api/media-metadata?file=${encodeURIComponent(item.relPath)}&source=${mediaSource}`).then((res) => res.json()),
       fetch("/api/covers").then((res) => res.json()),
     ])
       .then(([metaData, coversData]) => {
@@ -293,6 +293,7 @@ function MediaDetailModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           file: item.relPath,
+          source: mediaSource,
           title: editTitle.trim() || null,
           year: editYear ? parseInt(editYear, 10) : null,
           director: editDirector.trim() || null,
@@ -1271,6 +1272,7 @@ function CoverImageSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           file: relPath,
+          source: mediaSource,
           coverUrl: coverUrl.trim() || null,
           coverLocal: coverLocal || null,
           coverPath: coverPath || null,
@@ -2051,7 +2053,7 @@ export default function MediaAdminPage() {
 
   // Fetch all metadata for table display (works for both local and remote sources)
   useEffect(() => {
-    fetch("/api/media-metadata?withAutoYear=true")
+    fetch(`/api/media-metadata?withAutoYear=true&source=${mediaSource}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.items) {
@@ -2061,7 +2063,7 @@ export default function MediaAdminPage() {
       .catch(() => {
         // Ignore errors, metadata is optional
       });
-  }, [mediaRefreshToken]);
+  }, [mediaRefreshToken, mediaSource]);
 
   // Toggle individual file selection for conversion
   const toggleFileSelection = (relPath: string) => {
@@ -2528,9 +2530,14 @@ export default function MediaAdminPage() {
                                 }}
                               />
                             ) : (
-                              <div className="w-12 h-12 bg-white/5 rounded border border-white/10 flex items-center justify-center text-neutral-600 text-xs">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFile(file)}
+                                className="w-12 h-12 bg-white/5 rounded border border-white/10 flex items-center justify-center text-neutral-600 hover:text-neutral-400 hover:bg-white/10 text-xs transition-colors cursor-pointer"
+                                title="Click to add cover"
+                              >
                                 —
-                              </div>
+                              </button>
                             )}
                           </td>
                           <td className="px-3 py-2 max-w-[256px]">

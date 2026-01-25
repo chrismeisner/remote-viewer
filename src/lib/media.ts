@@ -1496,6 +1496,161 @@ export async function getLocalMediaMetadataFilePath(): Promise<string | null> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Remote Media Metadata Functions (for FTP/remote source)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Load media metadata from the remote HTTP URL.
+ * Used when source is "remote" to fetch metadata from the public URL.
+ */
+export async function loadRemoteMediaMetadata(): Promise<MediaMetadataStore> {
+  const base = process.env.REMOTE_MEDIA_BASE || REMOTE_MEDIA_BASE;
+  if (!base) {
+    return { items: {} };
+  }
+
+  try {
+    const metadataUrl = new URL("media-metadata.json", base).toString();
+    const res = await fetch(metadataUrl, { cache: "no-store" });
+    if (!res.ok) {
+      // 404 is expected if no metadata file exists yet
+      if (res.status === 404) {
+        return { items: {} };
+      }
+      console.warn("Remote metadata fetch failed", metadataUrl, res.status);
+      return { items: {} };
+    }
+    const parsed = (await res.json()) as MediaMetadataStore;
+    return parsed;
+  } catch (error) {
+    console.warn("Failed to fetch remote metadata", error);
+    return { items: {} };
+  }
+}
+
+/**
+ * Save media metadata to the remote FTP server.
+ * Used when source is "remote" to upload metadata changes.
+ */
+export async function saveRemoteMediaMetadata(metadata: MediaMetadataStore): Promise<void> {
+  const { uploadJsonToFtp, isFtpConfigured } = await import("@/lib/ftp");
+  
+  if (!isFtpConfigured()) {
+    throw new Error("FTP not configured. Cannot save remote metadata.");
+  }
+  
+  await uploadJsonToFtp("media-metadata.json", metadata);
+}
+
+/**
+ * Load media metadata based on source.
+ * - "local": reads from local filesystem
+ * - "remote": fetches from remote HTTP URL
+ */
+export async function loadMediaMetadataBySource(
+  source: MediaSource = "local"
+): Promise<MediaMetadataStore> {
+  if (source === "remote") {
+    return loadRemoteMediaMetadata();
+  }
+  return loadMediaMetadata();
+}
+
+/**
+ * Save media metadata based on source.
+ * - "local": writes to local filesystem
+ * - "remote": uploads to FTP server
+ */
+export async function saveMediaMetadataBySource(
+  metadata: MediaMetadataStore,
+  source: MediaSource = "local"
+): Promise<void> {
+  if (source === "remote") {
+    return saveRemoteMediaMetadata(metadata);
+  }
+  return saveMediaMetadata(metadata);
+}
+
+/**
+ * Get metadata for a specific media item, respecting source.
+ * If no explicit metadata exists, attempts to extract year from filename.
+ */
+export async function getMediaItemMetadataBySource(
+  relPath: string,
+  source: MediaSource = "local"
+): Promise<MediaMetadataItem> {
+  const store = await loadMediaMetadataBySource(source);
+  const existing = store.items[relPath] || {};
+  
+  // If year is not set, try to extract from filename
+  if (existing.year === undefined) {
+    const extractedYear = extractYearFromFilename(relPath);
+    return {
+      ...existing,
+      year: extractedYear,
+    };
+  }
+  
+  return existing;
+}
+
+/**
+ * Update metadata for a specific media item, respecting source.
+ * Pass null to explicitly clear a field, undefined to leave unchanged.
+ */
+export async function updateMediaItemMetadataBySource(
+  relPath: string,
+  updates: Partial<MediaMetadataItem>,
+  source: MediaSource = "local"
+): Promise<MediaMetadataItem> {
+  const store = await loadMediaMetadataBySource(source);
+  
+  const existing = store.items[relPath] || {};
+  const updated: MediaMetadataItem = { ...existing };
+  
+  // Apply updates (undefined means no change, null means clear)
+  if (updates.title !== undefined) updated.title = updates.title;
+  if (updates.year !== undefined) updated.year = updates.year;
+  if (updates.director !== undefined) updated.director = updates.director;
+  if (updates.category !== undefined) updated.category = updates.category;
+  if (updates.makingOf !== undefined) updated.makingOf = updates.makingOf;
+  if (updates.plot !== undefined) updated.plot = updates.plot;
+  if (updates.type !== undefined) updated.type = updates.type;
+  if (updates.season !== undefined) updated.season = updates.season;
+  if (updates.episode !== undefined) updated.episode = updates.episode;
+  if (updates.coverUrl !== undefined) updated.coverUrl = updates.coverUrl;
+  if (updates.coverLocal !== undefined) updated.coverLocal = updates.coverLocal;
+  if (updates.coverPath !== undefined) updated.coverPath = updates.coverPath;
+  if (updates.tags !== undefined) updated.tags = updates.tags;
+  
+  // Clean up null/undefined values for cleaner JSON
+  const cleaned: MediaMetadataItem = {};
+  if (updated.title != null) cleaned.title = updated.title;
+  if (updated.year != null) cleaned.year = updated.year;
+  if (updated.director != null) cleaned.director = updated.director;
+  if (updated.category != null) cleaned.category = updated.category;
+  if (updated.makingOf != null) cleaned.makingOf = updated.makingOf;
+  if (updated.plot != null) cleaned.plot = updated.plot;
+  if (updated.type != null) cleaned.type = updated.type;
+  if (updated.season != null) cleaned.season = updated.season;
+  if (updated.episode != null) cleaned.episode = updated.episode;
+  if (updated.coverUrl != null) cleaned.coverUrl = updated.coverUrl;
+  if (updated.coverLocal != null) cleaned.coverLocal = updated.coverLocal;
+  if (updated.coverPath != null) cleaned.coverPath = updated.coverPath;
+  if (updated.tags != null && updated.tags.length > 0) cleaned.tags = updated.tags;
+  
+  // Only store if there's actual data
+  if (Object.keys(cleaned).length > 0) {
+    store.items[relPath] = cleaned;
+  } else {
+    delete store.items[relPath];
+  }
+  
+  await saveMediaMetadataBySource(store, source);
+  return cleaned;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // FFprobe Functions
 // ─────────────────────────────────────────────────────────────────────────────
 

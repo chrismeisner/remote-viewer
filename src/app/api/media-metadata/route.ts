@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   loadMediaMetadata,
+  loadMediaMetadataBySource,
   getMediaItemMetadata,
-  updateMediaItemMetadata,
+  getMediaItemMetadataBySource,
+  updateMediaItemMetadataBySource,
   extractYearFromFilename,
   resolveCoverUrl,
   type MediaMetadataItem,
 } from "@/lib/media";
+import type { MediaSource } from "@/constants/media";
 
 export const runtime = "nodejs";
 
@@ -16,6 +19,7 @@ export const runtime = "nodejs";
  * Query params:
  *   - file: (optional) specific file to get metadata for
  *   - withAutoYear: (optional) if "true", includes auto-extracted year for items without explicit year
+ *   - source: (optional) "local" or "remote" - defaults to "local"
  * 
  * Returns:
  *   - If file specified: metadata for that file
@@ -25,18 +29,21 @@ export async function GET(request: NextRequest) {
   try {
     const fileParam = request.nextUrl.searchParams.get("file");
     const withAutoYear = request.nextUrl.searchParams.get("withAutoYear") === "true";
+    const sourceParam = request.nextUrl.searchParams.get("source") as MediaSource | null;
+    const source: MediaSource = sourceParam === "remote" ? "remote" : "local";
     
     if (fileParam) {
       // Get metadata for specific file
-      const metadata = await getMediaItemMetadata(fileParam);
+      const metadata = await getMediaItemMetadataBySource(fileParam, source);
       return NextResponse.json({
         file: fileParam,
         metadata,
+        source,
       });
     }
     
     // Get all metadata
-    const store = await loadMediaMetadata();
+    const store = await loadMediaMetadataBySource(source);
     
     // If requested, add auto-extracted year to items without explicit year
     if (withAutoYear) {
@@ -51,10 +58,10 @@ export async function GET(request: NextRequest) {
           enhanced[relPath] = item;
         }
       }
-      return NextResponse.json({ items: enhanced });
+      return NextResponse.json({ items: enhanced, source });
     }
     
-    return NextResponse.json(store);
+    return NextResponse.json({ ...store, source });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
@@ -69,6 +76,7 @@ export async function GET(request: NextRequest) {
  * 
  * Body:
  *   - file: string (required) - the relPath of the media file
+ *   - source?: "local" | "remote" - defaults to "local"
  *   - title?: string | null
  *   - year?: number | null
  *   - director?: string | null
@@ -88,7 +96,8 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { file, title, year, director, category, makingOf, plot, type, season, episode, coverUrl, coverLocal, coverPath, tags } = body;
+    const { file, source: sourceParam, title, year, director, category, makingOf, plot, type, season, episode, coverUrl, coverLocal, coverPath, tags } = body;
+    const source: MediaSource = sourceParam === "remote" ? "remote" : "local";
     
     if (!file || typeof file !== "string") {
       return NextResponse.json(
@@ -157,7 +166,7 @@ export async function PUT(request: NextRequest) {
       updates.tags = tags === null ? null : tags.filter((t: string) => t.trim()).map((t: string) => t.trim());
     }
     
-    const updated = await updateMediaItemMetadata(file, updates);
+    const updated = await updateMediaItemMetadataBySource(file, updates, source);
     
     // Include resolved cover URL in response
     const resolvedCover = resolveCoverUrl(updated);
@@ -166,6 +175,7 @@ export async function PUT(request: NextRequest) {
       file,
       metadata: updated,
       resolvedCoverUrl: resolvedCover,
+      source,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

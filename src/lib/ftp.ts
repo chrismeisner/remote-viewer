@@ -103,6 +103,54 @@ export function normalizeChannelId(channel?: string): string {
   return base.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
+/**
+ * Download a JSON file from the FTP server.
+ * Returns the parsed JSON data, or null if the file doesn't exist.
+ */
+export async function downloadJsonFromFtp<T = unknown>(
+  filename: string
+): Promise<T | null> {
+  const { host, user, password, port, remotePath, secure } = requireFtpConfig();
+
+  const baseDir = getRemoteBaseDir(remotePath);
+  const targetPath = path.posix.join(baseDir, filename);
+
+  const client = new Client(15000);
+  try {
+    await client.access({ host, port, user, password, secure });
+    
+    // Check if file exists by trying to get its size
+    try {
+      await client.size(targetPath);
+    } catch {
+      // File doesn't exist
+      return null;
+    }
+    
+    // Download to a writable stream and collect chunks
+    const chunks: Buffer[] = [];
+    const writable = new (require("stream").Writable)({
+      write(chunk: Buffer, _encoding: string, callback: () => void) {
+        chunks.push(chunk);
+        callback();
+      },
+    });
+    
+    await client.downloadTo(writable, targetPath);
+    const content = Buffer.concat(chunks).toString("utf8");
+    return JSON.parse(content) as T;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    // File not found is not an error, just return null
+    if (err?.code === "550" || err?.message?.includes("550")) {
+      return null;
+    }
+    throw error;
+  } finally {
+    client.close();
+  }
+}
+
 // Re-export filename utilities from client-safe module
 // These can be used in server code as well
 export { cleanupFilename, needsFilenameCleanup } from "./filename-utils";
