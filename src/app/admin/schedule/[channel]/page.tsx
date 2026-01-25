@@ -572,13 +572,25 @@ export default function ChannelSchedulePage() {
                               </div>
                             </td>
                             <td className="px-3 py-2 text-right">
-                              <button
-                                onClick={() => scheduleNext(slot.end)}
-                                className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-200 transition hover:border-white/30 hover:bg-white/10"
-                                title={`Schedule next item starting at ${slot.end}`}
-                              >
-                                + Next
-                              </button>
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => scheduleNext(slot.end)}
+                                  className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-200 transition hover:border-white/30 hover:bg-white/10"
+                                  title={`Schedule next item starting at ${slot.end}`}
+                                >
+                                  + Next
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const nextSlots = slots.filter((_, i) => i !== idx);
+                                    setSlots(nextSlots);
+                                  }}
+                                  className="rounded-md border border-red-400/60 bg-red-500/20 px-2 py-1 text-xs text-red-50 transition hover:border-red-300 hover:bg-red-500/30"
+                                  title="Delete this schedule item"
+                                >
+                                  Delete
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
