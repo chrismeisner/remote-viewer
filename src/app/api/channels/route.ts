@@ -211,6 +211,7 @@ export async function PATCH(request: NextRequest) {
     const newIdRaw = typeof body?.newId === "string" ? body.newId.trim() : "";
     const shortName = typeof body?.shortName === "string" ? body.shortName : undefined;
     const active = typeof body?.active === "boolean" ? body.active : undefined;
+    const newType = body?.type === "looping" || body?.type === "24hour" ? body.type : undefined;
 
     if (!id) {
       return NextResponse.json({ error: "Channel ID is required" }, { status: 400 });
@@ -241,6 +242,23 @@ export async function PATCH(request: NextRequest) {
         }
       }
 
+      // Handle type change - this clears the schedule
+      const currentType = schedule.channels[targetId].type || "24hour";
+      if (newType && newType !== currentType) {
+        const channelData = schedule.channels[targetId];
+        if (newType === "looping") {
+          // Converting to looping: remove slots, add empty playlist
+          delete channelData.slots;
+          channelData.playlist = [];
+          channelData.type = "looping";
+        } else {
+          // Converting to 24hour: remove playlist, add empty slots
+          delete channelData.playlist;
+          channelData.slots = [];
+          channelData.type = "24hour";
+        }
+      }
+
       // Update properties
       if (shortName !== undefined) schedule.channels[targetId].shortName = shortName || undefined;
       if (active !== undefined) schedule.channels[targetId].active = active;
@@ -268,6 +286,36 @@ export async function PATCH(request: NextRequest) {
           }
           await renameChannel(id, normalizedNewId);
           targetId = normalizedNewId;
+        }
+      }
+
+      // Handle type change for local
+      if (newType) {
+        const channelsList = await listChannels("local");
+        const currentChannel = channelsList.find(ch => ch.id === targetId);
+        const currentType = currentChannel?.type || "24hour";
+        
+        if (newType !== currentType) {
+          // Load the full schedule to update the type
+          const fullSchedule = await loadFullSchedule("local");
+          if (fullSchedule.channels[targetId]) {
+            const channelData = fullSchedule.channels[targetId];
+            if (newType === "looping") {
+              // Converting to looping: remove slots, add empty playlist
+              delete channelData.slots;
+              channelData.playlist = [];
+              channelData.type = "looping";
+            } else {
+              // Converting to 24hour: remove playlist, add empty slots
+              delete channelData.playlist;
+              channelData.slots = [];
+              channelData.type = "24hour";
+            }
+            
+            // Save the updated schedule
+            const { saveSchedule } = await import("@/lib/schedule");
+            await saveSchedule(fullSchedule, "local");
+          }
         }
       }
 

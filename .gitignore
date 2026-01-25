@@ -29,6 +29,7 @@
 /data/local/config.json
 /data/local/media-metadata.json
 /data/local/schedule.json
+/data/local/media-index.json
 
 # debug
 npm-debug.log*

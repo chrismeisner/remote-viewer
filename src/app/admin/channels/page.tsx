@@ -39,6 +39,7 @@ export default function ChannelAdminPage() {
   });
   const [editId, setEditId] = useState("");
   const [editShortName, setEditShortName] = useState("");
+  const [editType, setEditType] = useState<ScheduleType>("24hour");
   const [resetModal, setResetModal] = useState(false);
   const [resetting, setResetting] = useState(false);
 
@@ -178,7 +179,7 @@ export default function ChannelAdminPage() {
   };
 
   // Update channel
-  const handleUpdateChannel = async (channelId: string, nextId: string, shortName: string) => {
+  const handleUpdateChannel = async (channelId: string, nextId: string, shortName: string, type: ScheduleType) => {
     if (!mediaSource) return;
     const normalizedNextId = nextId.trim();
     if (!normalizedNextId) {
@@ -197,6 +198,7 @@ export default function ChannelAdminPage() {
           id: channelId,
           newId: normalizedNextId,
           shortName: shortName.trim() || undefined,
+          type,
         }),
       });
       const data = await res.json();
@@ -210,6 +212,7 @@ export default function ChannelAdminPage() {
       setEditModal({ show: false, channel: null });
       setEditId("");
       setEditShortName("");
+      setEditType("24hour");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update");
     } finally {
@@ -270,6 +273,7 @@ export default function ChannelAdminPage() {
     setEditModal({ show: true, channel });
     setEditId(channel.id);
     setEditShortName(channel.shortName ?? "");
+    setEditType(channel.type ?? "24hour");
   };
 
   // Reset all channels
@@ -518,6 +522,26 @@ export default function ChannelAdminPage() {
                   className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
                 />
               </div>
+              <div>
+                <label className="text-xs font-semibold text-neutral-400 block mb-1">Schedule Type</label>
+                <select
+                  value={editType}
+                  onChange={(e) => setEditType(e.target.value as ScheduleType)}
+                  className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100"
+                >
+                  <option value="24hour">24-Hour Schedule</option>
+                  <option value="looping">Looping Playlist</option>
+                </select>
+              </div>
+              
+              {editType !== editModal.channel.type && (
+                <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3">
+                  <p className="text-xs text-amber-200 font-semibold mb-1">⚠️ Warning</p>
+                  <p className="text-xs text-amber-200">
+                    Changing the schedule type will clear all existing schedule items for this channel. This cannot be undone.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
@@ -528,7 +552,7 @@ export default function ChannelAdminPage() {
                 Cancel
               </button>
               <button
-                onClick={() => handleUpdateChannel(editModal.channel!.id, editId, editShortName)}
+                onClick={() => handleUpdateChannel(editModal.channel!.id, editId, editShortName, editType)}
                 disabled={saving !== null}
                 className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-100 disabled:opacity-50"
               >
