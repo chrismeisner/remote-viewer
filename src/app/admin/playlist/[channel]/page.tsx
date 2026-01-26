@@ -284,6 +284,20 @@ export default function ChannelPlaylistPage() {
     });
   }, []);
 
+  const shufflePlaylist = useCallback(() => {
+    if (playlist.length <= 1) return;
+    
+    setPlaylist(prev => {
+      const shuffled = [...prev];
+      // Fisher-Yates shuffle algorithm
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    });
+  }, [playlist.length]);
+
   const clearPlaylist = async () => {
     const confirmed = window.confirm(`Clear playlist for "${channelId}"?`);
     if (!confirmed) return;
@@ -359,6 +373,14 @@ export default function ChannelPlaylistPage() {
           disabled={loading || autoSaveStatus === "saving"}
         >
           + Add to playlist
+        </button>
+        <button
+          onClick={shufflePlaylist}
+          className="rounded-md border border-blue-400/60 bg-blue-500/20 px-3 py-1 text-sm font-semibold text-blue-50 transition hover:border-blue-300 hover:bg-blue-500/30 disabled:opacity-50"
+          disabled={loading || autoSaveStatus === "saving" || playlist.length <= 1}
+          title="Randomize playlist order"
+        >
+          🔀 Shuffle
         </button>
         <button
           onClick={() => void clearPlaylist()}

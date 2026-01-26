@@ -486,6 +486,9 @@ function MediaDetailModal({
   };
 
   const fileName = currentRelPath.split("/").pop() || currentRelPath;
+  const fullPath = mediaSource === "remote" 
+    ? `${REMOTE_MEDIA_BASE}${currentRelPath}`
+    : `${mediaRoot}/${currentRelPath}`;
 
   return (
     <div
@@ -502,9 +505,20 @@ function MediaDetailModal({
             <h2 className="text-lg font-semibold text-neutral-50 truncate" title={fileName}>
               {fileName}
             </h2>
-            <p className="text-xs text-neutral-400 truncate font-mono" title={currentRelPath}>
-              {currentRelPath}
-            </p>
+            <div className="mt-1 space-y-0.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-neutral-500 font-medium">Relative Path:</span>
+                <p className="text-xs text-neutral-400 truncate font-mono flex-1" title={currentRelPath}>
+                  {currentRelPath}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-neutral-500 font-medium">Full Path:</span>
+                <p className="text-xs text-neutral-400 truncate font-mono flex-1" title={fullPath}>
+                  {fullPath}
+                </p>
+              </div>
+            </div>
             {renameSuccess && (
               <p className="text-xs text-emerald-400 mt-1">File renamed successfully</p>
             )}

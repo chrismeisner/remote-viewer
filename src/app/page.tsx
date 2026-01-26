@@ -90,6 +90,7 @@ export default function Home() {
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [infoMetadata, setInfoMetadata] = useState<MediaMetadata | null>(null);
   const [infoLoading, setInfoLoading] = useState(false);
+  const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   
   // Channel overlay state for CRT-style display
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
@@ -648,6 +649,26 @@ export default function Home() {
     volumeRef.current = volume;
     video.volume = volume;
   }, [volume]);
+
+  // Update current playback time when info modal is open
+  useEffect(() => {
+    if (!showInfoModal) return;
+    
+    const video = videoRef.current;
+    if (!video) return;
+    
+    const updateTime = () => {
+      setCurrentPlaybackTime(video.currentTime || 0);
+    };
+    
+    // Update immediately
+    updateTime();
+    
+    // Update every 100ms for smooth progress
+    const interval = setInterval(updateTime, 100);
+    
+    return () => clearInterval(interval);
+  }, [showInfoModal]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -1359,6 +1380,25 @@ export default function Home() {
           </div>
         ) : nowPlaying ? (
           <div className="mt-4 space-y-4">
+            {/* Playback progress bar */}
+            <div className="space-y-2 pb-4 border-b border-white/10">
+              <div className="flex justify-between items-baseline text-xs text-neutral-400">
+                <span className="font-mono">{formatOffsetForDisplay(currentPlaybackTime)}</span>
+                <span className="font-mono">{formatOffsetForDisplay(nowPlaying.durationSeconds - currentPlaybackTime)} remaining</span>
+                <span className="font-mono">{formatOffsetForDisplay(nowPlaying.durationSeconds)}</span>
+              </div>
+              
+              {/* Progress bar */}
+              <div className="relative h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                <div 
+                  className="absolute top-0 left-0 h-full bg-emerald-500 transition-all duration-100 ease-linear rounded-full"
+                  style={{ 
+                    width: `${Math.min(100, (currentPlaybackTime / nowPlaying.durationSeconds) * 100)}%` 
+                  }}
+                />
+              </div>
+            </div>
+
             {/* Cover art and basic info side by side */}
             <div className="flex gap-4">
               {/* Cover art */}
