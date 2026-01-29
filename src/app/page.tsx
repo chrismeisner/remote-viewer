@@ -1054,7 +1054,7 @@ export default function Home() {
               : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
           }`}
         >
-          {muted ? "Muted" : "Mute"}
+          Mute
         </button>
         <button
           onClick={toggleFullscreen}
