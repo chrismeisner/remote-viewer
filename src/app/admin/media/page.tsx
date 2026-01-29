@@ -23,7 +23,12 @@ type MediaFile = {
   rFrameRate?: string;
   avgFrameRate?: string;
   frameRateMode?: "cfr" | "vfr" | "unknown";
+  // Video resolution
+  videoWidth?: number;
+  videoHeight?: number;
 };
+
+type TargetResolution = "original" | "720";
 
 type MediaType = "film" | "tv" | "documentary" | "sports" | "concert" | "other";
 
@@ -111,6 +116,15 @@ function MediaDetailModal({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedCommand, setCopiedCommand] = useState(false);
+  
+  // Resolution conversion state
+  const [targetResolution, setTargetResolution] = useState<TargetResolution>("original");
+
+  // Reset conversion state when item changes
+  useEffect(() => {
+    setTargetResolution("original");
+    setCopiedCommand(false);
+  }, [item.relPath]);
 
   // Metadata state
   const [metadata, setMetadata] = useState<MediaMetadata>({});
@@ -753,13 +767,66 @@ function MediaDetailModal({
           )}
 
           {/* Conversion Helper - always show for all files */}
-          <div className="mt-4 pt-3 border-t border-white/5 space-y-2">
+          <div className="mt-4 pt-3 border-t border-white/5 space-y-3">
+            {/* Resolution Info */}
+            {item.videoWidth && item.videoHeight && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-neutral-500">Resolution:</span>
+                <span className={`px-2 py-0.5 rounded-full ${
+                  item.videoHeight >= 1080 
+                    ? "bg-blue-500/20 text-blue-200" 
+                    : item.videoHeight >= 720 
+                    ? "bg-emerald-500/20 text-emerald-200"
+                    : "bg-neutral-500/20 text-neutral-300"
+                }`}>
+                  {item.videoWidth}×{item.videoHeight}
+                  {item.videoHeight >= 1080 ? " (1080p)" : item.videoHeight >= 720 ? " (720p)" : ""}
+                </span>
+              </div>
+            )}
+            
             <p className="text-xs text-neutral-400">
-              {getConversionDescription(item)}
+              {getConversionDescription(item, targetResolution)}
             </p>
+            
+            {/* Resolution selector - only show if video is > 720p */}
+            {item.videoHeight && item.videoHeight > 720 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-neutral-500">Output:</span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      setTargetResolution("original");
+                      setCopiedCommand(false);
+                    }}
+                    className={`px-2.5 py-1 text-xs rounded-md transition ${
+                      targetResolution === "original"
+                        ? "bg-blue-500/30 text-blue-100 border border-blue-400/50"
+                        : "bg-white/5 text-neutral-400 border border-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    Keep {item.videoHeight}p
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTargetResolution("720");
+                      setCopiedCommand(false);
+                    }}
+                    className={`px-2.5 py-1 text-xs rounded-md transition ${
+                      targetResolution === "720"
+                        ? "bg-emerald-500/30 text-emerald-100 border border-emerald-400/50"
+                        : "bg-white/5 text-neutral-400 border border-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    720p (smaller)
+                  </button>
+                </div>
+              </div>
+            )}
+            
             <div className="flex items-center gap-2">
               <button
-                onClick={() => copyConvertCommand(item, mediaRoot, setCopiedCommand)}
+                onClick={() => copyConvertCommand(item, mediaRoot, setCopiedCommand, targetResolution)}
                 className="rounded-md border border-white/20 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30"
               >
                 {copiedCommand ? "Copied!" : "Copy conversion command"}
@@ -767,6 +834,8 @@ function MediaDetailModal({
               <span className={`text-xs px-2 py-1 rounded-full ${
                 needsSyncFix(item)
                   ? "bg-red-500/20 text-red-200"
+                  : targetResolution === "720" && item.videoHeight && item.videoHeight > 720
+                  ? "bg-purple-500/20 text-purple-200"
                   : isAlreadyOptimal(item)
                   ? "bg-emerald-500/20 text-emerald-200"
                   : needsFullReencode(item)
@@ -777,6 +846,8 @@ function MediaDetailModal({
               }`}>
                 {needsSyncFix(item)
                   ? "Sync fix"
+                  : targetResolution === "720" && item.videoHeight && item.videoHeight > 720
+                  ? "Downscale + re-encode"
                   : isAlreadyOptimal(item) 
                   ? "Already optimal" 
                   : needsFullReencode(item) 
@@ -3061,7 +3132,7 @@ function needsAudioOnlyConversion(file: MediaFile): boolean {
   return hasUnsupportedAudio(file);
 }
 
-function getConversionDescription(file: MediaFile): string {
+function getConversionDescription(file: MediaFile, targetResolution: TargetResolution = "original"): string {
   const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
   const filename = file.relPath.toLowerCase();
   
@@ -3070,13 +3141,25 @@ function getConversionDescription(file: MediaFile): string {
                  filename.includes("h.264") ||
                  filename.includes("avc");
   
+  // Check if downsizing to 720p
+  const currentHeight = file.videoHeight || 0;
+  const isDownsizingTo720 = targetResolution === "720" && currentHeight > 720;
+  const resolutionNote = isDownsizingTo720 
+    ? ` Will downscale to 720p (from ${currentHeight}p) for smaller file size.`
+    : "";
+  
   // Check for VFR/sync issues first - these need full re-encode regardless of other factors
   const fixSync = needsSyncFix(file);
   if (fixSync) {
     const baseDesc = file.frameRateMode === "vfr" 
       ? "Variable frame rate (VFR) detected"
       : "Variable frame rate suspected";
-    return `${baseDesc} — will re-encode to CFR with continuous audio resampling (aresample async=1000) to prevent drift during playback.`;
+    return `${baseDesc} — will re-encode to CFR with continuous audio resampling (aresample async=1000) to prevent drift during playback.${resolutionNote}`;
+  }
+  
+  // If downsizing to 720p, note that re-encoding is required
+  if (isDownsizingTo720) {
+    return `Will re-encode to 720p (from ${currentHeight}p) with H.264 + AAC for smaller file size.`;
   }
   
   // Check if already optimal
@@ -3142,8 +3225,9 @@ function copyConvertCommand(
   file: MediaFile,
   mediaRoot: string,
   setCopied: (value: boolean) => void,
+  targetResolution: TargetResolution = "original",
 ) {
-  const cmd = buildConvertCommand(file, mediaRoot);
+  const cmd = buildConvertCommand(file, mediaRoot, targetResolution);
   if (navigator?.clipboard?.writeText) {
     navigator.clipboard
       .writeText(cmd)
@@ -3155,7 +3239,7 @@ function copyConvertCommand(
   }
 }
 
-function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
+function buildConvertCommand(file: MediaFile, mediaRoot: string, targetResolution: TargetResolution = "original"): string {
   const escapedIn = escapeDoubleQuotes(file.relPath);
   const base = file.relPath.replace(/\.[^/.]+$/, "");
   const ext = file.relPath.split(".").pop()?.toLowerCase() || "";
@@ -3163,18 +3247,23 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
   // Check if we need sync-safe conversion (VFR detected)
   const fixSync = needsSyncFix(file);
   
+  // Check if we're downsizing to 720p
+  const currentHeight = file.videoHeight || 0;
+  const isDownsizingTo720 = targetResolution === "720" && currentHeight > 720;
+  
   // Determine output filename suffix based on conversion type
   let outName: string;
+  const resolutionSuffix = isDownsizingTo720 ? "_720p" : "";
   if (ext === "mp4" || ext === "m4v") {
-    if (needsFullReencode(file) || fixSync) {
-      outName = `${base}_h264.mp4`;  // Re-encoded from HEVC to H.264, or VFR fix
+    if (needsFullReencode(file) || fixSync || isDownsizingTo720) {
+      outName = `${base}_h264${resolutionSuffix}.mp4`;  // Re-encoded from HEVC to H.264, or VFR fix, or resolution change
     } else if (isAlreadyOptimal(file) && !fixSync) {
       outName = `${base}_optimized.mp4`;  // Already optimal, just adding faststart
     } else {
       outName = `${base}_aac.mp4`;   // Audio-only conversion
     }
   } else {
-    outName = `${base}.mp4`;
+    outName = `${base}${resolutionSuffix}.mp4`;
   }
   const escapedOut = escapeDoubleQuotes(outName);
   const escapedRoot = escapeDoubleQuotes(mediaRoot);
@@ -3187,7 +3276,9 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
   // - profile:v high -level 4.1: Ensures broad browser/device compatibility
   // - pix_fmt yuv420p: 8-bit color required for browser playback (HEVC sources often use 10-bit)
   // - ac 2: Downmix to stereo for reliable browser audio playback
-  const h264Encode = "-c:v libx264 -profile:v high -level 4.1 -pix_fmt yuv420p -preset medium -crf 18";
+  // Scale filter for 720p: -vf scale=-2:720 (maintains aspect ratio, -2 ensures even width)
+  const scaleFilter = isDownsizingTo720 ? "-vf scale=-2:720" : "";
+  const h264Encode = `-c:v libx264 -profile:v high -level 4.1 -pix_fmt yuv420p -preset medium -crf 18${scaleFilter ? ` ${scaleFilter}` : ""}`;
   const aacEncode = "-c:a aac -ac 2 -b:a 192k";
   const faststart = "-movflags +faststart";
   
@@ -3209,6 +3300,11 @@ function buildConvertCommand(file: MediaFile, mediaRoot: string): string {
     // VFR files need full re-encode to fix sync
     // Order: input flags, input, video encode, fps mode, audio filter, audio encode, faststart, output
     return `ffmpeg -n ${inputFlags} -i ${inputPath} ${h264Encode} ${syncVideoFix} ${syncAudioFilter} ${aacEncode} ${faststart} ${outputPath}`;
+  }
+  
+  // If downsizing to 720p, always need to re-encode (can't copy stream when resizing)
+  if (isDownsizingTo720) {
+    return `ffmpeg -n -i ${inputPath} ${h264Encode} ${aacEncode} ${faststart} ${outputPath}`;
   }
   
   // Already optimal files - just copy with faststart for streaming optimization

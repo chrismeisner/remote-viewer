@@ -66,6 +66,9 @@ export async function POST() {
         rFrameRate: item.rFrameRate,
         avgFrameRate: item.avgFrameRate,
         frameRateMode: item.frameRateMode,
+        // Video resolution
+        videoWidth: item.videoWidth,
+        videoHeight: item.videoHeight,
       })),
     };
 

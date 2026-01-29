@@ -134,6 +134,9 @@ type ProbeInfo = {
   rFrameRate?: string;      // Real frame rate from stream (can vary)
   avgFrameRate?: string;    // Average frame rate
   frameRateMode?: "cfr" | "vfr" | "unknown";
+  // Video resolution
+  videoWidth?: number;
+  videoHeight?: number;
 };
 
 // Media health status for sync issue detection
@@ -164,6 +167,9 @@ export type ScheduledItem = {
   rFrameRate?: string;
   avgFrameRate?: string;
   frameRateMode?: "cfr" | "vfr" | "unknown";
+  // Video resolution
+  videoWidth?: number;
+  videoHeight?: number;
 };
 
 // Media metadata types
@@ -860,6 +866,8 @@ export async function getScheduleItems(options?: { refresh?: boolean }): Promise
       rFrameRate: probeInfo?.rFrameRate,
       avgFrameRate: probeInfo?.avgFrameRate,
       frameRateMode: probeInfo?.frameRateMode,
+      videoWidth: probeInfo?.videoWidth,
+      videoHeight: probeInfo?.videoHeight,
     });
   }
 
@@ -988,6 +996,8 @@ async function getProbeInfo(
     rFrameRate: probed.rFrameRate,
     avgFrameRate: probed.avgFrameRate,
     frameRateMode: probed.frameRateMode,
+    videoWidth: probed.videoWidth,
+    videoHeight: probed.videoHeight,
     mtimeMs,
   };
 
@@ -1004,6 +1014,8 @@ async function probeMediaInfo(
   rFrameRate?: string;
   avgFrameRate?: string;
   frameRateMode?: "cfr" | "vfr" | "unknown";
+  videoWidth?: number;
+  videoHeight?: number;
 }> {
   try {
     const ffprobePath = await resolveFfprobePath();
@@ -1019,14 +1031,14 @@ async function probeMediaInfo(
 
     const parsed = JSON.parse(stdout);
     const duration = extractDurationSeconds(parsed);
-    const { videoCodec, audioCodec, rFrameRate, avgFrameRate, frameRateMode } = extractCodecNames(parsed);
+    const { videoCodec, audioCodec, rFrameRate, avgFrameRate, frameRateMode, videoWidth, videoHeight } = extractCodecNames(parsed);
 
     if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) {
       console.warn("ffprobe missing duration, returning 0", absPath);
-      return { durationSeconds: null, videoCodec, audioCodec, rFrameRate, avgFrameRate, frameRateMode };
+      return { durationSeconds: null, videoCodec, audioCodec, rFrameRate, avgFrameRate, frameRateMode, videoWidth, videoHeight };
     }
 
-    return { durationSeconds: duration, videoCodec, audioCodec, rFrameRate, avgFrameRate, frameRateMode };
+    return { durationSeconds: duration, videoCodec, audioCodec, rFrameRate, avgFrameRate, frameRateMode, videoWidth, videoHeight };
   } catch (error) {
     console.warn("ffprobe failed", absPath, error);
   }
@@ -1364,6 +1376,8 @@ function extractCodecNames(probeJson: unknown): {
   rFrameRate?: string;
   avgFrameRate?: string;
   frameRateMode?: "cfr" | "vfr" | "unknown";
+  videoWidth?: number;
+  videoHeight?: number;
 } {
   if (!probeJson || typeof probeJson !== "object") return {};
   const obj = probeJson as { streams?: unknown };
@@ -1378,6 +1392,14 @@ function extractCodecNames(probeJson: unknown): {
     : undefined;
   const avgFrameRate = typeof videoStream?.avg_frame_rate === "string" 
     ? videoStream.avg_frame_rate 
+    : undefined;
+
+  // Extract video resolution
+  const videoWidth = typeof videoStream?.width === "number" && videoStream.width > 0
+    ? videoStream.width
+    : undefined;
+  const videoHeight = typeof videoStream?.height === "number" && videoStream.height > 0
+    ? videoStream.height
     : undefined;
 
   // Determine frame rate mode
@@ -1421,6 +1443,8 @@ function extractCodecNames(probeJson: unknown): {
     rFrameRate,
     avgFrameRate,
     frameRateMode,
+    videoWidth,
+    videoHeight,
   };
 }
 

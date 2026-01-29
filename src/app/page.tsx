@@ -91,6 +91,7 @@ export default function Home() {
   const [infoMetadata, setInfoMetadata] = useState<MediaMetadata | null>(null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
+  const [shareCopied, setShareCopied] = useState(false);
   
   // Channel overlay state for CRT-style display
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
@@ -1064,6 +1065,22 @@ export default function Home() {
   const closeChangelog = () => setShowChangelog(false);
   const closeInfoModal = () => setShowInfoModal(false);
   
+  const handleShareChannel = async () => {
+    if (!channel) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('channel', channel);
+    // Remove any other search params that shouldn't be shared
+    url.hash = '';
+    
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch (err) {
+      console.warn('Failed to copy URL to clipboard', err);
+    }
+  };
+  
   // Helper to build cover image URL
   const buildCoverImageUrl = (metadata: MediaMetadata): string | null => {
     if (metadata.coverUrl) return metadata.coverUrl;
@@ -1528,6 +1545,12 @@ export default function Home() {
           </div>
         )}
         <ModalFooter>
+          <ModalButton 
+            onClick={handleShareChannel}
+            disabled={!channel}
+          >
+            {shareCopied ? 'Copied!' : 'Share Channel'}
+          </ModalButton>
           <ModalButton onClick={closeInfoModal}>Close</ModalButton>
         </ModalFooter>
       </Modal>
