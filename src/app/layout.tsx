@@ -10,6 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://remote-viewer-e3c073898446.herokuapp.com"),
   title: "Remote Viewer",
   description: "Local channel-style playback for your video library",
   
