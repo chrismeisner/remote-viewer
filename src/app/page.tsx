@@ -14,6 +14,7 @@ const MUTED_PREF_KEY = "player-muted-default";
 const CRT_PREF_KEY = "player-crt-default";
 const REMOTE_PREF_KEY = "player-remote-default";
 const VOLUME_PREF_KEY = "player-volume-default";
+const WELCOME_SEEN_KEY = "player-welcome-seen";
 
 type NowPlaying = {
   title: string;
@@ -84,7 +85,7 @@ export default function Home() {
   const [showChannelInfo, setShowChannelInfo] = useState(false);
   const [showHeader, setShowHeader] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -336,6 +337,15 @@ export default function Home() {
     if (typeof window === "undefined") return;
     localStorage.setItem(REMOTE_PREF_KEY, showControls ? "true" : "false");
   }, [showControls]);
+
+  // Check if this is a first-time visitor (show welcome only once per browser)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hasSeenWelcome = localStorage.getItem(WELCOME_SEEN_KEY);
+    if (!hasSeenWelcome) {
+      setShowWelcome(true);
+    }
+  }, []);
 
   // Re-apply media source mapping when source changes
   useEffect(() => {
@@ -991,6 +1001,8 @@ export default function Home() {
     : "";
   const closeWelcome = () => {
     setShowWelcome(false);
+    // Remember that this browser has seen the welcome modal
+    localStorage.setItem(WELCOME_SEEN_KEY, "true");
     // After closing welcome modal, check if we should show changelog
     if (!changelogCheckedRef.current && changelogEntries.length > 0) {
       setShowChangelog(true);
