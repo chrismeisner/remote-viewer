@@ -436,65 +436,6 @@ export default function Home() {
     return () => clearTimeout(timeout);
   }, [nowPlaying?.endsAt]);
 
-  // Manual hard resync to fix audio/video desync
-  // VFR content and some codecs can cause audio to drift from video over time.
-  // Unlike a soft seek, this forces the browser to reload the media source,
-  // which resets both audio and video decoders - similar to changing channels.
-  const performHardResync = () => {
-    const video = videoRef.current;
-    if (!video || !nowPlaying) return;
-    
-    const expected = computeExpectedOffset(nowPlaying);
-    
-    console.log("[player] performing manual hard resync", {
-      currentTime: video.currentTime?.toFixed(2),
-      expectedTime: expected.toFixed(2),
-      src: nowPlaying.relPath,
-    });
-    
-    // Store current state
-    const wasMuted = video.muted;
-    const currentVolume = video.volume;
-    const currentSrc = video.src;
-    
-    try {
-      // Force full reload by removing and re-adding source
-      // This resets both audio and video decoders
-      video.pause();
-      video.src = "";
-      video.load();
-      
-      // Small delay to ensure cleanup, then reload
-      setTimeout(() => {
-        video.src = currentSrc;
-        video.load();
-        
-        const handleReloaded = () => {
-          video.removeEventListener("loadedmetadata", handleReloaded);
-          
-          // Restore state and seek to correct position
-          video.muted = wasMuted;
-          video.volume = currentVolume;
-          video.currentTime = computeExpectedOffset(nowPlaying);
-          desiredOffsetRef.current = video.currentTime;
-          
-          video.play().catch((err) => {
-            console.warn("[player] hard resync play failed", err);
-          });
-          
-          console.log("[player] hard resync complete", {
-            newTime: video.currentTime?.toFixed(2),
-          });
-        };
-        
-        video.addEventListener("loadedmetadata", handleReloaded);
-      }, 50);
-      
-    } catch (err) {
-      console.warn("[player] hard resync failed", err);
-    }
-  };
-
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -768,12 +709,6 @@ export default function Home() {
       if (key === "f") {
         event.preventDefault();
         toggleFullscreen();
-        return;
-      }
-
-      if (key === "s") {
-        event.preventDefault();
-        performHardResync();
         return;
       }
 
@@ -1127,14 +1062,6 @@ export default function Home() {
         >
           {isFullscreen ? "Exit" : "Fullscreen"}
         </button>
-        <button
-          onClick={performHardResync}
-          disabled={!nowPlaying}
-          className="inline-flex min-w-0 flex-1 basis-1/4 items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto sm:flex-none"
-          title="Resync audio/video if out of sync"
-        >
-          Sync
-        </button>
       </div>
       <button
         onClick={channelUp}
@@ -1338,7 +1265,6 @@ export default function Home() {
             <li className="flex justify-between gap-4"><span>Mute</span><span className="font-mono text-neutral-100">m</span></li>
             <li className="flex justify-between gap-4"><span>CRT Effect</span><span className="font-mono text-neutral-100">c</span></li>
             <li className="flex justify-between gap-4"><span>Fullscreen</span><span className="font-mono text-neutral-100">f</span></li>
-            <li className="flex justify-between gap-4"><span>Sync audio</span><span className="font-mono text-neutral-100">s</span></li>
           </ul>
         </div>
         <p className="mt-4 text-sm font-semibold text-neutral-200">Launch preferences</p>
