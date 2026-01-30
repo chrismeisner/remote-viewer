@@ -149,22 +149,46 @@ export default function ChannelAdminPage() {
   // Create channel
   const handleCreate = async () => {
     const id = newId.trim();
-    if (!id || !mediaSource) return;
+    if (!id || !mediaSource) {
+      console.log("[Channels Page] handleCreate aborted - missing id or mediaSource", { id, mediaSource });
+      return;
+    }
+    
+    console.log("[Channels Page] handleCreate starting", {
+      id,
+      shortName: newShortName.trim() || undefined,
+      type: newType,
+      mediaSource,
+    });
+    
     setSaving("create");
     setError(null);
     setMessage(null);
     try {
-      const res = await fetch(`/api/channels?source=${mediaSource}`, {
+      const payload = { 
+        id, 
+        shortName: newShortName.trim() || undefined,
+        type: newType,
+        active: false,
+      };
+      const url = `/api/channels?source=${mediaSource}`;
+      
+      console.log("[Channels Page] POST request:", { url, payload });
+      
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          id, 
-          shortName: newShortName.trim() || undefined,
-          type: newType,
-          active: false,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
+      
+      console.log("[Channels Page] POST response:", {
+        status: res.status,
+        ok: res.ok,
+        data,
+        channelCount: data.channels?.length ?? 0,
+      });
+      
       if (!res.ok) throw new Error(data.error || "Failed to create");
       setChannels(data.channels || []);
       setNewId("");
@@ -172,7 +196,9 @@ export default function ChannelAdminPage() {
       setNewType("24hour");
       const typeLabel = newType === "looping" ? "looping" : "24-hour";
       setMessage(`Channel "${id}" created (${typeLabel} schedule)`);
+      console.log("[Channels Page] Channel created successfully:", id);
     } catch (err) {
+      console.error("[Channels Page] handleCreate error:", err);
       setError(err instanceof Error ? err.message : "Failed to create");
     } finally {
       setSaving(null);

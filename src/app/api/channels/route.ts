@@ -135,18 +135,27 @@ export async function POST(request: NextRequest) {
     console.log("[Channels API POST] Parsed body:", { id, shortName, type: scheduleType, rawBody: body });
 
     if (!id) {
+      console.log("[Channels API POST] Error: Channel ID is required");
       return NextResponse.json({ error: "Channel ID is required" }, { status: 400 });
     }
 
     const normalizedId = normalizeChannelId(id);
+    console.log("[Channels API POST] Normalized ID:", { original: id, normalized: normalizedId });
+    
     if (!normalizedId) {
+      console.log("[Channels API POST] Error: Invalid channel ID after normalization");
       return NextResponse.json({ error: "Invalid channel ID" }, { status: 400 });
     }
 
     if (isRemote) {
+      console.log("[Channels API POST] Remote mode - checking FTP config");
+      
       if (!isFtpConfigured()) {
+        console.log("[Channels API POST] Error: FTP not configured");
         return NextResponse.json({ error: "FTP not configured" }, { status: 400 });
       }
+
+      console.log("[Channels API POST] FTP configured - starting atomic update");
 
       // Use atomic operation to prevent race conditions
       // This reads directly from FTP, modifies, and writes back with locking
@@ -154,11 +163,16 @@ export async function POST(request: NextRequest) {
       const updatedSchedule = await atomicJsonUpdate<ScheduleData>(
         "schedule.json",
         (schedule) => {
+          console.log("[Channels API POST] Inside atomic update - current channels:", Object.keys(schedule.channels));
+          
           if (schedule.channels[normalizedId]) {
+            console.log("[Channels API POST] Channel already exists:", normalizedId);
             channelExists = true;
             return schedule; // No change if channel exists
           }
 
+          console.log("[Channels API POST] Creating new channel:", { normalizedId, scheduleType, shortName });
+          
           schedule.channels[normalizedId] = scheduleType === "looping"
             ? {
                 type: "looping",
@@ -172,10 +186,14 @@ export async function POST(request: NextRequest) {
                 shortName: shortName || undefined,
                 active: true,
               };
+          
+          console.log("[Channels API POST] Updated channels:", Object.keys(schedule.channels));
           return schedule;
         },
         { channels: {} }
       );
+
+      console.log("[Channels API POST] Atomic update complete", { channelExists, updatedChannels: Object.keys(updatedSchedule.channels) });
 
       if (channelExists) {
         return NextResponse.json({ error: "Channel already exists" }, { status: 400 });
@@ -183,6 +201,8 @@ export async function POST(request: NextRequest) {
 
       // Use the returned schedule data (fresh from FTP, not CDN)
       const channels = channelsFromSchedule(updatedSchedule);
+      
+      console.log("[Channels API POST] Success - returning channels:", channels.map(c => c.id));
 
       return NextResponse.json({
         channel: { id: normalizedId, shortName, active: true, type: scheduleType },
@@ -207,6 +227,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create channel";
+    console.error("[Channels API POST] Error:", message, error);
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
