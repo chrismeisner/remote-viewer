@@ -158,6 +158,15 @@ function MediaDetailModal({
   const [renameSuccess, setRenameSuccess] = useState(false);
   const [currentRelPath, setCurrentRelPath] = useState(item.relPath);
 
+  // Faststart status state
+  const [faststartStatus, setFaststartStatus] = useState<{
+    checked: boolean;
+    hasFaststart: boolean | null;
+    moovPosition: "start" | "end" | "unknown";
+    loading: boolean;
+    error?: string;
+  }>({ checked: false, hasFaststart: null, moovPosition: "unknown", loading: false });
+
   // Compute if filename needs cleanup
   const cleanedPath = useMemo(() => cleanupFilename(currentRelPath), [currentRelPath]);
   const filenameNeedsCleanup = currentRelPath !== cleanedPath;
@@ -246,6 +255,51 @@ function MediaDetailModal({
       cancelled = true;
     };
   }, [item.relPath]);
+
+  // Check faststart status for MP4/M4V/MOV files
+  useEffect(() => {
+    const ext = item.relPath.toLowerCase().split(".").pop();
+    const isMP4Like = ext === "mp4" || ext === "m4v" || ext === "mov";
+    
+    if (!isMP4Like) {
+      setFaststartStatus({ checked: true, hasFaststart: null, moovPosition: "unknown", loading: false });
+      return;
+    }
+    
+    setFaststartStatus(prev => ({ ...prev, loading: true, checked: false }));
+    
+    fetch(`/api/media-index/faststart?source=${mediaSource}&file=${encodeURIComponent(item.relPath)}`)
+      .then(res => res.json())
+      .then(data => {
+        const result = data.results?.[0];
+        if (result) {
+          setFaststartStatus({
+            checked: true,
+            hasFaststart: result.hasFaststart,
+            moovPosition: result.moovPosition || "unknown",
+            loading: false,
+            error: result.error,
+          });
+        } else {
+          setFaststartStatus({
+            checked: true,
+            hasFaststart: null,
+            moovPosition: "unknown",
+            loading: false,
+            error: data.error,
+          });
+        }
+      })
+      .catch(err => {
+        setFaststartStatus({
+          checked: true,
+          hasFaststart: null,
+          moovPosition: "unknown",
+          loading: false,
+          error: err.message || "Failed to check faststart",
+        });
+      });
+  }, [item.relPath, mediaSource]);
 
   // AI lookup to fill metadata fields
   const handleAiLookup = async () => {
@@ -716,6 +770,51 @@ function MediaDetailModal({
               <MediaHealthBadge file={item} />
             </div>
           </div>
+
+          {/* Faststart Status - show for MP4/M4V/MOV files */}
+          {(() => {
+            const ext = item.relPath.toLowerCase().split(".").pop();
+            const isMP4Like = ext === "mp4" || ext === "m4v" || ext === "mov";
+            if (!isMP4Like) return null;
+            
+            return (
+              <div className="mt-3 pt-3 border-t border-white/5">
+                <div className="flex items-center gap-3">
+                  <p className="text-xs text-neutral-500">Stream Optimization:</p>
+                  {faststartStatus.loading ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-400/30 bg-neutral-500/20 px-2 py-0.5 text-xs font-medium text-neutral-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-neutral-400 animate-pulse" />
+                      Checking...
+                    </span>
+                  ) : faststartStatus.hasFaststart === true ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-200">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      Optimized (faststart)
+                    </span>
+                  ) : faststartStatus.hasFaststart === false ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-200">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      Needs optimization
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-400/30 bg-neutral-500/20 px-2 py-0.5 text-xs font-medium text-neutral-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-neutral-400" />
+                      Unknown
+                    </span>
+                  )}
+                </div>
+                {faststartStatus.hasFaststart === false && (
+                  <p className="mt-1.5 text-xs text-amber-300/80">
+                    moov atom at end of file — viewers joining mid-stream will experience slower load times. 
+                    Use the conversion command below to optimize.
+                  </p>
+                )}
+                {faststartStatus.error && (
+                  <p className="mt-1 text-xs text-red-400">{faststartStatus.error}</p>
+                )}
+              </div>
+            );
+          })()}
           
           {/* Health Details - Show if there are issues */}
           <MediaHealthDetails file={item} />
