@@ -2132,6 +2132,9 @@ export default function MediaAdminPage() {
   const [mediaRoot, setMediaRoot] = useState<string>("media");
   const [allMetadata, setAllMetadata] = useState<Record<string, MediaMetadata>>({});
   
+  // Map of file relPath -> array of channel IDs where the file is scheduled
+  const [fileChannelMap, setFileChannelMap] = useState<Map<string, string[]>>(new Map());
+  
   // Bulk conversion command state
   const [selectedForConversion, setSelectedForConversion] = useState<Set<string>>(new Set());
   const [copiedBulkCommand, setCopiedBulkCommand] = useState(false);
@@ -2182,6 +2185,51 @@ export default function MediaAdminPage() {
       })
       .catch(() => {
         // Ignore errors, metadata is optional
+      });
+  }, [mediaRefreshToken, mediaSource]);
+
+  // Fetch schedule data to build file->channels map
+  useEffect(() => {
+    // Wait for mediaSource to be synced from localStorage
+    if (mediaSource === null) return;
+    
+    fetch(`/api/schedule?source=${encodeURIComponent(mediaSource)}&t=${Date.now()}`, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        const schedule = data.schedule;
+        if (schedule?.channels) {
+          const newMap = new Map<string, string[]>();
+          
+          for (const [chId, chSchedule] of Object.entries(schedule.channels) as [string, { slots?: { file: string }[]; playlist?: { file: string }[] }][]) {
+            // Get files from slots (24hour type)
+            if (chSchedule.slots) {
+              for (const slot of chSchedule.slots) {
+                if (slot.file) {
+                  const existing = newMap.get(slot.file) || [];
+                  if (!existing.includes(chId)) {
+                    newMap.set(slot.file, [...existing, chId]);
+                  }
+                }
+              }
+            }
+            // Get files from playlist (looping type)
+            if (chSchedule.playlist) {
+              for (const item of chSchedule.playlist) {
+                if (item.file) {
+                  const existing = newMap.get(item.file) || [];
+                  if (!existing.includes(chId)) {
+                    newMap.set(item.file, [...existing, chId]);
+                  }
+                }
+              }
+            }
+          }
+          
+          setFileChannelMap(newMap);
+        }
+      })
+      .catch(() => {
+        // Ignore errors, schedule data is optional for display
       });
   }, [mediaRefreshToken, mediaSource]);
 
@@ -2625,6 +2673,9 @@ export default function MediaAdminPage() {
                       <th className="px-3 py-2 font-semibold w-28 text-left">
                         Added
                       </th>
+                      <th className="px-3 py-2 font-semibold w-28 text-left">
+                        Scheduled
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5 bg-neutral-950/40 text-neutral-100">
@@ -2723,6 +2774,27 @@ export default function MediaAdminPage() {
                           </td>
                           <td className="px-3 py-2 text-left text-neutral-400 text-xs">
                             {file.dateAdded ? formatDateAdded(file.dateAdded) : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-left">
+                            {(() => {
+                              const scheduledChannels = fileChannelMap.get(file.relPath) || [];
+                              if (scheduledChannels.length === 0) {
+                                return <span className="text-xs text-neutral-500">—</span>;
+                              }
+                              return (
+                                <div className="flex flex-wrap gap-1">
+                                  {scheduledChannels.map((ch) => (
+                                    <span
+                                      key={ch}
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/30 text-purple-200 border border-purple-400/40"
+                                      title={`Scheduled in channel ${ch}`}
+                                    >
+                                      {ch}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </td>
                         </tr>
                       );
