@@ -37,7 +37,16 @@ export default function ChannelPlaylistPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mediaSource, setMediaSource] = useState<MediaSource>("local");
+  // Initialize mediaSource from localStorage synchronously to avoid race condition
+  const [mediaSource, setMediaSource] = useState<MediaSource>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
+      if (stored === "remote" || stored === "local") {
+        return stored;
+      }
+    }
+    return "local";
+  });
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "pending" | "saving" | "saved">("idle");
   
   // Modal state - media files loaded lazily

@@ -19,7 +19,16 @@ export default function ScheduleIndexPage() {
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mediaSource, setMediaSource] = useState<MediaSource>("local");
+  // Initialize mediaSource from localStorage synchronously to avoid race condition
+  const [mediaSource, setMediaSource] = useState<MediaSource>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
+      if (stored === "remote" || stored === "local") {
+        return stored;
+      }
+    }
+    return "local";
+  });
 
   // Load media source from localStorage
   useEffect(() => {
