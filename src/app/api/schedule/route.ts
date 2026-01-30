@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadSchedule, saveSchedule, clearMediaCaches } from "@/lib/media";
+import { loadSchedule, loadFullSchedule, saveSchedule, clearMediaCaches } from "@/lib/media";
 import type { ChannelSchedule, Schedule } from "@/lib/schedule";
 import type { MediaSource } from "@/constants/media";
 import { isFtpConfigured, normalizeChannelId, atomicJsonUpdate } from "@/lib/ftp";
@@ -17,6 +17,13 @@ export async function GET(request: NextRequest) {
     clearMediaCaches();
   }
 
+  // If no channel specified, return full schedule with all channels
+  if (!channel) {
+    const fullSchedule = await loadFullSchedule(source);
+    return NextResponse.json({ schedule: fullSchedule, source });
+  }
+
+  // Otherwise return single channel's schedule
   const schedule = await loadSchedule(channel, source);
   return NextResponse.json({ schedule, source });
 }
