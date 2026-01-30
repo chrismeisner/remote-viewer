@@ -131,8 +131,10 @@ export async function POST(request: NextRequest) {
     const id = typeof body?.id === "string" ? body.id.trim() : "";
     const shortName = typeof body?.shortName === "string" ? body.shortName.trim() : undefined;
     const scheduleType = body?.type === "looping" ? "looping" : "24hour";
+    // Default to inactive (false) when creating new channels
+    const active = typeof body?.active === "boolean" ? body.active : false;
 
-    console.log("[Channels API POST] Parsed body:", { id, shortName, type: scheduleType, rawBody: body });
+    console.log("[Channels API POST] Parsed body:", { id, shortName, type: scheduleType, active, rawBody: body });
 
     if (!id) {
       console.log("[Channels API POST] Error: Channel ID is required");
@@ -171,20 +173,20 @@ export async function POST(request: NextRequest) {
             return schedule; // No change if channel exists
           }
 
-          console.log("[Channels API POST] Creating new channel:", { normalizedId, scheduleType, shortName });
+          console.log("[Channels API POST] Creating new channel:", { normalizedId, scheduleType, shortName, active });
           
           schedule.channels[normalizedId] = scheduleType === "looping"
             ? {
                 type: "looping",
                 playlist: [],
                 shortName: shortName || undefined,
-                active: true,
+                active,
               }
             : {
                 type: "24hour",
                 slots: [],
                 shortName: shortName || undefined,
-                active: true,
+                active,
               };
           
           console.log("[Channels API POST] Updated channels:", Object.keys(schedule.channels));
@@ -205,7 +207,7 @@ export async function POST(request: NextRequest) {
       console.log("[Channels API POST] Success - returning channels:", channels.map(c => c.id));
 
       return NextResponse.json({
-        channel: { id: normalizedId, shortName, active: true, type: scheduleType },
+        channel: { id: normalizedId, shortName, active, type: scheduleType },
         channels,
         source,
       });
@@ -216,11 +218,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Channel already exists" }, { status: 400 });
       }
 
-      const result = await createChannel(normalizedId, shortName, scheduleType);
+      const result = await createChannel(normalizedId, shortName, scheduleType, active);
       const channels = await listChannels("local");
 
       return NextResponse.json({
-        channel: { id: result.channel, shortName: result.shortName, active: true, type: result.type },
+        channel: { id: result.channel, shortName: result.shortName, active: result.active, type: result.type },
         channels,
         source,
       });

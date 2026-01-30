@@ -598,8 +598,9 @@ export async function createChannel(
   channel?: string,
   shortName?: string,
   type?: ScheduleType,
-): Promise<{ channel: string; schedule: ChannelSchedule; shortName?: string; type?: ScheduleType }> {
-  console.log("[Media Lib] createChannel called", { channel, shortName, type });
+  active: boolean = false,
+): Promise<{ channel: string; schedule: ChannelSchedule; shortName?: string; type?: ScheduleType; active?: boolean }> {
+  console.log("[Media Lib] createChannel called", { channel, shortName, type, active });
   const id = normalizeChannelId(channel);
   const scheduleType: ScheduleType = type || "24hour";
 
@@ -618,14 +619,15 @@ export async function createChannel(
       schedule: existing, 
       shortName: existingChannel?.shortName,
       type: existingChannel?.type || "24hour",
+      active: existingChannel?.active,
     };
   }
 
   // Load full schedule and add new channel
   const fullSchedule = await loadLocalFullSchedule();
   const newChannelData: ChannelSchedule = scheduleType === "looping"
-    ? { type: "looping", playlist: [], shortName: shortName?.trim() || undefined }
-    : { type: "24hour", slots: [], shortName: shortName?.trim() || undefined };
+    ? { type: "looping", playlist: [], shortName: shortName?.trim() || undefined, active }
+    : { type: "24hour", slots: [], shortName: shortName?.trim() || undefined, active };
   
   console.log("[Media Lib] createChannel - creating new channel:", { id, newChannelData });
   fullSchedule.channels[id] = newChannelData;
@@ -640,6 +642,7 @@ export async function createChannel(
     schedule: newChannelData, 
     shortName: shortName?.trim() || undefined,
     type: scheduleType,
+    active,
   };
 }
 
