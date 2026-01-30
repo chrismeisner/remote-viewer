@@ -62,6 +62,7 @@ export default function ChannelPlaylistPage() {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaFilter, setMediaFilter] = useState("");
+  const [scheduledFilter, setScheduledFilter] = useState<"all" | "scheduled" | "not-scheduled">("all");
   
   // Map of file relPath -> array of channel IDs where the file is scheduled
   const [fileChannelMap, setFileChannelMap] = useState<Map<string, string[]>>(new Map());
@@ -266,6 +267,7 @@ export default function ChannelPlaylistPage() {
   const openAddModal = useCallback(() => {
     setShowAddModal(true);
     setMediaFilter("");
+    setScheduledFilter("all");
     void loadMediaFiles();
   }, [loadMediaFiles]);
 
@@ -281,11 +283,17 @@ export default function ChannelPlaylistPage() {
     return sortedFiles.filter((file) => {
       if (!file.durationSeconds || file.durationSeconds <= 0) return false;
       if (!isBrowserSupported(file)) return false;
+      // Scheduled filter
+      if (scheduledFilter !== "all") {
+        const isScheduled = fileChannelMap.has(file.relPath);
+        if (scheduledFilter === "scheduled" && !isScheduled) return false;
+        if (scheduledFilter === "not-scheduled" && isScheduled) return false;
+      }
       if (!terms.length) return true;
       const haystack = `${file.relPath} ${file.title || ""}`.toLowerCase();
       return terms.every((term) => haystack.includes(term));
     });
-  }, [mediaFilter, sortedFiles]);
+  }, [mediaFilter, sortedFiles, scheduledFilter, fileChannelMap]);
 
   const totalDuration = useMemo(() => 
     playlist.reduce((sum, item) => sum + item.durationSeconds, 0),
@@ -679,6 +687,15 @@ export default function ChannelPlaylistPage() {
                     onChange={(e) => setMediaFilter(e.target.value)}
                     className="w-48 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm focus:border-white/30 focus:outline-none"
                   />
+                  <select
+                    value={scheduledFilter}
+                    onChange={(e) => setScheduledFilter(e.target.value as typeof scheduledFilter)}
+                    className="rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-xs text-neutral-200 focus:border-white/30 focus:outline-none"
+                  >
+                    <option value="all">All</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="not-scheduled">Not scheduled</option>
+                  </select>
                   <span className="text-xs text-neutral-500">
                     {loadingMedia ? "Loading…" : `${availableFiles.length} files`}
                   </span>
