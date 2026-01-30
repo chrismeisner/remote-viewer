@@ -398,6 +398,10 @@ export default function ChannelPlaylistPage() {
     setPlaylist(prev => prev.filter((_, i) => i !== index));
   }, []);
 
+  const removeFromPlaylistByFile = useCallback((filePath: string) => {
+    setPlaylist(prev => prev.filter(item => item.file !== filePath));
+  }, []);
+
   const movePlaylistItem = useCallback((fromIndex: number, direction: "up" | "down") => {
     setPlaylist(prev => {
       const newList = [...prev];
@@ -781,15 +785,21 @@ export default function ChannelPlaylistPage() {
                                 </td>
                                 <td className="px-3 py-2 text-right">
                                   <button
-                                    onClick={() => addToPlaylist(file)}
-                                    disabled={alreadyInPlaylist}
+                                    onClick={() => {
+                                      if (alreadyInPlaylist) {
+                                        removeFromPlaylistByFile(file.relPath);
+                                      } else {
+                                        addToPlaylist(file);
+                                      }
+                                    }}
                                     className={`rounded-md border px-2 py-1 text-xs font-semibold transition ${
                                       alreadyInPlaylist
-                                        ? "border-neutral-500/50 bg-neutral-500/20 text-neutral-400 cursor-not-allowed"
+                                        ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-200 hover:border-red-400 hover:bg-red-500/20 hover:text-red-200"
                                         : "border-purple-400/50 bg-purple-500/20 text-purple-100 hover:border-purple-300 hover:bg-purple-500/30"
                                     }`}
+                                    title={alreadyInPlaylist ? "Click to remove from playlist" : "Add to playlist"}
                                   >
-                                    {alreadyInPlaylist ? "Added" : "Add"}
+                                    {alreadyInPlaylist ? "Added ✓" : "Add"}
                                   </button>
                                 </td>
                               </tr>
