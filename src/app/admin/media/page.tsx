@@ -2116,7 +2116,8 @@ export default function MediaAdminPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mediaSource, setMediaSource] = useState<MediaSource>("local");
+  // Start with null - wait for localStorage sync before loading data
+  const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
   const [mediaRefreshToken, setMediaRefreshToken] = useState(0);
   const [scanningRemote, setScanningRemote] = useState(false);
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
@@ -2140,9 +2141,9 @@ export default function MediaAdminPage() {
     if (typeof window === "undefined") return;
     const syncSource = () => {
       const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
-      if (stored === "remote" || stored === "local") {
-        setMediaSource(stored);
-      }
+      // Default to "remote" if not set (matches the source page default)
+      const source: MediaSource = stored === "local" ? "local" : "remote";
+      setMediaSource(source);
     };
     syncSource();
     window.addEventListener("storage", syncSource);
@@ -2169,6 +2170,9 @@ export default function MediaAdminPage() {
 
   // Fetch all metadata for table display (works for both local and remote sources)
   useEffect(() => {
+    // Wait for mediaSource to be synced from localStorage
+    if (mediaSource === null) return;
+    
     fetch(`/api/media-metadata?withAutoYear=true&source=${mediaSource}`)
       .then((res) => res.json())
       .then((data) => {
@@ -2231,6 +2235,9 @@ export default function MediaAdminPage() {
 
   // Load available media list
   useEffect(() => {
+    // Wait for mediaSource to be synced from localStorage
+    if (mediaSource === null) return;
+
     let cancelled = false;
     setFiles([]);
     setLoading(true);
@@ -2418,7 +2425,7 @@ export default function MediaAdminPage() {
             Media Library
           </p>
           <p className="text-sm text-neutral-400">
-            Single source of truth for all media files based on current source settings ({mediaSource === "remote" ? "Remote CDN" : "Local files"}).
+            Single source of truth for all media files based on current source settings ({mediaSource === null ? "Loading…" : mediaSource === "remote" ? "Remote CDN" : "Local files"}).
           </p>
           {manifestUpdatedAt && (
             <p className="text-xs text-neutral-500 mt-1">
@@ -2428,12 +2435,14 @@ export default function MediaAdminPage() {
         </div>
         <span
           className={`rounded-full px-3 py-1 text-xs font-semibold flex-shrink-0 ${
-            mediaSource === "remote"
-              ? "bg-blue-500/20 text-blue-200"
-              : "bg-emerald-500/20 text-emerald-200"
+            mediaSource === null
+              ? "bg-neutral-500/20 text-neutral-200"
+              : mediaSource === "remote"
+                ? "bg-blue-500/20 text-blue-200"
+                : "bg-emerald-500/20 text-emerald-200"
           }`}
         >
-          {mediaSource === "remote" ? "Remote" : "Local"}
+          {mediaSource === null ? "…" : mediaSource === "remote" ? "Remote" : "Local"}
         </span>
       </div>
 
@@ -2729,7 +2738,7 @@ export default function MediaAdminPage() {
       {message && <p className="text-sm text-emerald-300">{message}</p>}
       {error && <p className="text-sm text-amber-300">{error}</p>}
 
-      {selectedFile && (
+      {selectedFile && mediaSource && (
         <MediaDetailModal
           item={selectedFile}
           mediaSource={mediaSource}
