@@ -247,22 +247,146 @@ function extractCodecNames(probeJson: unknown): { videoCodec?: string; audioCode
   return { videoCodec, audioCodec };
 }
 
+/**
+ * Extract duration from moov atom's mvhd sub-atom.
+ * This is a fallback when ffprobe fails for remote files.
+ * The mvhd atom contains timescale and duration fields.
+ */
+async function extractDurationFromMoov(url: string): Promise<{ duration: number | null; error?: string }> {
+  const PROBE_SIZE = 128 * 1024; // 128KB to find moov
+  
+  try {
+    // Try to find moov atom at the beginning (faststart files)
+    const startRes = await fetch(url, {
+      headers: { Range: `bytes=0-${PROBE_SIZE - 1}` },
+    });
+    
+    if (!startRes.ok && startRes.status !== 206) {
+      return { duration: null, error: `HTTP ${startRes.status}` };
+    }
+    
+    const startBuffer = await startRes.arrayBuffer();
+    let bytes = new Uint8Array(startBuffer);
+    
+    // Parse atoms to find moov
+    let moovData: Uint8Array | null = null;
+    let offset = 0;
+    
+    while (offset + 8 <= bytes.length) {
+      const size = (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+      const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+      
+      if (size < 8 || size > 0x7FFFFFFF || !/^[a-zA-Z0-9 ]{4}$/.test(type)) break;
+      
+      if (type === "moov") {
+        // Found moov! Check if we have enough data
+        if (offset + size <= bytes.length) {
+          moovData = bytes.slice(offset, offset + size);
+        } else {
+          // Need to fetch the full moov atom
+          const moovRes = await fetch(url, {
+            headers: { Range: `bytes=${offset}-${offset + Math.min(size, 1024 * 1024) - 1}` },
+          });
+          if (moovRes.ok || moovRes.status === 206) {
+            moovData = new Uint8Array(await moovRes.arrayBuffer());
+          }
+        }
+        break;
+      }
+      
+      if (type === "mdat") {
+        // mdat before moov means moov is at the end - try to get file size and fetch end
+        const headRes = await fetch(url, { method: "HEAD" });
+        const contentLength = headRes.headers.get("content-length");
+        if (contentLength) {
+          const fileSize = parseInt(contentLength, 10);
+          const endStart = Math.max(0, fileSize - PROBE_SIZE);
+          const endRes = await fetch(url, {
+            headers: { Range: `bytes=${endStart}-${fileSize - 1}` },
+          });
+          if (endRes.ok || endRes.status === 206) {
+            bytes = new Uint8Array(await endRes.arrayBuffer());
+            offset = 0;
+            continue; // Re-scan from the end
+          }
+        }
+        break;
+      }
+      
+      offset += size;
+    }
+    
+    if (!moovData) {
+      return { duration: null, error: "Could not find moov atom" };
+    }
+    
+    // Now find mvhd inside moov and extract duration
+    // mvhd structure: [4 bytes size][4 bytes 'mvhd'][1 byte version][3 bytes flags]
+    // version 0: [4 bytes creation][4 bytes modification][4 bytes timescale][4 bytes duration]
+    // version 1: [8 bytes creation][8 bytes modification][4 bytes timescale][8 bytes duration]
+    offset = 8; // Skip moov header
+    while (offset + 8 <= moovData.length) {
+      const atomSize = (moovData[offset] << 24) | (moovData[offset + 1] << 16) | (moovData[offset + 2] << 8) | moovData[offset + 3];
+      const atomType = String.fromCharCode(moovData[offset + 4], moovData[offset + 5], moovData[offset + 6], moovData[offset + 7]);
+      
+      if (atomSize < 8) break;
+      
+      if (atomType === "mvhd") {
+        const version = moovData[offset + 8];
+        let timescale: number;
+        let duration: number;
+        
+        if (version === 0) {
+          // 32-bit values
+          timescale = (moovData[offset + 20] << 24) | (moovData[offset + 21] << 16) | (moovData[offset + 22] << 8) | moovData[offset + 23];
+          duration = (moovData[offset + 24] << 24) | (moovData[offset + 25] << 16) | (moovData[offset + 26] << 8) | moovData[offset + 27];
+        } else {
+          // 64-bit values (version 1)
+          timescale = (moovData[offset + 28] << 24) | (moovData[offset + 29] << 16) | (moovData[offset + 30] << 8) | moovData[offset + 31];
+          // Read 64-bit duration (we'll just use lower 32 bits for simplicity, works for videos < 136 years at 1000 timescale)
+          duration = (moovData[offset + 36] << 24) | (moovData[offset + 37] << 16) | (moovData[offset + 38] << 8) | moovData[offset + 39];
+        }
+        
+        if (timescale > 0 && duration > 0) {
+          return { duration: Math.round(duration / timescale) };
+        }
+        break;
+      }
+      
+      offset += atomSize;
+    }
+    
+    return { duration: null, error: "Could not parse mvhd atom" };
+  } catch (error) {
+    return { duration: null, error: error instanceof Error ? error.message : "Unknown error" };
+  }
+}
+
 async function probeRemoteDuration(url: string): Promise<ProbeResult> {
+  // First, try ffprobe with improved settings for remote files
   try {
     const ffprobePath = await resolveFfprobePath();
     const { stdout, stderr } = await execFileAsync(ffprobePath, [
       "-v",
       "error",                    // Show errors for debugging
+      "-timeout",
+      "5000000",                  // 5 second network timeout (in microseconds)
+      "-reconnect",
+      "1",                        // Reconnect on EOF
+      "-reconnect_streamed",
+      "1",                        // Reconnect for streaming
+      "-reconnect_delay_max",
+      "2",                        // Max 2 second reconnect delay
       "-probesize",
-      "5000000",                  // Limit to 5MB of data to probe
+      "10000000",                 // Increased to 10MB for non-faststart files
       "-analyzeduration",
-      "3000000",                  // Limit analysis to 3 seconds
+      "5000000",                  // Increased to 5 seconds analysis
       "-print_format",
       "json",
       "-show_format",
       "-show_streams",
       url,
-    ], { timeout: 8000 }); // 8 second timeout - must be fast for Heroku's 30s limit
+    ], { timeout: 12000 }); // 12 second timeout
 
     if (stderr) {
       console.warn("ffprobe stderr for", url, ":", stderr);
@@ -275,15 +399,30 @@ async function probeRemoteDuration(url: string): Promise<ProbeResult> {
     if (duration !== null && Number.isFinite(duration) && duration > 0) {
       return { durationSeconds: duration, videoCodec, audioCodec, success: true };
     }
-    return { durationSeconds: 0, videoCodec, audioCodec, success: false, error: "No duration found in metadata" };
+    
+    // ffprobe ran but didn't find duration - try our fallback
+    console.log("ffprobe no duration, trying moov parsing for", url);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    // Include more details for debugging
     const errorDetails = error instanceof Error && 'stderr' in error 
       ? `${errMsg} | stderr: ${(error as { stderr?: string }).stderr}`
       : errMsg;
-    console.warn("ffprobe failed for remote URL", url, errorDetails);
-    return { durationSeconds: 0, success: false, error: errorDetails };
+    console.warn("ffprobe failed for", url, "- trying moov fallback:", errorDetails);
+  }
+  
+  // Fallback: Try to extract duration directly from moov atom
+  // This works even when ffprobe fails due to network issues
+  try {
+    const moovResult = await extractDurationFromMoov(url);
+    if (moovResult.duration && moovResult.duration > 0) {
+      console.log("Got duration from moov for", url, ":", moovResult.duration, "seconds");
+      return { durationSeconds: moovResult.duration, success: true };
+    }
+    return { durationSeconds: 0, success: false, error: moovResult.error || "Could not extract duration" };
+  } catch (fallbackError) {
+    const fallbackMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+    console.warn("moov fallback also failed for", url, ":", fallbackMsg);
+    return { durationSeconds: 0, success: false, error: `ffprobe and moov parsing both failed: ${fallbackMsg}` };
   }
 }
 
@@ -422,7 +561,7 @@ export async function POST() {
     // Using incremental scanning: only probe new or changed files
     const items: MediaItem[] = [];
     const fileResults: FileResult[] = [];
-    const CONCURRENCY = 4; // Higher concurrency since each probe is fast (8s timeout)
+    const CONCURRENCY = 2; // Lower concurrency since moov fallback makes multiple requests
     
     // Track stats
     let unchangedCount = 0;
