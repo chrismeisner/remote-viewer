@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { REMOTE_MEDIA_BASE } from "@/constants/media";
 import {
   listChannels,
   createChannel,
@@ -10,7 +9,7 @@ import {
   saveFullSchedule,
   type ChannelInfo,
 } from "@/lib/media";
-import { normalizeChannelId, isFtpConfigured, atomicJsonUpdate } from "@/lib/ftp";
+import { normalizeChannelId, isFtpConfigured, atomicJsonUpdate, downloadJsonFromFtp } from "@/lib/ftp";
 
 export const runtime = "nodejs";
 
@@ -26,23 +25,25 @@ type ScheduleData = {
 
 // ==================== REMOTE HELPERS ====================
 
-// NOTE: For READ operations (GET), we still use CDN fetch for performance.
-// For WRITE operations (POST/PATCH/DELETE), we use atomicJsonUpdate which
-// reads directly from FTP to prevent race conditions.
+// NOTE: We read directly from FTP (not CDN) to avoid cache staleness issues.
+// CDN caching caused newly created channels to not appear immediately.
 
 async function fetchRemoteScheduleForRead(): Promise<ScheduleData | null> {
   try {
-    // Add timestamp to bust CDN caches
-    const url = `${REMOTE_MEDIA_BASE}schedule.json?t=${Date.now()}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
+    // Read directly from FTP to avoid CDN cache staleness
+    const schedule = await downloadJsonFromFtp<ScheduleData>("schedule.json");
+    return schedule;
+  } catch (error) {
+    console.error("[Channels API] Failed to read schedule from FTP:", error);
     return null;
   }
 }
 
 async function listRemoteChannels(): Promise<ChannelInfo[]> {
+  if (!isFtpConfigured()) {
+    console.warn("[Channels API] FTP not configured for remote channel listing");
+    return [];
+  }
   const schedule = await fetchRemoteScheduleForRead();
   return channelsFromSchedule(schedule);
 }
