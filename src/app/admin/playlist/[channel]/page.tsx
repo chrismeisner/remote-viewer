@@ -28,6 +28,19 @@ type ChannelInfo = {
   type?: "24hour" | "looping";
 };
 
+// Types for schedule data to build file->channels map
+type ScheduleSlotData = { file: string };
+type PlaylistItemData = { file: string };
+type ChannelScheduleData = {
+  type?: "24hour" | "looping";
+  slots?: ScheduleSlotData[];
+  playlist?: PlaylistItemData[];
+  shortName?: string;
+};
+type FullScheduleData = {
+  channels: Record<string, ChannelScheduleData>;
+};
+
 export default function ChannelPlaylistPage() {
   const params = useParams();
   const channelId = params.channel as string;
@@ -49,6 +62,9 @@ export default function ChannelPlaylistPage() {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaFilter, setMediaFilter] = useState("");
+  
+  // Map of file relPath -> array of channel IDs where the file is scheduled
+  const [fileChannelMap, setFileChannelMap] = useState<Map<string, string[]>>(new Map());
   
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedPlaylistRef = useRef<string>("[]");
@@ -182,24 +198,64 @@ export default function ChannelPlaylistPage() {
     };
   }, [channelId, mediaSource]);
 
-  // Lazy-load media files only when modal opens
+  // Lazy-load media files and schedule data only when modal opens
   const loadMediaFiles = useCallback(async () => {
     if (mediaFiles.length > 0) return; // Already loaded
     
     setLoadingMedia(true);
     try {
+      // Fetch media files and full schedule in parallel
+      const mediaPromise = mediaSource === "remote"
+        ? fetch(`/api/media-index?base=${encodeURIComponent(REMOTE_MEDIA_BASE)}&t=${Date.now()}`, { cache: "no-store" })
+        : fetch(`/api/media-files?t=${Date.now()}`, { cache: "no-store" });
+      
+      const schedulePromise = fetch(`/api/schedule?source=${encodeURIComponent(mediaSource || "local")}&t=${Date.now()}`, { cache: "no-store" });
+      
+      const [mediaRes, scheduleRes] = await Promise.all([mediaPromise, schedulePromise]);
+      
+      // Process media files
       let filesJson: { items?: MediaFile[] } = {};
-      if (mediaSource === "remote") {
-        const res = await fetch(
-          `/api/media-index?base=${encodeURIComponent(REMOTE_MEDIA_BASE)}&t=${Date.now()}`,
-          { cache: "no-store" }
-        );
-        if (res.ok) filesJson = await res.json();
-      } else {
-        const res = await fetch(`/api/media-files?t=${Date.now()}`, { cache: "no-store" });
-        filesJson = await res.json();
+      if (mediaRes.ok) {
+        filesJson = await mediaRes.json();
       }
       setMediaFiles(filesJson.items || []);
+      
+      // Process schedule to build file->channels map
+      if (scheduleRes.ok) {
+        const scheduleJson = await scheduleRes.json() as { schedule?: FullScheduleData };
+        const schedule = scheduleJson.schedule;
+        
+        if (schedule?.channels) {
+          const newMap = new Map<string, string[]>();
+          
+          for (const [chId, chSchedule] of Object.entries(schedule.channels)) {
+            // Get files from slots (24hour type)
+            if (chSchedule.slots) {
+              for (const slot of chSchedule.slots) {
+                if (slot.file) {
+                  const existing = newMap.get(slot.file) || [];
+                  if (!existing.includes(chId)) {
+                    newMap.set(slot.file, [...existing, chId]);
+                  }
+                }
+              }
+            }
+            // Get files from playlist (looping type)
+            if (chSchedule.playlist) {
+              for (const item of chSchedule.playlist) {
+                if (item.file) {
+                  const existing = newMap.get(item.file) || [];
+                  if (!existing.includes(chId)) {
+                    newMap.set(item.file, [...existing, chId]);
+                  }
+                }
+              }
+            }
+          }
+          
+          setFileChannelMap(newMap);
+        }
+      }
     } catch {
       console.warn("Failed to load media files");
     } finally {
@@ -651,6 +707,7 @@ export default function ChannelPlaylistPage() {
                       <thead className="bg-white/5 text-neutral-200 sticky top-0">
                         <tr>
                           <th className="px-3 py-2 text-left font-semibold">File</th>
+                          <th className="px-3 py-2 text-left font-semibold w-28">Scheduled</th>
                           <th className="px-3 py-2 text-right font-semibold w-24">Duration</th>
                           <th className="px-3 py-2 text-right font-semibold w-20">Action</th>
                         </tr>
@@ -658,7 +715,7 @@ export default function ChannelPlaylistPage() {
                       <tbody className="divide-y divide-white/5">
                         {availableFiles.length === 0 ? (
                           <tr>
-                            <td colSpan={3} className="px-3 py-4 text-center text-neutral-400">
+                            <td colSpan={4} className="px-3 py-4 text-center text-neutral-400">
                               {sortedFiles.length === 0
                                 ? "No media files available"
                                 : mediaFilter
@@ -670,6 +727,7 @@ export default function ChannelPlaylistPage() {
                         ) : (
                           availableFiles.map((file) => {
                             const alreadyInPlaylist = playlist.some(item => item.file === file.relPath);
+                            const scheduledChannels = fileChannelMap.get(file.relPath) || [];
                             return (
                               <tr key={file.relPath} className="hover:bg-white/5">
                                 <td className="px-3 py-2">
@@ -678,6 +736,27 @@ export default function ChannelPlaylistPage() {
                                   </p>
                                   {file.title && file.title !== file.relPath && (
                                     <p className="text-[11px] text-neutral-400">{file.title}</p>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2">
+                                  {scheduledChannels.length === 0 ? (
+                                    <span className="text-xs text-neutral-500">—</span>
+                                  ) : (
+                                    <div className="flex flex-wrap gap-1">
+                                      {scheduledChannels.map((ch) => (
+                                        <span
+                                          key={ch}
+                                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                            ch === channelId
+                                              ? "bg-purple-500/30 text-purple-200 border border-purple-400/40"
+                                              : "bg-neutral-600/40 text-neutral-300 border border-neutral-500/30"
+                                          }`}
+                                          title={ch === channelId ? "Current channel" : `Scheduled in channel ${ch}`}
+                                        >
+                                          {ch}
+                                        </span>
+                                      ))}
+                                    </div>
                                   )}
                                 </td>
                                 <td className="px-3 py-2 text-right text-neutral-300">
