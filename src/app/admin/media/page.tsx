@@ -2664,6 +2664,9 @@ export default function MediaAdminPage() {
                       <th className="px-3 py-2 font-semibold w-28 text-left">
                         Supported
                       </th>
+                      <th className="px-3 py-2 font-semibold w-28 text-left">
+                        Scheduled
+                      </th>
                       <th className="px-3 py-2 font-semibold min-w-[150px]">Title</th>
                       <th className="px-3 py-2 font-semibold w-16 text-center">Year</th>
                       <th className="px-3 py-2 font-semibold min-w-[120px]">Tags</th>
@@ -2672,9 +2675,6 @@ export default function MediaAdminPage() {
                       </th>
                       <th className="px-3 py-2 font-semibold w-28 text-left">
                         Added
-                      </th>
-                      <th className="px-3 py-2 font-semibold w-28 text-left">
-                        Scheduled
                       </th>
                     </tr>
                   </thead>
@@ -2747,6 +2747,27 @@ export default function MediaAdminPage() {
                                   : "No"}
                             </span>
                           </td>
+                          <td className="px-3 py-2 text-left">
+                            {(() => {
+                              const scheduledChannels = fileChannelMap.get(file.relPath) || [];
+                              if (scheduledChannels.length === 0) {
+                                return <span className="text-xs text-neutral-500">—</span>;
+                              }
+                              return (
+                                <div className="flex flex-wrap gap-1">
+                                  {scheduledChannels.map((ch) => (
+                                    <span
+                                      key={ch}
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/30 text-purple-200 border border-purple-400/40"
+                                      title={`Scheduled in channel ${ch}`}
+                                    >
+                                      {ch}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </td>
                           <td className="px-3 py-2 text-neutral-200">
                             {meta.title || <span className="text-neutral-500">—</span>}
                           </td>
@@ -2774,27 +2795,6 @@ export default function MediaAdminPage() {
                           </td>
                           <td className="px-3 py-2 text-left text-neutral-400 text-xs">
                             {file.dateAdded ? formatDateAdded(file.dateAdded) : "—"}
-                          </td>
-                          <td className="px-3 py-2 text-left">
-                            {(() => {
-                              const scheduledChannels = fileChannelMap.get(file.relPath) || [];
-                              if (scheduledChannels.length === 0) {
-                                return <span className="text-xs text-neutral-500">—</span>;
-                              }
-                              return (
-                                <div className="flex flex-wrap gap-1">
-                                  {scheduledChannels.map((ch) => (
-                                    <span
-                                      key={ch}
-                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/30 text-purple-200 border border-purple-400/40"
-                                      title={`Scheduled in channel ${ch}`}
-                                    >
-                                      {ch}
-                                    </span>
-                                  ))}
-                                </div>
-                              );
-                            })()}
                           </td>
                         </tr>
                       );
