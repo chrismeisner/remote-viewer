@@ -2125,6 +2125,7 @@ export default function MediaAdminPage() {
   const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported" | "needs-conversion">(
     "supported",
   );
+  const [scheduledFilter, setScheduledFilter] = useState<"all" | "scheduled" | "not-scheduled">("all");
   const [locationFilter, setLocationFilter] = useState<"all" | "in-folder" | "in-root">("in-root");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"filename" | "title" | "year" | "duration" | "dateAdded">("filename");
@@ -2403,6 +2404,12 @@ export default function MediaAdminPage() {
         if (locationFilter === "in-folder" && !isInFolder) return false;
         if (locationFilter === "in-root" && isInFolder) return false;
       }
+      // Scheduled filter
+      if (scheduledFilter !== "all") {
+        const isScheduled = fileChannelMap.has(file.relPath);
+        if (scheduledFilter === "scheduled" && !isScheduled) return false;
+        if (scheduledFilter === "not-scheduled" && isScheduled) return false;
+      }
       // Search query - includes filename, title, and all metadata fields
       if (terms.length > 0) {
         const meta = allMetadata[file.relPath] || {};
@@ -2424,7 +2431,7 @@ export default function MediaAdminPage() {
       }
       return true;
     });
-  }, [sortedFiles, supportedFilter, locationFilter, searchQuery, allMetadata]);
+  }, [sortedFiles, supportedFilter, scheduledFilter, locationFilter, searchQuery, allMetadata, fileChannelMap]);
 
   const totalDurationSeconds = useMemo(
     () => sortedFiles.reduce((sum, f) => sum + (f.durationSeconds || 0), 0),
@@ -2614,6 +2621,18 @@ export default function MediaAdminPage() {
               <option value="supported">Supported</option>
               <option value="unsupported">Unsupported</option>
               <option value="needs-conversion">Needs conversion</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-neutral-400">Scheduled</label>
+            <select
+              value={scheduledFilter}
+              onChange={(e) => setScheduledFilter(e.target.value as typeof scheduledFilter)}
+              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100"
+            >
+              <option value="all">All</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="not-scheduled">Not scheduled</option>
             </select>
           </div>
           <div className="flex items-center gap-2">
