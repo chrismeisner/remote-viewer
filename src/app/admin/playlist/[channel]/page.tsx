@@ -37,20 +37,10 @@ export default function ChannelPlaylistPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Initialize mediaSource from localStorage synchronously to avoid race condition
-  const [mediaSource, setMediaSource] = useState<MediaSource>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
-      console.log("[Playlist Page] Initial mediaSource from localStorage:", stored);
-      if (stored === "remote" || stored === "local") {
-        return stored;
-      }
-    }
-    console.log("[Playlist Page] Using default mediaSource: local");
-    return "local";
-  });
+  // Start with null - wait for localStorage sync before loading data
+  const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
   
-  // Log component mount
+  // Log component render
   console.log("[Playlist Page] Component render", { channelId, mediaSource, loading, error });
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "pending" | "saving" | "saved">("idle");
   
@@ -63,14 +53,15 @@ export default function ChannelPlaylistPage() {
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedPlaylistRef = useRef<string>("[]");
 
-  // Load media source from localStorage
+  // Load media source from localStorage - must complete before loading data
   useEffect(() => {
     if (typeof window === "undefined") return;
     const syncSource = () => {
       const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
-      if (stored === "remote" || stored === "local") {
-        setMediaSource(stored);
-      }
+      // Default to "remote" if not set (matches the source page default)
+      const source: MediaSource = stored === "local" ? "local" : "remote";
+      console.log("[Playlist Page] Media source synced from localStorage:", { stored, source });
+      setMediaSource(source);
     };
     syncSource();
     window.addEventListener("storage", syncSource);
@@ -84,6 +75,12 @@ export default function ChannelPlaylistPage() {
   // Load just the channel's playlist (fast!)
   useEffect(() => {
     console.log("[Playlist Page] useEffect triggered", { channelId, mediaSource });
+    
+    // Wait for mediaSource to be synced from localStorage
+    if (mediaSource === null) {
+      console.log("[Playlist Page] Waiting for mediaSource to be synced from localStorage");
+      return;
+    }
     
     if (!channelId) {
       console.log("[Playlist Page] No channelId, skipping load");

@@ -45,16 +45,8 @@ export default function ChannelSchedulePage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Initialize mediaSource from localStorage synchronously to avoid race condition
-  const [mediaSource, setMediaSource] = useState<MediaSource>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
-      if (stored === "remote" || stored === "local") {
-        return stored;
-      }
-    }
-    return "local";
-  });
+  // Start with null - wait for localStorage sync before loading data
+  const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "pending" | "saving" | "saved">("idle");
 
   // Modal state - media files loaded lazily
@@ -71,14 +63,14 @@ export default function ChannelSchedulePage() {
   const lastSavedSlotsRef = useRef<string>("[]");
   const lastSuggestedEndRef = useRef<string>("");
 
-  // Load media source from localStorage
+  // Load media source from localStorage - must complete before loading data
   useEffect(() => {
     if (typeof window === "undefined") return;
     const syncSource = () => {
       const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
-      if (stored === "remote" || stored === "local") {
-        setMediaSource(stored);
-      }
+      // Default to "remote" if not set (matches the source page default)
+      const source: MediaSource = stored === "local" ? "local" : "remote";
+      setMediaSource(source);
     };
     syncSource();
     window.addEventListener("storage", syncSource);
@@ -91,6 +83,9 @@ export default function ChannelSchedulePage() {
 
   // Load just the channel's schedule (fast!)
   useEffect(() => {
+    // Wait for mediaSource to be synced from localStorage
+    if (mediaSource === null) return;
+    
     if (!channelId) return;
 
     let cancelled = false;
