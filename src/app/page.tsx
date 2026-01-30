@@ -94,6 +94,18 @@ export default function Home() {
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   const [shareCopied, setShareCopied] = useState(false);
   
+  // Stream stats for info modal
+  const [streamStats, setStreamStats] = useState<{
+    downloadRate: number | null; // bytes per second
+    bufferedSeconds: number;
+    isBuffering: boolean;
+  }>({ downloadRate: null, bufferedSeconds: 0, isBuffering: false });
+  const streamStatsRef = useRef<{
+    lastBufferedEnd: number;
+    lastTimestamp: number;
+    samples: { bytes: number; time: number }[];
+  }>({ lastBufferedEnd: 0, lastTimestamp: 0, samples: [] });
+  
   // Channel overlay state for CRT-style display
   const [showChannelOverlay, setShowChannelOverlay] = useState(false);
   const [overlayChannel, setOverlayChannel] = useState<ChannelInfo | null>(null);
@@ -620,6 +632,99 @@ export default function Home() {
     const interval = setInterval(updateTime, 100);
     
     return () => clearInterval(interval);
+  }, [showInfoModal]);
+
+  // Track stream stats (download rate, buffer health) when info modal is open
+  useEffect(() => {
+    if (!showInfoModal) {
+      // Reset stats when modal closes
+      streamStatsRef.current = { lastBufferedEnd: 0, lastTimestamp: 0, samples: [] };
+      setStreamStats({ downloadRate: null, bufferedSeconds: 0, isBuffering: false });
+      return;
+    }
+    
+    const video = videoRef.current;
+    if (!video) return;
+    
+    // Estimate bitrate from file duration (assume ~5 Mbps average for video files)
+    // This is a rough estimate - actual bitrate varies by file
+    const ESTIMATED_BITRATE_BPS = 5_000_000; // 5 Mbps in bits/second
+    const ESTIMATED_BYTES_PER_SECOND = ESTIMATED_BITRATE_BPS / 8; // ~625 KB/s
+    
+    const updateStreamStats = () => {
+      const buffered = video.buffered;
+      const currentTime = video.currentTime;
+      const now = Date.now();
+      
+      // Calculate buffered seconds ahead of current playback position
+      let bufferedAhead = 0;
+      for (let i = 0; i < buffered.length; i++) {
+        const start = buffered.start(i);
+        const end = buffered.end(i);
+        if (currentTime >= start && currentTime <= end) {
+          bufferedAhead = end - currentTime;
+          break;
+        }
+      }
+      
+      // Get total buffered end position for rate calculation
+      const bufferedEnd = buffered.length > 0 ? buffered.end(buffered.length - 1) : 0;
+      
+      // Calculate download rate based on buffer growth
+      const ref = streamStatsRef.current;
+      let downloadRate: number | null = null;
+      
+      if (ref.lastTimestamp > 0 && ref.lastBufferedEnd > 0) {
+        const timeDelta = (now - ref.lastTimestamp) / 1000; // seconds
+        const bufferDelta = bufferedEnd - ref.lastBufferedEnd; // seconds of video
+        
+        if (timeDelta > 0.3 && bufferDelta >= 0) {
+          // Convert buffer growth (seconds of video) to estimated bytes
+          const bytesLoaded = bufferDelta * ESTIMATED_BYTES_PER_SECOND;
+          const rate = bytesLoaded / timeDelta;
+          
+          // Add to samples for smoothing (keep last 5 samples)
+          ref.samples.push({ bytes: rate, time: now });
+          if (ref.samples.length > 5) {
+            ref.samples.shift();
+          }
+          
+          // Calculate smoothed average
+          if (ref.samples.length > 0) {
+            const avgRate = ref.samples.reduce((sum, s) => sum + s.bytes, 0) / ref.samples.length;
+            // Only show rate if there's meaningful data (> 10 KB/s)
+            downloadRate = avgRate > 10000 ? avgRate : null;
+          }
+        }
+      }
+      
+      // Update refs for next calculation
+      ref.lastBufferedEnd = bufferedEnd;
+      ref.lastTimestamp = now;
+      
+      // Determine if currently buffering (video is paused due to lack of data)
+      const isBuffering = video.readyState < 3 && !video.paused;
+      
+      setStreamStats({
+        downloadRate,
+        bufferedSeconds: bufferedAhead,
+        isBuffering,
+      });
+    };
+    
+    // Update immediately
+    updateStreamStats();
+    
+    // Update every 500ms for smooth stats
+    const interval = setInterval(updateStreamStats, 500);
+    
+    // Also listen to progress events for more accurate updates
+    video.addEventListener('progress', updateStreamStats);
+    
+    return () => {
+      clearInterval(interval);
+      video.removeEventListener('progress', updateStreamStats);
+    };
   }, [showInfoModal]);
 
   useEffect(() => {
@@ -1471,6 +1576,83 @@ export default function Home() {
               </div>
             )}
 
+            {/* Stream Stats */}
+            <div className="pt-3 border-t border-white/10">
+              <p className="text-xs text-neutral-500 mb-2">Stream Stats</p>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Download Rate */}
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    streamStats.isBuffering 
+                      ? "bg-amber-500 animate-pulse" 
+                      : streamStats.downloadRate && streamStats.downloadRate > 500000
+                        ? "bg-emerald-500"
+                        : streamStats.downloadRate && streamStats.downloadRate > 100000
+                          ? "bg-yellow-500"
+                          : "bg-neutral-500"
+                  }`} />
+                  <div>
+                    <p className="text-xs text-neutral-400">Download Rate</p>
+                    <p className="text-sm font-mono text-neutral-200">
+                      {streamStats.downloadRate 
+                        ? formatBytesPerSecond(streamStats.downloadRate)
+                        : streamStats.isBuffering 
+                          ? "Buffering..."
+                          : "—"
+                      }
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Buffer Health */}
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    streamStats.bufferedSeconds > 30 
+                      ? "bg-emerald-500" 
+                      : streamStats.bufferedSeconds > 10 
+                        ? "bg-yellow-500" 
+                        : streamStats.bufferedSeconds > 0
+                          ? "bg-amber-500"
+                          : "bg-red-500"
+                  }`} />
+                  <div>
+                    <p className="text-xs text-neutral-400">Buffer Ahead</p>
+                    <p className="text-sm font-mono text-neutral-200">
+                      {streamStats.bufferedSeconds > 0 
+                        ? `${Math.round(streamStats.bufferedSeconds)}s`
+                        : "0s"
+                      }
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Connection Quality Indicator */}
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs text-neutral-500">Connection:</span>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                  streamStats.isBuffering
+                    ? "bg-amber-500/20 text-amber-200"
+                    : streamStats.bufferedSeconds > 30 && (!streamStats.downloadRate || streamStats.downloadRate > 300000)
+                      ? "bg-emerald-500/20 text-emerald-200"
+                      : streamStats.bufferedSeconds > 10
+                        ? "bg-yellow-500/20 text-yellow-200"
+                        : "bg-red-500/20 text-red-200"
+                }`}>
+                  {streamStats.isBuffering
+                    ? "Buffering"
+                    : streamStats.bufferedSeconds > 30 && (!streamStats.downloadRate || streamStats.downloadRate > 300000)
+                      ? "Excellent"
+                      : streamStats.bufferedSeconds > 10
+                        ? "Good"
+                        : streamStats.bufferedSeconds > 0
+                          ? "Fair"
+                          : "Poor"
+                  }
+                </span>
+              </div>
+            </div>
+
             {/* File info */}
             <div className="pt-3 border-t border-white/10">
               <p className="text-xs text-neutral-500">File</p>
@@ -1521,5 +1703,15 @@ function formatOffsetForDisplay(seconds: number): string {
     return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatBytesPerSecond(bytesPerSecond: number): string {
+  if (bytesPerSecond >= 1_000_000) {
+    return `${(bytesPerSecond / 1_000_000).toFixed(1)} MB/s`;
+  }
+  if (bytesPerSecond >= 1_000) {
+    return `${(bytesPerSecond / 1_000).toFixed(0)} KB/s`;
+  }
+  return `${Math.round(bytesPerSecond)} B/s`;
 }
 
