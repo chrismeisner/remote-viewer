@@ -41,12 +41,17 @@ export default function ChannelPlaylistPage() {
   const [mediaSource, setMediaSource] = useState<MediaSource>(() => {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
+      console.log("[Playlist Page] Initial mediaSource from localStorage:", stored);
       if (stored === "remote" || stored === "local") {
         return stored;
       }
     }
+    console.log("[Playlist Page] Using default mediaSource: local");
     return "local";
   });
+  
+  // Log component mount
+  console.log("[Playlist Page] Component render", { channelId, mediaSource, loading, error });
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "pending" | "saving" | "saved">("idle");
   
   // Modal state - media files loaded lazily
@@ -78,41 +83,84 @@ export default function ChannelPlaylistPage() {
 
   // Load just the channel's playlist (fast!)
   useEffect(() => {
-    if (!channelId) return;
+    console.log("[Playlist Page] useEffect triggered", { channelId, mediaSource });
+    
+    if (!channelId) {
+      console.log("[Playlist Page] No channelId, skipping load");
+      return;
+    }
     
     let cancelled = false;
     setLoading(true);
     setError(null);
 
     const loadPlaylist = async () => {
+      console.log("[Playlist Page] loadPlaylist starting", { channelId, mediaSource });
+      
       try {
         // Fetch channel info and playlist in parallel
+        const channelsUrl = `/api/channels?source=${encodeURIComponent(mediaSource)}`;
+        const scheduleUrl = `/api/channels/${encodeURIComponent(channelId)}/schedule?source=${encodeURIComponent(mediaSource)}`;
+        
+        console.log("[Playlist Page] Fetching URLs:", { channelsUrl, scheduleUrl });
+        
         const [channelsRes, scheduleRes] = await Promise.all([
-          fetch(`/api/channels?source=${encodeURIComponent(mediaSource)}`),
-          fetch(`/api/channels/${encodeURIComponent(channelId)}/schedule?source=${encodeURIComponent(mediaSource)}`),
+          fetch(channelsUrl),
+          fetch(scheduleUrl),
         ]);
+        
+        console.log("[Playlist Page] Fetch responses:", {
+          channelsStatus: channelsRes.status,
+          scheduleStatus: scheduleRes.status,
+        });
         
         const channelsJson = await channelsRes.json();
         const scheduleJson = await scheduleRes.json();
         
-        if (cancelled) return;
+        console.log("[Playlist Page] API responses:", {
+          channelsJson: {
+            channelCount: channelsJson.channels?.length ?? 0,
+            channelIds: channelsJson.channels?.map((c: ChannelInfo) => c.id) ?? [],
+            source: channelsJson.source,
+          },
+          scheduleJson: {
+            hasSchedule: !!scheduleJson.schedule,
+            playlistLength: scheduleJson.schedule?.playlist?.length ?? 0,
+            source: scheduleJson.source,
+          },
+        });
+        
+        if (cancelled) {
+          console.log("[Playlist Page] Request cancelled, ignoring response");
+          return;
+        }
         
         // Find this channel's info
         const channels: ChannelInfo[] = channelsJson.channels || [];
         const info = channels.find(c => c.id === channelId);
         
+        console.log("[Playlist Page] Looking for channel:", {
+          channelId,
+          availableChannels: channels.map(c => ({ id: c.id, type: c.type })),
+          found: !!info,
+          foundInfo: info,
+        });
+        
         if (!info) {
+          console.error("[Playlist Page] Channel not found!", { channelId, availableChannels: channels.map(c => c.id) });
           setError(`Channel "${channelId}" not found`);
           setLoading(false);
           return;
         }
         
         if (info.type !== "looping") {
+          console.error("[Playlist Page] Channel is not looping type!", { channelId, type: info.type });
           setError(`Channel "${channelId}" is not a looping channel`);
           setLoading(false);
           return;
         }
         
+        console.log("[Playlist Page] Channel found and valid, setting state");
         setChannelInfo(info);
         
         const items = scheduleJson?.schedule?.playlist ?? [];
@@ -120,7 +168,10 @@ export default function ChannelPlaylistPage() {
         setPlaylist(normalized);
         lastSavedPlaylistRef.current = JSON.stringify(normalized);
         
-      } catch {
+        console.log("[Playlist Page] Load complete", { playlistLength: normalized.length });
+        
+      } catch (err) {
+        console.error("[Playlist Page] Error loading playlist:", err);
         if (!cancelled) setError("Failed to load playlist");
       } finally {
         if (!cancelled) setLoading(false);
@@ -128,7 +179,10 @@ export default function ChannelPlaylistPage() {
     };
 
     void loadPlaylist();
-    return () => { cancelled = true; };
+    return () => { 
+      console.log("[Playlist Page] Cleanup - cancelling request");
+      cancelled = true; 
+    };
   }, [channelId, mediaSource]);
 
   // Lazy-load media files only when modal opens
