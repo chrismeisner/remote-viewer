@@ -11,7 +11,6 @@ export default function CoverFlowPage() {
   const [covers, setCovers] = useState<CoverFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isPaused, setIsPaused] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
 
@@ -59,10 +58,7 @@ export default function CoverFlowPage() {
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === " " || e.key === "Spacebar") {
-        e.preventDefault();
-        setIsPaused((p) => !p);
-      } else if (e.key === "Escape" || e.key === "Enter") {
+      if (e.key === "Escape" || e.key === "Enter") {
         // Go to player
         window.location.href = "/player";
       }
@@ -299,10 +295,8 @@ export default function CoverFlowPage() {
     return columnData;
   }, [covers]);
 
-  // Calculate loading progress
-  const totalUniqueCovers = covers.length;
+  // Calculate loading progress for initial spinner
   const loadedCount = loadedImages.size;
-  const isFullyLoaded = totalUniqueCovers > 0 && loadedCount >= totalUniqueCovers;
 
   // Show error only after loading is complete and there's an error
   if (!loading && error) {
@@ -357,11 +351,11 @@ export default function CoverFlowPage() {
             style={{ minWidth: 0 }}
           >
             <div
-              className={`flex flex-col gap-2 sm:gap-3 ${isPaused ? "" : "animate-scroll"}`}
+              className="flex flex-col gap-2 sm:gap-3 animate-scroll"
               style={{
                 animationDuration: `${column.speed}s`,
                 animationDirection: column.reverse ? "reverse" : "normal",
-                animationPlayState: isPaused ? "paused" : "running",
+                animationPlayState: "running",
                 animationDelay: `-${(column.offset / 33.333) * column.speed}s`, // Start at different positions
               }}
             >
@@ -424,42 +418,14 @@ export default function CoverFlowPage() {
             <div className="text-sm">
               <p className="font-medium text-white">Remote Viewer</p>
               <p className="text-xs text-neutral-500">
-                {loading ? (
-                  "Loading..."
-                ) : isFullyLoaded ? (
-                  `${covers.length} covers`
-                ) : (
-                  `${loadedCount}/${totalUniqueCovers} loaded`
-                )}
+                {covers.length > 0 ? `${covers.length} covers` : "Loading..."}
               </p>
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsPaused(!isPaused)}
-              className="p-2 rounded-lg hover:bg-white/10 transition text-neutral-400 hover:text-white"
-              title={isPaused ? "Play (Space)" : "Pause (Space)"}
-            >
-              {isPaused ? (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                </svg>
-              )}
-            </button>
-          </div>
         </div>
         
-        {/* Keyboard hints */}
-        <div className="mt-3 flex items-center justify-center gap-4 text-xs text-neutral-600">
-          <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 font-mono">Space</kbd>
-            {" "}pause
-          </span>
+        {/* Keyboard hint */}
+        <div className="mt-3 flex items-center justify-center text-xs text-neutral-600">
           <span>
             <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 font-mono">Enter</kbd>
             {" "}watch
