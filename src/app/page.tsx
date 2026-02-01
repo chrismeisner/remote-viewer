@@ -66,25 +66,39 @@ export default function CoverFlowPage() {
   useEffect(() => {
     const fetchCovers = async () => {
       try {
-        // Fetch remote covers and metadata in parallel
-        const [remoteRes, metadataRes] = await Promise.all([
+        // Fetch remote covers and metadata (both local and remote sources) in parallel
+        const [remoteCoversRes, localMetadataRes, remoteMetadataRes] = await Promise.all([
           fetch("/api/covers?source=remote"),
-          fetch("/api/media-metadata"),
+          fetch("/api/media-metadata?source=local"),
+          fetch("/api/media-metadata?source=remote"),
         ]);
         
-        const [remoteData, metadataData] = await Promise.all([
-          remoteRes.json(),
-          metadataRes.json(),
+        const [remoteCoversData, localMetadataData, remoteMetadataData] = await Promise.all([
+          remoteCoversRes.json(),
+          localMetadataRes.json(),
+          remoteMetadataRes.json(),
         ]);
         
-        const allCovers: CoverFile[] = remoteData.covers || [];
-        const metadata: Record<string, { coverLocal?: string; coverUrl?: string }> = metadataData.items || {};
+        const allCovers: CoverFile[] = remoteCoversData.covers || [];
+        const localMetadata: Record<string, { coverLocal?: string; coverUrl?: string }> = localMetadataData.items || {};
+        const remoteMetadata: Record<string, { coverLocal?: string; coverUrl?: string }> = remoteMetadataData.items || {};
         
-        // Build set of covers that are actually in use by media items
+        // Build set of covers that are actually in use by media items (from both sources)
         const usedCoverFilenames = new Set<string>();
         const usedCoverUrls = new Set<string>();
         
-        for (const item of Object.values(metadata)) {
+        // Collect from local metadata
+        for (const item of Object.values(localMetadata)) {
+          if (item.coverLocal) {
+            usedCoverFilenames.add(item.coverLocal);
+          }
+          if (item.coverUrl) {
+            usedCoverUrls.add(item.coverUrl);
+          }
+        }
+        
+        // Collect from remote metadata
+        for (const item of Object.values(remoteMetadata)) {
           if (item.coverLocal) {
             usedCoverFilenames.add(item.coverLocal);
           }
@@ -119,7 +133,14 @@ export default function CoverFlowPage() {
           }
         }
         
-        const finalCovers = [...activeCovers, ...urlCovers];
+        let finalCovers = [...activeCovers, ...urlCovers];
+        
+        // Fallback: if no covers found after filtering but remote covers exist,
+        // use all remote covers (metadata might not be set up yet)
+        if (finalCovers.length === 0 && allCovers.length > 0) {
+          console.log("[CoverFlow] No linked covers found, using all available covers");
+          finalCovers = allCovers;
+        }
 
         if (finalCovers.length === 0) {
           setError("No covers found in your media library");
