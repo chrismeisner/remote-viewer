@@ -42,11 +42,13 @@ type MediaMetadata = {
   type?: MediaType | null;
   season?: number | null;
   episode?: number | null;
+  imdbUrl?: string | null; // URL to IMDB page for the media
   dateAdded?: string | null;
   lastUpdated?: string | null;
   coverUrl?: string | null;
   coverLocal?: string | null;
   coverPath?: string | null; // Full filesystem path for local mode
+  coverEmoji?: string | null; // Emoji to use as cover (alternative to image)
   tags?: string[] | null; // Flexible tags for actors, themes, keywords, etc.
 };
 
@@ -143,6 +145,7 @@ function MediaDetailModal({
   const [editEpisode, setEditEpisode] = useState<string>("");
   const [editTags, setEditTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState<string>("");
+  const [editImdbUrl, setEditImdbUrl] = useState<string>("");
   const [availableCovers, setAvailableCovers] = useState<CoverOption[]>([]);
   
   // AI lookup state
@@ -242,6 +245,7 @@ function MediaDetailModal({
             setEditType(metaData.metadata.type ?? "");
             setEditSeason(metaData.metadata.season?.toString() ?? "");
             setEditEpisode(metaData.metadata.episode?.toString() ?? "");
+            setEditImdbUrl(metaData.metadata.imdbUrl ?? "");
             setEditTags(metaData.metadata.tags ?? []);
           }
           if (coversData.covers) {
@@ -324,6 +328,7 @@ function MediaDetailModal({
       if (metadata.type) existingMetadata.type = metadata.type;
       if (metadata.season) existingMetadata.season = metadata.season;
       if (metadata.episode) existingMetadata.episode = metadata.episode;
+      if (metadata.imdbUrl) existingMetadata.imdbUrl = metadata.imdbUrl;
 
       // Map token level to actual token count
       const tokenMap = { fast: 256, balanced: 512, detailed: 1024 };
@@ -355,6 +360,7 @@ function MediaDetailModal({
       if (data.type) setEditType(data.type);
       if (data.season) setEditSeason(data.season.toString());
       if (data.episode) setEditEpisode(data.episode.toString());
+      if (data.imdbUrl) setEditImdbUrl(data.imdbUrl);
       
       // Switch to edit mode to show the filled fields
       setEditingMetadata(true);
@@ -384,6 +390,7 @@ function MediaDetailModal({
           type: editType || null,
           season: editSeason ? parseInt(editSeason, 10) : null,
           episode: editEpisode ? parseInt(editEpisode, 10) : null,
+          imdbUrl: editImdbUrl.trim() || null,
           tags: editTags.length > 0 ? editTags : null,
         }),
       });
@@ -412,6 +419,7 @@ function MediaDetailModal({
     setEditType(metadata.type ?? "");
     setEditSeason(metadata.season?.toString() ?? "");
     setEditEpisode(metadata.episode?.toString() ?? "");
+    setEditImdbUrl(metadata.imdbUrl ?? "");
     setEditTags(metadata.tags ?? []);
     setNewTagInput("");
     setEditingMetadata(false);
@@ -1089,65 +1097,63 @@ function MediaDetailModal({
             <h3 className="text-xs uppercase tracking-widest text-neutral-500">Media Metadata</h3>
             {!metadataLoading && (
               <div className="flex items-center gap-3">
-                {aiConfigured && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={aiTokenLevel}
-                        onChange={(e) => setAiTokenLevel(e.target.value as "fast" | "balanced" | "detailed")}
-                        disabled={aiLoading}
-                        className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-300 disabled:opacity-50"
-                        title="AI detail level"
-                      >
-                        <option value="fast">Fast</option>
-                        <option value="balanced">Balanced</option>
-                        <option value="detailed">Detailed</option>
-                      </select>
-                      <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={aiContextEnabled}
-                          onChange={(e) => setAiContextEnabled(e.target.checked)}
-                          disabled={aiLoading}
-                          className="w-3.5 h-3.5 rounded border-white/15 bg-white/5 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 disabled:opacity-50"
-                        />
-                        Add context
-                      </label>
-                      <button
-                        onClick={handleAiLookup}
-                        disabled={aiLoading}
-                        className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition disabled:opacity-50"
-                      >
-                        {aiLoading ? (
-                          <>
-                            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            Looking up...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            Fill with AI
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    {aiContextEnabled && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={aiTokenLevel}
+                      onChange={(e) => setAiTokenLevel(e.target.value as "fast" | "balanced" | "detailed")}
+                      disabled={aiLoading}
+                      className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-300 disabled:opacity-50"
+                      title="AI detail level"
+                    >
+                      <option value="fast">Fast</option>
+                      <option value="balanced">Balanced</option>
+                      <option value="detailed">Detailed</option>
+                    </select>
+                    <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer">
                       <input
-                        type="text"
-                        value={aiContextText}
-                        onChange={(e) => setAiContextText(e.target.value)}
+                        type="checkbox"
+                        checked={aiContextEnabled}
+                        onChange={(e) => setAiContextEnabled(e.target.checked)}
                         disabled={aiLoading}
-                        placeholder="e.g. This is a 1980s horror film..."
-                        className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-blue-300 disabled:opacity-50"
+                        className="w-3.5 h-3.5 rounded border-white/15 bg-white/5 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 disabled:opacity-50"
                       />
-                    )}
+                      Add context
+                    </label>
+                    <button
+                      onClick={handleAiLookup}
+                      disabled={aiLoading}
+                      className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition disabled:opacity-50"
+                    >
+                      {aiLoading ? (
+                        <>
+                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Looking up...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Fill with AI
+                        </>
+                      )}
+                    </button>
                   </div>
-                )}
+                  {aiContextEnabled && (
+                    <input
+                      type="text"
+                      value={aiContextText}
+                      onChange={(e) => setAiContextText(e.target.value)}
+                      disabled={aiLoading}
+                      placeholder="e.g. This is a 1980s horror film..."
+                      className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-blue-300 disabled:opacity-50"
+                    />
+                  )}
+                </div>
                 {!editingMetadata && (
                   <button
                     onClick={() => setEditingMetadata(true)}
@@ -1255,6 +1261,17 @@ function MediaDetailModal({
                 </div>
               </div>
               <div>
+                <label className="block text-xs text-neutral-500 mb-1">IMDB URL</label>
+                <input
+                  type="url"
+                  value={editImdbUrl}
+                  onChange={(e) => setEditImdbUrl(e.target.value)}
+                  onKeyDown={handleMetadataKeyDown}
+                  placeholder="e.g. https://www.imdb.com/title/tt0133093/"
+                  className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                />
+              </div>
+              <div>
                 <label className="block text-xs text-neutral-500 mb-1">Making Of <span className="text-neutral-600">(cast, crew, production facts)</span></label>
                 <textarea
                   value={editMakingOf}
@@ -1331,20 +1348,43 @@ function MediaDetailModal({
               {metadataError && (
                 <p className="text-xs text-amber-300">{metadataError}</p>
               )}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleSaveMetadata}
-                  disabled={metadataSaving}
+                  disabled={metadataSaving || aiLoading}
                   className="rounded-md bg-emerald-500 hover:bg-emerald-400 px-3 py-1.5 text-xs font-semibold text-neutral-900 transition disabled:opacity-50"
                 >
                   {metadataSaving ? "Saving..." : "Save"}
                 </button>
                 <button
                   onClick={handleCancelEdit}
-                  disabled={metadataSaving}
+                  disabled={metadataSaving || aiLoading}
                   className="rounded-md border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition hover:bg-white/10 disabled:opacity-50"
                 >
                   Cancel
+                </button>
+                <button
+                  onClick={handleAiLookup}
+                  disabled={metadataSaving || aiLoading}
+                  className="rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-300 transition hover:bg-blue-500/20 hover:text-blue-200 disabled:opacity-50 flex items-center gap-1.5"
+                  title="Re-fetch metadata using AI"
+                >
+                  {aiLoading ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Refilling...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Refill AI
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -1406,6 +1446,21 @@ function MediaDetailModal({
                 <p className="text-sm font-medium text-neutral-200">
                   {metadata.director ?? "—"}
                 </p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500 mb-1">IMDB</p>
+                {metadata.imdbUrl ? (
+                  <a
+                    href={metadata.imdbUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-amber-400 hover:text-amber-300 underline underline-offset-2"
+                  >
+                    View on IMDB ↗
+                  </a>
+                ) : (
+                  <p className="text-sm text-neutral-500">—</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-neutral-500 mb-1">Making Of <span className="text-neutral-600">(cast, crew, production)</span></p>
@@ -1470,6 +1525,9 @@ function MediaDetailModal({
 /* ─────────────────────────────────────────────────────────────────────────────
    Cover Image Section Component (for Media Detail Modal)
    ───────────────────────────────────────────────────────────────────────────── */
+// Cover mode type for toggling between image and emoji
+type CoverMode = "image" | "emoji";
+
 function CoverImageSection({
   relPath,
   metadata,
@@ -1483,14 +1541,23 @@ function CoverImageSection({
   mediaSource: MediaSource;
   onCoverSaved: (updatedMeta: MediaMetadata) => void;
 }) {
+  // Determine initial cover mode based on existing metadata
+  const getInitialCoverMode = (): CoverMode => {
+    if (metadata.coverEmoji) return "emoji";
+    return "image";
+  };
+
+  const [coverMode, setCoverMode] = useState<CoverMode>(getInitialCoverMode);
   const [coverUrl, setCoverUrl] = useState(metadata.coverUrl || "");
   const [coverLocal, setCoverLocal] = useState(metadata.coverLocal || "");
   const [coverPath, setCoverPath] = useState(metadata.coverPath || "");
+  const [coverEmoji, setCoverEmoji] = useState(metadata.coverEmoji || "");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [localCovers, setLocalCovers] = useState<CoverOption[]>(availableCovers);
+  const [fetchingImdbCover, setFetchingImdbCover] = useState(false);
   
   // Image browser state (for local mode)
   const [showBrowser, setShowBrowser] = useState(false);
@@ -1506,18 +1573,31 @@ function CoverImageSection({
     setCoverUrl(metadata.coverUrl || "");
     setCoverLocal(metadata.coverLocal || "");
     setCoverPath(metadata.coverPath || "");
-  }, [metadata.coverUrl, metadata.coverLocal, metadata.coverPath]);
+    setCoverEmoji(metadata.coverEmoji || "");
+    // Update mode based on what's set
+    if (metadata.coverEmoji) {
+      setCoverMode("emoji");
+    } else if (metadata.coverUrl || metadata.coverLocal || metadata.coverPath) {
+      setCoverMode("image");
+    }
+  }, [metadata.coverUrl, metadata.coverLocal, metadata.coverPath, metadata.coverEmoji]);
 
-  // Get the resolved cover URL for preview
+  // Get the resolved cover URL for preview (only for image mode)
   // For remote mode, coverLocal should resolve to remote server URL
-  const resolvedCoverUrl = coverUrl 
-    || (coverPath && mediaSource === "local" ? `/api/local-image?path=${encodeURIComponent(coverPath)}` : null)
-    || (coverLocal ? (mediaSource === "remote" ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(coverLocal)}` : `/api/covers/${encodeURIComponent(coverLocal)}`) : null);
+  const resolvedCoverUrl = coverMode === "image" 
+    ? (coverUrl 
+        || (coverPath && mediaSource === "local" ? `/api/local-image?path=${encodeURIComponent(coverPath)}` : null)
+        || (coverLocal ? (mediaSource === "remote" ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(coverLocal)}` : `/api/covers/${encodeURIComponent(coverLocal)}`) : null))
+    : null;
   
-  const hasChanges = 
+  const hasImageChanges = 
     coverUrl !== (metadata.coverUrl || "") || 
     coverLocal !== (metadata.coverLocal || "") ||
     coverPath !== (metadata.coverPath || "");
+  
+  const hasEmojiChanges = coverEmoji !== (metadata.coverEmoji || "");
+  
+  const hasChanges = coverMode === "image" ? hasImageChanges : hasEmojiChanges;
 
   // Save cover
   const handleSave = async () => {
@@ -1526,16 +1606,29 @@ function CoverImageSection({
     setSuccess(null);
 
     try {
+      // When saving, clear the fields from the other mode
+      const payload = coverMode === "image"
+        ? {
+            file: relPath,
+            source: mediaSource,
+            coverUrl: coverUrl.trim() || null,
+            coverLocal: coverLocal || null,
+            coverPath: coverPath || null,
+            coverEmoji: null, // Clear emoji when saving image
+          }
+        : {
+            file: relPath,
+            source: mediaSource,
+            coverUrl: null, // Clear image fields when saving emoji
+            coverLocal: null,
+            coverPath: null,
+            coverEmoji: coverEmoji.trim() || null,
+          };
+
       const res = await fetch("/api/media-metadata", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          file: relPath,
-          source: mediaSource,
-          coverUrl: coverUrl.trim() || null,
-          coverLocal: coverLocal || null,
-          coverPath: coverPath || null,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -1631,22 +1724,121 @@ function CoverImageSection({
 
   // Clear cover
   const handleClear = () => {
-    setCoverUrl("");
-    setCoverLocal("");
-    setCoverPath("");
+    if (coverMode === "image") {
+      setCoverUrl("");
+      setCoverLocal("");
+      setCoverPath("");
+    } else {
+      setCoverEmoji("");
+    }
+  };
+
+  // Fetch cover from IMDB
+  const handleFetchImdbCover = async () => {
+    if (!metadata.imdbUrl) return;
+    
+    setFetchingImdbCover(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const res = await fetch("/api/media-metadata/imdb-cover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imdbUrl: metadata.imdbUrl }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to fetch IMDB cover");
+
+      if (data.coverUrl) {
+        // Set the cover URL and clear other cover fields
+        setCoverUrl(data.coverUrl);
+        setCoverLocal("");
+        setCoverPath("");
+        setCoverMode("image");
+        
+        // Check if the IMDB title matches our metadata title
+        const imdbTitle = data.title?.toLowerCase()?.replace(/\s*\(\d{4}\)\s*/g, "").trim() || "";
+        const ourTitle = metadata.title?.toLowerCase()?.trim() || "";
+        
+        // Simple match check - if both titles exist and don't share at least 50% of words, warn
+        if (imdbTitle && ourTitle) {
+          const imdbWordsArr = imdbTitle.split(/\s+/).filter((w: string) => w.length > 2);
+          const ourWordsArr = ourTitle.split(/\s+/).filter((w: string) => w.length > 2);
+          const imdbWords = new Set<string>(imdbWordsArr);
+          const ourWords = new Set<string>(ourWordsArr);
+          const commonWords = imdbWordsArr.filter((w: string) => ourWords.has(w));
+          const matchRatio = commonWords.length / Math.max(imdbWords.size, ourWords.size, 1);
+          
+          if (matchRatio < 0.5) {
+            // Titles don't match well - show warning
+            setError(`Warning: IMDB title "${data.title}" may not match "${metadata.title}". Verify this is correct before saving.`);
+          } else {
+            setSuccess(`Cover found for "${data.title}"`);
+          }
+        } else {
+          setSuccess(`Cover found${data.title ? ` for "${data.title}"` : ""}`);
+        }
+      } else {
+        throw new Error("No cover image found on IMDB");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch IMDB cover");
+    } finally {
+      setFetchingImdbCover(false);
+    }
+  };
+  
+  // Switch between cover modes
+  const handleModeSwitch = (mode: CoverMode) => {
+    setCoverMode(mode);
+    setError(null);
+    setSuccess(null);
   };
 
   const isLocal = mediaSource === "local";
 
   return (
     <div className="border-t border-white/10 bg-neutral-800/30 px-5 py-4">
-      <h3 className="text-xs uppercase tracking-widest text-neutral-500 mb-3">Cover Image</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs uppercase tracking-widest text-neutral-500">Cover</h3>
+        
+        {/* Mode Toggle */}
+        <div className="flex rounded-md border border-white/15 overflow-hidden">
+          <button
+            onClick={() => handleModeSwitch("image")}
+            className={`px-2.5 py-1 text-xs font-medium transition ${
+              coverMode === "image"
+                ? "bg-emerald-500/20 text-emerald-300 border-r border-white/15"
+                : "bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-neutral-200 border-r border-white/15"
+            }`}
+          >
+            Image
+          </button>
+          <button
+            onClick={() => handleModeSwitch("emoji")}
+            className={`px-2.5 py-1 text-xs font-medium transition ${
+              coverMode === "emoji"
+                ? "bg-emerald-500/20 text-emerald-300"
+                : "bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-neutral-200"
+            }`}
+          >
+            Emoji
+          </button>
+        </div>
+      </div>
 
       <div className="flex gap-4">
         {/* Cover Preview */}
         <div className="flex-shrink-0">
           <div className="w-28 h-40 rounded-lg border border-white/15 bg-neutral-900 overflow-hidden">
-            {resolvedCoverUrl ? (
+            {coverMode === "emoji" && coverEmoji ? (
+              /* Emoji Preview */
+              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-neutral-800 to-neutral-900">
+                <span className="text-6xl">{coverEmoji}</span>
+              </div>
+            ) : resolvedCoverUrl ? (
               <img
                 src={resolvedCoverUrl}
                 alt="Cover preview"
@@ -1659,10 +1851,19 @@ function CoverImageSection({
               />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-neutral-600 p-2">
-                <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="text-xs">No cover</span>
+                {coverMode === "emoji" ? (
+                  <>
+                    <span className="text-3xl mb-1 opacity-30">😀</span>
+                    <span className="text-xs">No emoji</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-xs">No cover</span>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1670,7 +1871,50 @@ function CoverImageSection({
 
         {/* Cover Controls */}
         <div className="flex-1 space-y-3">
-          {isLocal ? (
+          {coverMode === "emoji" ? (
+            /* Emoji Mode: Input an emoji */
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1">Select Emoji</label>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  value={coverEmoji}
+                  onChange={(e) => {
+                    // Allow only the first emoji/character for simplicity
+                    const value = e.target.value;
+                    // Get first grapheme (handles multi-codepoint emojis)
+                    const segments = [...new Intl.Segmenter().segment(value)];
+                    const firstEmoji = segments[0]?.segment || "";
+                    setCoverEmoji(firstEmoji);
+                  }}
+                  placeholder="🎬"
+                  className="w-20 h-12 rounded-md border border-white/15 bg-white/5 text-3xl text-center placeholder:text-neutral-600 outline-none focus:border-emerald-300"
+                />
+                <span className="text-xs text-neutral-500">Enter or paste an emoji</span>
+              </div>
+              
+              {/* Quick emoji suggestions */}
+              <div className="mt-3">
+                <label className="block text-xs text-neutral-500 mb-2">Quick Pick</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {["🎬", "🎥", "📺", "🎭", "🎪", "🎤", "🎸", "⚽", "🏀", "🎾", "🏈", "📖", "🎵", "🎶", "🌟", "💫", "🔥", "❤️", "🎁", "🎄"].map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => setCoverEmoji(emoji)}
+                      className={`w-9 h-9 rounded-md text-xl hover:bg-white/10 transition ${
+                        coverEmoji === emoji 
+                          ? "bg-emerald-500/20 border border-emerald-400/40" 
+                          : "bg-white/5 border border-white/10"
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : isLocal ? (
             /* Local Mode: Browse filesystem for images */
             <>
               <div>
@@ -1776,7 +2020,7 @@ function CoverImageSection({
           {success && <p className="text-xs text-emerald-300">{success}</p>}
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <button
               onClick={handleSave}
               disabled={saving || !hasChanges}
@@ -1784,13 +2028,37 @@ function CoverImageSection({
             >
               {saving ? "Saving..." : "Save Cover"}
             </button>
-            {(coverUrl || coverLocal || coverPath) && (
+            {((coverMode === "image" && (coverUrl || coverLocal || coverPath)) || 
+              (coverMode === "emoji" && coverEmoji)) && (
               <button
                 onClick={handleClear}
                 disabled={saving}
                 className="rounded-md border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-medium text-neutral-400 hover:bg-white/10 hover:text-neutral-200 transition disabled:opacity-50"
               >
                 Clear
+              </button>
+            )}
+            {/* IMDB Cover Button - appears when imdbUrl is set */}
+            {metadata.imdbUrl && coverMode === "image" && (
+              <button
+                onClick={handleFetchImdbCover}
+                disabled={saving || fetchingImdbCover}
+                className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 transition disabled:opacity-50 flex items-center gap-1.5"
+                title="Fetch cover image from IMDB"
+              >
+                {fetchingImdbCover ? (
+                  <>
+                    <div className="h-3 w-3 border border-amber-400 border-t-transparent rounded-full animate-spin" />
+                    Fetching...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM8 17v-2h2l3.6-3.6 2 2L12 17h-2v2H8v-2z"/>
+                    </svg>
+                    Use IMDB Cover
+                  </>
+                )}
               </button>
             )}
             {hasChanges && !saving && (
@@ -3023,6 +3291,8 @@ export default function MediaAdminPage() {
                       const resolvedCoverUrl = meta.coverUrl 
                         || (meta.coverPath && mediaSource === "local" ? `/api/local-image?path=${encodeURIComponent(meta.coverPath)}` : null)
                         || (meta.coverLocal ? (mediaSource === "remote" ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(meta.coverLocal)}` : `/api/covers/${encodeURIComponent(meta.coverLocal)}`) : null);
+                      // Check for emoji cover
+                      const hasEmoji = !!meta.coverEmoji;
                       return (
                         <tr key={file.relPath} className={isSelected ? "bg-emerald-500/5" : ""}>
                           <td className="px-3 py-2">
@@ -3034,7 +3304,17 @@ export default function MediaAdminPage() {
                             />
                           </td>
                           <td className="px-3 py-2">
-                            {resolvedCoverUrl ? (
+                            {hasEmoji ? (
+                              /* Emoji cover */
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFile(file)}
+                                className="w-12 h-12 bg-gradient-to-br from-neutral-800 to-neutral-900 rounded border border-white/10 flex items-center justify-center text-2xl cursor-pointer hover:border-emerald-400/40 transition-colors"
+                                title="Click to edit cover"
+                              >
+                                {meta.coverEmoji}
+                              </button>
+                            ) : resolvedCoverUrl ? (
                               <img 
                                 src={resolvedCoverUrl} 
                                 alt={meta.title || file.relPath}

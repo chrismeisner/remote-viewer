@@ -185,11 +185,13 @@ export type MediaMetadataItem = {
   type?: MediaType | null;
   season?: number | null;
   episode?: number | null;
+  imdbUrl?: string | null; // URL to IMDB page for the media
   dateAdded?: string | null; // ISO date string when file was first added to library
   lastUpdated?: string | null; // ISO date string when metadata was last updated
   coverUrl?: string | null; // URL to external/uploaded cover image
   coverLocal?: string | null; // Filename of local cover in covers folder (for remote mode)
   coverPath?: string | null; // Full filesystem path to local image (for local mode)
+  coverEmoji?: string | null; // Emoji to use as cover (alternative to image)
   tags?: string[] | null; // Flexible tags for actors, themes, keywords, etc.
 };
 
@@ -1690,9 +1692,11 @@ export async function updateMediaItemMetadata(
   if (updates.type !== undefined) updated.type = updates.type;
   if (updates.season !== undefined) updated.season = updates.season;
   if (updates.episode !== undefined) updated.episode = updates.episode;
+  if (updates.imdbUrl !== undefined) updated.imdbUrl = updates.imdbUrl;
   if (updates.coverUrl !== undefined) updated.coverUrl = updates.coverUrl;
   if (updates.coverLocal !== undefined) updated.coverLocal = updates.coverLocal;
   if (updates.coverPath !== undefined) updated.coverPath = updates.coverPath;
+  if (updates.coverEmoji !== undefined) updated.coverEmoji = updates.coverEmoji;
   if (updates.tags !== undefined) updated.tags = updates.tags;
   
   // Set lastUpdated timestamp
@@ -1709,9 +1713,11 @@ export async function updateMediaItemMetadata(
   if (updated.type != null) cleaned.type = updated.type;
   if (updated.season != null) cleaned.season = updated.season;
   if (updated.episode != null) cleaned.episode = updated.episode;
+  if (updated.imdbUrl != null) cleaned.imdbUrl = updated.imdbUrl;
   if (updated.coverUrl != null) cleaned.coverUrl = updated.coverUrl;
   if (updated.coverLocal != null) cleaned.coverLocal = updated.coverLocal;
   if (updated.coverPath != null) cleaned.coverPath = updated.coverPath;
+  if (updated.coverEmoji != null) cleaned.coverEmoji = updated.coverEmoji;
   if (updated.tags != null && updated.tags.length > 0) cleaned.tags = updated.tags;
   if (updated.lastUpdated != null) cleaned.lastUpdated = updated.lastUpdated;
   
@@ -1856,9 +1862,11 @@ export async function updateMediaItemMetadataBySource(
   if (updates.type !== undefined) updated.type = updates.type;
   if (updates.season !== undefined) updated.season = updates.season;
   if (updates.episode !== undefined) updated.episode = updates.episode;
+  if (updates.imdbUrl !== undefined) updated.imdbUrl = updates.imdbUrl;
   if (updates.coverUrl !== undefined) updated.coverUrl = updates.coverUrl;
   if (updates.coverLocal !== undefined) updated.coverLocal = updates.coverLocal;
   if (updates.coverPath !== undefined) updated.coverPath = updates.coverPath;
+  if (updates.coverEmoji !== undefined) updated.coverEmoji = updates.coverEmoji;
   if (updates.tags !== undefined) updated.tags = updates.tags;
   
   // Set lastUpdated timestamp
@@ -1875,9 +1883,11 @@ export async function updateMediaItemMetadataBySource(
   if (updated.type != null) cleaned.type = updated.type;
   if (updated.season != null) cleaned.season = updated.season;
   if (updated.episode != null) cleaned.episode = updated.episode;
+  if (updated.imdbUrl != null) cleaned.imdbUrl = updated.imdbUrl;
   if (updated.coverUrl != null) cleaned.coverUrl = updated.coverUrl;
   if (updated.coverLocal != null) cleaned.coverLocal = updated.coverLocal;
   if (updated.coverPath != null) cleaned.coverPath = updated.coverPath;
+  if (updated.coverEmoji != null) cleaned.coverEmoji = updated.coverEmoji;
   if (updated.tags != null && updated.tags.length > 0) cleaned.tags = updated.tags;
   if (updated.lastUpdated != null) cleaned.lastUpdated = updated.lastUpdated;
   

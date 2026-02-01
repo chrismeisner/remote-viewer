@@ -86,9 +86,11 @@ export async function GET(request: NextRequest) {
  *   - type?: string | null - one of: film, tv, documentary, sports, concert, other
  *   - season?: number | null
  *   - episode?: number | null
+ *   - imdbUrl?: string | null - URL to IMDB page for the media
  *   - coverUrl?: string | null - URL to external cover image
  *   - coverLocal?: string | null - filename of local cover in covers folder
  *   - coverPath?: string | null - full filesystem path for local mode
+ *   - coverEmoji?: string | null - emoji to use as cover (alternative to image)
  *   - tags?: string[] | null - array of tags (actors, themes, keywords, etc.)
  * 
  * Returns: updated metadata for the file
@@ -96,7 +98,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { file, source: sourceParam, title, year, director, category, makingOf, plot, type, season, episode, coverUrl, coverLocal, coverPath, tags } = body;
+    const { file, source: sourceParam, title, year, director, category, makingOf, plot, type, season, episode, imdbUrl, coverUrl, coverLocal, coverPath, coverEmoji, tags } = body;
     const source: MediaSource = sourceParam === "remote" ? "remote" : "local";
     
     if (!file || typeof file !== "string") {
@@ -124,6 +126,25 @@ export async function PUT(request: NextRequest) {
         { error: "Type must be one of: film, tv, documentary, sports, concert, other" },
         { status: 400 },
       );
+    }
+
+    // Validate imdbUrl if provided (should be a valid IMDB URL)
+    if (imdbUrl !== undefined && imdbUrl !== null && imdbUrl !== "") {
+      try {
+        const url = new URL(imdbUrl);
+        // Validate it's an IMDB URL
+        if (!url.hostname.includes("imdb.com")) {
+          return NextResponse.json(
+            { error: "imdbUrl must be an IMDB URL (imdb.com)" },
+            { status: 400 },
+          );
+        }
+      } catch {
+        return NextResponse.json(
+          { error: "imdbUrl must be a valid URL" },
+          { status: 400 },
+        );
+      }
     }
 
     // Validate coverUrl if provided (should be a valid URL)
@@ -158,9 +179,11 @@ export async function PUT(request: NextRequest) {
     if (type !== undefined) updates.type = type === "" ? null : type;
     if (season !== undefined) updates.season = season === null || season === "" ? null : Number(season);
     if (episode !== undefined) updates.episode = episode === null || episode === "" ? null : Number(episode);
+    if (imdbUrl !== undefined) updates.imdbUrl = imdbUrl === "" ? null : imdbUrl;
     if (coverUrl !== undefined) updates.coverUrl = coverUrl === "" ? null : coverUrl;
     if (coverLocal !== undefined) updates.coverLocal = coverLocal === "" ? null : coverLocal;
     if (coverPath !== undefined) updates.coverPath = coverPath === "" ? null : coverPath;
+    if (coverEmoji !== undefined) updates.coverEmoji = coverEmoji === "" ? null : coverEmoji;
     if (tags !== undefined) {
       // Filter empty strings and trim values
       updates.tags = tags === null ? null : tags.filter((t: string) => t.trim()).map((t: string) => t.trim());

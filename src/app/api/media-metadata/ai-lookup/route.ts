@@ -3,6 +3,160 @@ import OpenAI from "openai";
 
 export const runtime = "nodejs";
 
+/**
+ * Normalize a title for comparison:
+ * - lowercase
+ * - remove special characters and extra whitespace
+ * - remove common suffixes like year in parentheses
+ */
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\(\d{4}\)/g, "") // Remove year in parentheses like "(1999)"
+    .replace(/[^\w\s]/g, " ") // Replace special chars with space
+    .replace(/\s+/g, " ") // Collapse multiple spaces
+    .trim();
+}
+
+/**
+ * Calculate similarity between two strings (simple Jaccard-like approach)
+ * Returns a value between 0 and 1
+ */
+function calculateSimilarity(str1: string, str2: string): number {
+  const s1 = normalizeTitle(str1);
+  const s2 = normalizeTitle(str2);
+  
+  // Exact match after normalization
+  if (s1 === s2) return 1;
+  
+  // Check if one contains the other (for cases like "The Matrix" vs "The Matrix (1999)")
+  if (s1.includes(s2) || s2.includes(s1)) return 0.9;
+  
+  // Word-based comparison
+  const words1 = new Set(s1.split(" ").filter(w => w.length > 1));
+  const words2 = new Set(s2.split(" ").filter(w => w.length > 1));
+  
+  if (words1.size === 0 || words2.size === 0) return 0;
+  
+  // Calculate intersection
+  const intersection = new Set([...words1].filter(w => words2.has(w)));
+  const union = new Set([...words1, ...words2]);
+  
+  return intersection.size / union.size;
+}
+
+/**
+ * Fetch the actual title from an IMDB page to validate it matches
+ */
+async function fetchImdbTitle(imdbUrl: string): Promise<{ title: string | null; year: number | null }> {
+  try {
+    const response = await fetch(imdbUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+
+    if (!response.ok) {
+      console.warn(`[IMDB Validation] Failed to fetch: ${response.status}`);
+      return { title: null, year: null };
+    }
+
+    const html = await response.text();
+
+    // Extract title from og:title meta tag
+    const ogTitleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i) ||
+                         html.match(/<meta\s+content=["']([^"']+)["']\s+property=["']og:title["']/i);
+    
+    let title: string | null = null;
+    let year: number | null = null;
+    
+    if (ogTitleMatch) {
+      // og:title often looks like "The Matrix (1999) - IMDb"
+      let rawTitle = ogTitleMatch[1]
+        .replace(/\s*-\s*IMDb\s*$/i, "")
+        .trim();
+      
+      // Extract year if present in title
+      const yearMatch = rawTitle.match(/\((\d{4})\)/);
+      if (yearMatch) {
+        year = parseInt(yearMatch[1], 10);
+        rawTitle = rawTitle.replace(/\s*\(\d{4}\)\s*/, " ").trim();
+      }
+      
+      title = rawTitle;
+    }
+
+    // If no og:title, try the page title
+    if (!title) {
+      const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+      if (titleMatch) {
+        let rawTitle = titleMatch[1]
+          .replace(/\s*-\s*IMDb\s*$/i, "")
+          .trim();
+        
+        const yearMatch = rawTitle.match(/\((\d{4})\)/);
+        if (yearMatch) {
+          year = parseInt(yearMatch[1], 10);
+          rawTitle = rawTitle.replace(/\s*\(\d{4}\)\s*/, " ").trim();
+        }
+        
+        title = rawTitle;
+      }
+    }
+
+    return { title, year };
+  } catch (error) {
+    console.warn("[IMDB Validation] Error fetching IMDB page:", error);
+    return { title: null, year: null };
+  }
+}
+
+/**
+ * Validate an IMDB URL by checking if the title matches
+ */
+async function validateImdbUrl(
+  imdbUrl: string,
+  expectedTitle: string | null,
+  expectedYear: number | null
+): Promise<{ valid: boolean; actualTitle: string | null; similarity: number }> {
+  const { title: actualTitle, year: actualYear } = await fetchImdbTitle(imdbUrl);
+  
+  if (!actualTitle) {
+    console.log(`[IMDB Validation] Could not fetch title from IMDB`);
+    return { valid: false, actualTitle: null, similarity: 0 };
+  }
+  
+  if (!expectedTitle) {
+    // No expected title to compare - accept it but with lower confidence
+    console.log(`[IMDB Validation] No expected title, accepting IMDB title: "${actualTitle}"`);
+    return { valid: true, actualTitle, similarity: 0.5 };
+  }
+  
+  const similarity = calculateSimilarity(expectedTitle, actualTitle);
+  console.log(`[IMDB Validation] Comparing: "${expectedTitle}" vs "${actualTitle}" - similarity: ${(similarity * 100).toFixed(1)}%`);
+  
+  // Also check year if both are present
+  let yearMatches = true;
+  if (expectedYear && actualYear && Math.abs(expectedYear - actualYear) > 1) {
+    // Years are off by more than 1 year - could be a different movie/remake
+    console.log(`[IMDB Validation] Year mismatch: expected ${expectedYear}, got ${actualYear}`);
+    yearMatches = false;
+  }
+  
+  // Require at least 60% title similarity AND year match (if years are available)
+  const valid = similarity >= 0.6 && yearMatches;
+  
+  if (!valid) {
+    console.log(`[IMDB Validation] REJECTED - similarity too low or year mismatch`);
+  } else {
+    console.log(`[IMDB Validation] ACCEPTED - good match`);
+  }
+  
+  return { valid, actualTitle, similarity };
+}
+
 type AiLookupResponse = {
   title?: string;
   year?: number | null;
@@ -13,6 +167,7 @@ type AiLookupResponse = {
   type?: "film" | "tv" | "documentary" | "sports" | "concert" | "other" | null;
   season?: number | null;
   episode?: number | null;
+  imdbUrl?: string | null;
 };
 
 /**
@@ -22,7 +177,7 @@ type AiLookupResponse = {
  * 
  * Body:
  *   - filename: string (the filename to analyze)
- *   - existingMetadata?: { title?, year?, director?, category?, makingOf?, plot?, type?, season?, episode? } (optional existing data for context)
+ *   - existingMetadata?: { title?, year?, director?, category?, makingOf?, plot?, type?, season?, episode?, imdbUrl? } (optional existing data for context)
  *   - maxTokens?: number (optional, default 512, controls response detail level)
  *   - userContext?: string (optional user-provided context/hints to help identify the media)
  * 
@@ -36,6 +191,7 @@ type AiLookupResponse = {
  *   - type: "film" | "tv" | "documentary" | "sports" | "concert" | "other" | null
  *   - season: number | null
  *   - episode: number | null
+ *   - imdbUrl: string | null
  */
 export async function POST(request: NextRequest) {
   try {
@@ -72,7 +228,8 @@ Your response MUST be valid JSON with exactly these fields:
   "plot": "A short summary of this specific movie or episode's plot",
   "type": "film",
   "season": null,
-  "episode": null
+  "episode": null,
+  "imdbUrl": "https://www.imdb.com/title/tt0133093/"
 }
 
 Rules:
@@ -85,6 +242,7 @@ Rules:
 - "type" MUST be one of: "film" (for movies), "tv" (for TV shows/series), "documentary" (for documentaries), "sports" (for sporting events, games, matches, races, etc.), "concert" (for live music performances, concerts, music festivals), or "other" (for everything else like stand-up specials, stage plays, etc.)
 - "season" should be the season number as an integer for TV shows, or null for non-TV content
 - "episode" should be the episode number as an integer for TV shows, or null for non-TV content
+- "imdbUrl" should be the full IMDB URL for the movie or TV show (e.g., "https://www.imdb.com/title/tt0133093/" for The Matrix). The format is always "https://www.imdb.com/title/tt" followed by a 7-8 digit number. For TV shows, use the URL for the series, not a specific episode. Return null if you cannot determine the IMDB ID with confidence.
 
 TV Episode Detection:
 - Look for patterns like "S01E01", "S02E08", "s1e5", "S03E12" in filenames - these indicate Season and Episode numbers
@@ -197,6 +355,7 @@ IMPORTANT: This appears to be a SPORTS recording with date: ${detectedDate}
       if (existingMetadata.type) existingFields.push(`Type: ${existingMetadata.type}`);
       if (existingMetadata.season) existingFields.push(`Season: ${existingMetadata.season}`);
       if (existingMetadata.episode) existingFields.push(`Episode: ${existingMetadata.episode}`);
+      if (existingMetadata.imdbUrl) existingFields.push(`IMDB URL: ${existingMetadata.imdbUrl}`);
     }
     
     if (existingFields.length > 0) {
@@ -251,11 +410,43 @@ ${existingFields.join("\n")}`;
 
     // Validate and clean up the response
     const validTypes = ["film", "tv", "documentary", "sports", "concert", "other"];
+    
+    // Parse basic fields first (we need title and year for IMDB validation)
+    const parsedTitle = typeof parsed.title === "string" ? parsed.title.trim() : null;
+    const parsedYear = typeof parsed.year === "number" && parsed.year >= 1800 && parsed.year <= 2100 
+      ? parsed.year 
+      : null;
+    
+    // Validate IMDB URL format and verify by fetching the page
+    let validatedImdbUrl: string | null = null;
+    if (typeof parsed.imdbUrl === "string" && parsed.imdbUrl.trim()) {
+      const imdbUrlTrimmed = parsed.imdbUrl.trim();
+      // Check if it matches IMDB URL pattern
+      const imdbPattern = /^https?:\/\/(www\.)?imdb\.com\/title\/tt\d{7,8}\/?$/i;
+      if (imdbPattern.test(imdbUrlTrimmed)) {
+        // Normalize to https://www.imdb.com/title/ttXXXXXXX/
+        const idMatch = imdbUrlTrimmed.match(/tt\d{7,8}/);
+        if (idMatch) {
+          const normalizedUrl = `https://www.imdb.com/title/${idMatch[0]}/`;
+          
+          // Validate by fetching the IMDB page and comparing titles
+          console.log(`[AI Lookup] Validating IMDB URL: ${normalizedUrl} against title: "${parsedTitle}" (${parsedYear})`);
+          const validation = await validateImdbUrl(normalizedUrl, parsedTitle, parsedYear);
+          
+          if (validation.valid) {
+            validatedImdbUrl = normalizedUrl;
+            console.log(`[AI Lookup] IMDB URL validated successfully`);
+          } else {
+            console.log(`[AI Lookup] IMDB URL rejected - title mismatch. AI said "${parsedTitle}", IMDB says "${validation.actualTitle}"`);
+            // Don't include the URL if validation failed
+          }
+        }
+      }
+    }
+    
     const result = {
-      title: typeof parsed.title === "string" ? parsed.title.trim() : null,
-      year: typeof parsed.year === "number" && parsed.year >= 1800 && parsed.year <= 2100 
-        ? parsed.year 
-        : null,
+      title: parsedTitle,
+      year: parsedYear,
       director: typeof parsed.director === "string" && parsed.director.trim() 
         ? parsed.director.trim() 
         : null,
@@ -277,6 +468,7 @@ ${existingFields.join("\n")}`;
       episode: typeof parsed.episode === "number" && Number.isInteger(parsed.episode) && parsed.episode > 0
         ? parsed.episode
         : null,
+      imdbUrl: validatedImdbUrl,
     };
 
     console.log(`[AI Lookup] Result:`, result);
