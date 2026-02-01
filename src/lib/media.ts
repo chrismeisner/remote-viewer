@@ -178,6 +178,7 @@ export type MediaType = "film" | "tv" | "documentary" | "sports" | "concert" | "
 export type MediaMetadataItem = {
   title?: string | null;
   year?: number | null;
+  releaseDate?: string | null; // ISO date string for exact release date (theatrical or event date)
   director?: string | null;
   category?: string | null;
   makingOf?: string | null;
@@ -1685,6 +1686,7 @@ export async function updateMediaItemMetadata(
   // Apply updates (undefined means no change, null means clear)
   if (updates.title !== undefined) updated.title = updates.title;
   if (updates.year !== undefined) updated.year = updates.year;
+  if (updates.releaseDate !== undefined) updated.releaseDate = updates.releaseDate;
   if (updates.director !== undefined) updated.director = updates.director;
   if (updates.category !== undefined) updated.category = updates.category;
   if (updates.makingOf !== undefined) updated.makingOf = updates.makingOf;
@@ -1706,6 +1708,7 @@ export async function updateMediaItemMetadata(
   const cleaned: MediaMetadataItem = {};
   if (updated.title != null) cleaned.title = updated.title;
   if (updated.year != null) cleaned.year = updated.year;
+  if (updated.releaseDate != null) cleaned.releaseDate = updated.releaseDate;
   if (updated.director != null) cleaned.director = updated.director;
   if (updated.category != null) cleaned.category = updated.category;
   if (updated.makingOf != null) cleaned.makingOf = updated.makingOf;
@@ -1855,6 +1858,7 @@ export async function updateMediaItemMetadataBySource(
   // Apply updates (undefined means no change, null means clear)
   if (updates.title !== undefined) updated.title = updates.title;
   if (updates.year !== undefined) updated.year = updates.year;
+  if (updates.releaseDate !== undefined) updated.releaseDate = updates.releaseDate;
   if (updates.director !== undefined) updated.director = updates.director;
   if (updates.category !== undefined) updated.category = updates.category;
   if (updates.makingOf !== undefined) updated.makingOf = updates.makingOf;
@@ -1876,6 +1880,7 @@ export async function updateMediaItemMetadataBySource(
   const cleaned: MediaMetadataItem = {};
   if (updated.title != null) cleaned.title = updated.title;
   if (updated.year != null) cleaned.year = updated.year;
+  if (updated.releaseDate != null) cleaned.releaseDate = updated.releaseDate;
   if (updated.director != null) cleaned.director = updated.director;
   if (updated.category != null) cleaned.category = updated.category;
   if (updated.makingOf != null) cleaned.makingOf = updated.makingOf;

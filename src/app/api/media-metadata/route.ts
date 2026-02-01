@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
  *   - source?: "local" | "remote" - defaults to "local"
  *   - title?: string | null
  *   - year?: number | null
+ *   - releaseDate?: string | null - ISO date string for exact release/event date
  *   - director?: string | null
  *   - category?: string | null
  *   - makingOf?: string | null
@@ -98,7 +99,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { file, source: sourceParam, title, year, director, category, makingOf, plot, type, season, episode, imdbUrl, coverUrl, coverLocal, coverPath, coverEmoji, tags } = body;
+    const { file, source: sourceParam, title, year, releaseDate, director, category, makingOf, plot, type, season, episode, imdbUrl, coverUrl, coverLocal, coverPath, coverEmoji, tags } = body;
     const source: MediaSource = sourceParam === "remote" ? "remote" : "local";
     
     if (!file || typeof file !== "string") {
@@ -114,6 +115,25 @@ export async function PUT(request: NextRequest) {
       if (!Number.isInteger(yearNum) || yearNum < 1800 || yearNum > 2100) {
         return NextResponse.json(
           { error: "Year must be a valid integer between 1800 and 2100" },
+          { status: 400 },
+        );
+      }
+    }
+
+    // Validate releaseDate if provided (should be a valid ISO date string YYYY-MM-DD)
+    if (releaseDate !== undefined && releaseDate !== null && releaseDate !== "") {
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      if (!datePattern.test(releaseDate)) {
+        return NextResponse.json(
+          { error: "releaseDate must be a valid date in YYYY-MM-DD format" },
+          { status: 400 },
+        );
+      }
+      // Also validate it's a real date
+      const parsed = new Date(releaseDate);
+      if (isNaN(parsed.getTime())) {
+        return NextResponse.json(
+          { error: "releaseDate must be a valid date" },
           { status: 400 },
         );
       }
@@ -172,6 +192,7 @@ export async function PUT(request: NextRequest) {
     const updates: Partial<MediaMetadataItem> = {};
     if (title !== undefined) updates.title = title === "" ? null : title;
     if (year !== undefined) updates.year = year === null ? null : Number(year);
+    if (releaseDate !== undefined) updates.releaseDate = releaseDate === "" ? null : releaseDate;
     if (director !== undefined) updates.director = director === "" ? null : director;
     if (category !== undefined) updates.category = category === "" ? null : category;
     if (makingOf !== undefined) updates.makingOf = makingOf === "" ? null : makingOf;

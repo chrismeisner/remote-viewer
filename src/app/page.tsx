@@ -29,6 +29,7 @@ type NowPlaying = {
 type MediaMetadata = {
   title?: string | null;
   year?: number | null;
+  releaseDate?: string | null; // ISO date string for exact release date (theatrical or event date)
   director?: string | null;
   category?: string | null;
   makingOf?: string | null;
@@ -1434,6 +1435,13 @@ export default function Home() {
                   <div>
                     <p className="text-xs text-neutral-500">Year</p>
                     <p className="text-sm text-neutral-200">{infoMetadata.year}</p>
+                  </div>
+                )}
+                
+                {infoMetadata?.releaseDate && (
+                  <div>
+                    <p className="text-xs text-neutral-500">Release Date</p>
+                    <p className="text-sm text-neutral-200">{infoMetadata.releaseDate}</p>
                   </div>
                 )}
                 

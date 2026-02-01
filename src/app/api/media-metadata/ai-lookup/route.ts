@@ -160,6 +160,7 @@ async function validateImdbUrl(
 type AiLookupResponse = {
   title?: string;
   year?: number | null;
+  releaseDate?: string | null; // ISO date string YYYY-MM-DD for exact release/event date
   director?: string | null;
   category?: string | null;
   makingOf?: string | null;
@@ -222,6 +223,7 @@ Your response MUST be valid JSON with exactly these fields:
 {
   "title": "The proper title of the media",
   "year": 1999,
+  "releaseDate": "1999-03-31",
   "director": "Director or creator name",
   "category": "Genre category like Drama, Comedy, Sci-Fi, Documentary, etc.",
   "makingOf": "Who made it, actors, production facts, behind-the-scenes info",
@@ -235,6 +237,7 @@ Your response MUST be valid JSON with exactly these fields:
 Rules:
 - "title" should be the clean, official title (e.g., "The Matrix" not "The.Matrix.1999.1080p")
 - "year" should be the release year as a number, or null if unknown
+- "releaseDate" should be the EXACT release date in YYYY-MM-DD format. For films, use the theatrical release date (preferably US release). For TV episodes, use the episode's air date. For sports events, use the exact date of the game/match. For concerts, use the performance date. Return null if unknown.
 - "director" should be the director for movies, creator/showrunner for TV shows, or null if unknown
 - "category" should be a simple genre like "Action", "Comedy", "Drama", "Sci-Fi", "Horror", "Documentary", "Animation", "Thriller", etc. Use the most fitting single category or two combined with "/"
 - "makingOf" should focus on the PEOPLE and PRODUCTION: list the main actors/cast members, who directed and produced it, interesting behind-the-scenes facts, production challenges, filming locations, budget info, box office performance, awards won, and any notable trivia about the making of the media. This is about WHO made it and HOW, not what the story is about.
@@ -348,6 +351,7 @@ IMPORTANT: This appears to be a SPORTS recording with date: ${detectedDate}
     if (existingMetadata) {
       if (existingMetadata.title) existingFields.push(`Title: ${existingMetadata.title}`);
       if (existingMetadata.year) existingFields.push(`Year: ${existingMetadata.year}`);
+      if (existingMetadata.releaseDate) existingFields.push(`Release Date: ${existingMetadata.releaseDate}`);
       if (existingMetadata.director) existingFields.push(`Director: ${existingMetadata.director}`);
       if (existingMetadata.category) existingFields.push(`Category: ${existingMetadata.category}`);
       if (existingMetadata.makingOf) existingFields.push(`Making Of: ${existingMetadata.makingOf}`);
@@ -444,9 +448,23 @@ ${existingFields.join("\n")}`;
       }
     }
     
+    // Validate and parse releaseDate
+    let parsedReleaseDate: string | null = null;
+    if (typeof parsed.releaseDate === "string" && parsed.releaseDate.trim()) {
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      const trimmedDate = parsed.releaseDate.trim();
+      if (datePattern.test(trimmedDate)) {
+        const dateObj = new Date(trimmedDate);
+        if (!isNaN(dateObj.getTime())) {
+          parsedReleaseDate = trimmedDate;
+        }
+      }
+    }
+
     const result = {
       title: parsedTitle,
       year: parsedYear,
+      releaseDate: parsedReleaseDate,
       director: typeof parsed.director === "string" && parsed.director.trim() 
         ? parsed.director.trim() 
         : null,

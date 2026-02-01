@@ -35,6 +35,7 @@ type MediaType = "film" | "tv" | "documentary" | "sports" | "concert" | "other";
 type MediaMetadata = {
   title?: string | null;
   year?: number | null;
+  releaseDate?: string | null; // ISO date string for exact release date (theatrical or event date)
   director?: string | null;
   category?: string | null;
   makingOf?: string | null;
@@ -136,6 +137,7 @@ function MediaDetailModal({
   const [editingMetadata, setEditingMetadata] = useState(false);
   const [editTitle, setEditTitle] = useState<string>("");
   const [editYear, setEditYear] = useState<string>("");
+  const [editReleaseDate, setEditReleaseDate] = useState<string>("");
   const [editDirector, setEditDirector] = useState<string>("");
   const [editCategory, setEditCategory] = useState<string>("");
   const [editMakingOf, setEditMakingOf] = useState<string>("");
@@ -238,6 +240,7 @@ function MediaDetailModal({
             setMetadata(metaData.metadata);
             setEditTitle(metaData.metadata.title ?? "");
             setEditYear(metaData.metadata.year?.toString() ?? "");
+            setEditReleaseDate(metaData.metadata.releaseDate ?? "");
             setEditDirector(metaData.metadata.director ?? "");
             setEditCategory(metaData.metadata.category ?? "");
             setEditMakingOf(metaData.metadata.makingOf ?? "");
@@ -321,6 +324,7 @@ function MediaDetailModal({
       const existingMetadata: Record<string, unknown> = {};
       if (metadata.title) existingMetadata.title = metadata.title;
       if (metadata.year) existingMetadata.year = metadata.year;
+      if (metadata.releaseDate) existingMetadata.releaseDate = metadata.releaseDate;
       if (metadata.director) existingMetadata.director = metadata.director;
       if (metadata.category) existingMetadata.category = metadata.category;
       if (metadata.makingOf) existingMetadata.makingOf = metadata.makingOf;
@@ -353,6 +357,7 @@ function MediaDetailModal({
       // Fill in the edit fields with AI response
       if (data.title) setEditTitle(data.title);
       if (data.year) setEditYear(data.year.toString());
+      if (data.releaseDate) setEditReleaseDate(data.releaseDate);
       if (data.director) setEditDirector(data.director);
       if (data.category) setEditCategory(data.category);
       if (data.makingOf) setEditMakingOf(data.makingOf);
@@ -383,6 +388,7 @@ function MediaDetailModal({
           source: mediaSource,
           title: editTitle.trim() || null,
           year: editYear ? parseInt(editYear, 10) : null,
+          releaseDate: editReleaseDate.trim() || null,
           director: editDirector.trim() || null,
           category: editCategory.trim() || null,
           makingOf: editMakingOf.trim() || null,
@@ -412,6 +418,7 @@ function MediaDetailModal({
   const handleCancelEdit = () => {
     setEditTitle(metadata.title ?? "");
     setEditYear(metadata.year?.toString() ?? "");
+    setEditReleaseDate(metadata.releaseDate ?? "");
     setEditDirector(metadata.director ?? "");
     setEditCategory(metadata.category ?? "");
     setEditMakingOf(metadata.makingOf ?? "");
@@ -1212,6 +1219,16 @@ function MediaDetailModal({
                   />
                 </div>
                 <div>
+                  <label className="block text-xs text-neutral-500 mb-1">Release Date</label>
+                  <input
+                    type="date"
+                    value={editReleaseDate}
+                    onChange={(e) => setEditReleaseDate(e.target.value)}
+                    onKeyDown={handleMetadataKeyDown}
+                    className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                  />
+                </div>
+                <div>
                   <label className="block text-xs text-neutral-500 mb-1">Season</label>
                   <input
                     type="number"
@@ -1423,6 +1440,12 @@ function MediaDetailModal({
                   </p>
                 </div>
                 <div>
+                  <p className="text-xs text-neutral-500 mb-1">Release Date</p>
+                  <p className="text-sm font-medium text-neutral-200">
+                    {metadata.releaseDate ?? "—"}
+                  </p>
+                </div>
+                <div>
                   <p className="text-xs text-neutral-500 mb-1">Season</p>
                   <p className="text-sm font-medium text-neutral-200">
                     {metadata.season ?? "—"}
@@ -1434,6 +1457,8 @@ function MediaDetailModal({
                     {metadata.episode ?? "—"}
                   </p>
                 </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>
                   <p className="text-xs text-neutral-500 mb-1">Category</p>
                   <p className="text-sm font-medium text-neutral-200">
