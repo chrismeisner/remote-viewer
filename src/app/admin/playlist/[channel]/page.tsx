@@ -803,6 +803,7 @@ export default function ChannelPlaylistPage() {
                       <thead className="bg-white/5 text-neutral-200 sticky top-0">
                         <tr>
                           <th className="px-3 py-2 text-left font-semibold">File</th>
+                          <th className="px-3 py-2 text-left font-semibold w-16">Year</th>
                           <th className="px-3 py-2 text-left font-semibold w-28">Scheduled</th>
                           <th className="px-3 py-2 text-right font-semibold w-24">Duration</th>
                           <th className="px-3 py-2 text-right font-semibold w-20">Action</th>
@@ -811,7 +812,7 @@ export default function ChannelPlaylistPage() {
                       <tbody className="divide-y divide-white/5">
                         {availableFiles.length === 0 ? (
                           <tr>
-                            <td colSpan={4} className="px-3 py-4 text-center text-neutral-400">
+                            <td colSpan={5} className="px-3 py-4 text-center text-neutral-400">
                               {sortedFiles.length === 0
                                 ? "No media files available"
                                 : mediaFilter
@@ -824,6 +825,7 @@ export default function ChannelPlaylistPage() {
                           availableFiles.map((file) => {
                             const alreadyInPlaylist = playlist.some(item => item.file === file.relPath);
                             const scheduledChannels = fileChannelMap.get(file.relPath) || [];
+                            const meta = mediaMetadata.items[file.relPath];
                             return (
                               <tr key={file.relPath} className="hover:bg-white/5">
                                 <td className="px-3 py-2">
@@ -833,6 +835,9 @@ export default function ChannelPlaylistPage() {
                                   {file.title && file.title !== file.relPath && (
                                     <p className="text-xs text-neutral-400">{file.title}</p>
                                   )}
+                                </td>
+                                <td className="px-3 py-2 text-xs text-neutral-400">
+                                  {meta?.year || "—"}
                                 </td>
                                 <td className="px-3 py-2">
                                   {scheduledChannels.length === 0 ? (
