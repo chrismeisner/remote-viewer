@@ -52,9 +52,8 @@ export default function CoverFlowPage() {
       if (e.key === " " || e.key === "Spacebar") {
         e.preventDefault();
         setIsPaused((p) => !p);
-      } else if (e.key === "Escape" || e.key === "Enter") {
-        // Go to player
-        window.location.href = "/player";
+      } else if (e.key === "Escape") {
+        window.history.back();
       }
     };
 
@@ -62,69 +61,33 @@ export default function CoverFlowPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Fetch covers that are actually linked to media items
+  // Fetch covers
   useEffect(() => {
     const fetchCovers = async () => {
       try {
-        // Fetch remote covers and metadata in parallel
-        const [remoteRes, metadataRes] = await Promise.all([
-          fetch("/api/covers?source=remote"),
-          fetch("/api/media-metadata"),
-        ]);
+        // Try local covers first, then remote
+        const localRes = await fetch("/api/covers?source=local");
+        const localData = await localRes.json();
         
-        const [remoteData, metadataData] = await Promise.all([
-          remoteRes.json(),
-          metadataRes.json(),
-        ]);
+        let allCovers: CoverFile[] = localData.covers || [];
         
-        const allCovers: CoverFile[] = remoteData.covers || [];
-        const metadata: Record<string, { coverLocal?: string; coverUrl?: string }> = metadataData.items || {};
+        // Also fetch remote covers if FTP is configured
+        const remoteRes = await fetch("/api/covers?source=remote");
+        const remoteData = await remoteRes.json();
         
-        // Build set of covers that are actually in use by media items
-        const usedCoverFilenames = new Set<string>();
-        const usedCoverUrls = new Set<string>();
-        
-        for (const item of Object.values(metadata)) {
-          if (item.coverLocal) {
-            usedCoverFilenames.add(item.coverLocal);
-          }
-          if (item.coverUrl) {
-            usedCoverUrls.add(item.coverUrl);
-          }
+        if (remoteData.covers && remoteData.covers.length > 0) {
+          // Merge, avoiding duplicates by filename
+          const localFilenames = new Set(allCovers.map((c) => c.filename));
+          const uniqueRemote = remoteData.covers.filter(
+            (c: CoverFile) => !localFilenames.has(c.filename)
+          );
+          allCovers = [...allCovers, ...uniqueRemote];
         }
-        
-        // Filter covers to only those that are referenced in metadata
-        const activeCovers = allCovers.filter((cover) => {
-          // Check if filename matches a coverLocal reference
-          if (usedCoverFilenames.has(cover.filename)) {
-            return true;
-          }
-          // Check if URL matches a coverUrl reference
-          if (usedCoverUrls.has(cover.url)) {
-            return true;
-          }
-          return false;
-        });
-        
-        // Also add any URL-based covers from metadata that aren't in the covers folder
-        const urlCovers: CoverFile[] = [];
-        for (const coverUrl of usedCoverUrls) {
-          // Check if this URL is already in activeCovers
-          const alreadyIncluded = activeCovers.some((c) => c.url === coverUrl);
-          if (!alreadyIncluded) {
-            urlCovers.push({
-              filename: coverUrl,
-              url: coverUrl,
-            });
-          }
-        }
-        
-        const finalCovers = [...activeCovers, ...urlCovers];
 
-        if (finalCovers.length === 0) {
+        if (allCovers.length === 0) {
           setError("No covers found in your media library");
         } else {
-          setCovers(finalCovers);
+          setCovers(allCovers);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load covers");
@@ -251,20 +214,12 @@ export default function CoverFlowPage() {
           <p className="text-neutral-500 text-sm mb-6">
             Add cover images to your media library to use Cover Flow
           </p>
-          <div className="flex flex-col gap-3">
-            <a
-              href="/player"
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-sm font-semibold text-black transition"
-            >
-              Go to Player
-            </a>
-            <a
-              href="/admin/covers"
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-white/20 hover:bg-white/10 px-4 py-2 text-sm font-semibold text-neutral-200 transition"
-            >
-              Manage Covers
-            </a>
-          </div>
+          <a
+            href="/admin/covers"
+            className="inline-flex items-center gap-2 rounded-md bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-sm font-semibold text-black transition"
+          >
+            Manage Covers
+          </a>
         </div>
       </div>
     );
@@ -326,18 +281,17 @@ export default function CoverFlowPage() {
         <div className="max-w-md mx-auto flex items-center justify-between bg-black/80 backdrop-blur-sm rounded-xl border border-white/10 px-4 py-3">
           <div className="flex items-center gap-3">
             <a
-              href="/player"
+              href="/"
               className="p-2 rounded-lg hover:bg-white/10 transition text-neutral-400 hover:text-white"
-              title="Go to Player"
+              title="Back to home"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </a>
             <div className="h-6 w-px bg-white/10" />
             <div className="text-sm">
-              <p className="font-medium text-white">Remote Viewer</p>
+              <p className="font-medium text-white">Cover Flow</p>
               <p className="text-xs text-neutral-500">{covers.length} covers</p>
             </div>
           </div>
@@ -368,8 +322,8 @@ export default function CoverFlowPage() {
             {" "}pause
           </span>
           <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 font-mono">Enter</kbd>
-            {" "}watch
+            <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 font-mono">Esc</kbd>
+            {" "}exit
           </span>
         </div>
       </div>
