@@ -144,14 +144,18 @@ video:-moz-full-screen {
 }
 
 /* Shared CRT wrapper: used by the player and available as a general .crt utility */
+/* PERFORMANCE NOTE: Removed blur() and reduced filter complexity for smoother video playback.
+   Hardware video decoders can't use overlay mode when heavy filters are applied to the container. */
 .crt-frame,
 .crt {
   position: relative;
-  isolation: isolate;
   overflow: hidden;
-  filter: contrast(1.1) saturate(1.1) hue-rotate(-2deg) brightness(0.96)
-    blur(0.4px);
+  /* Lighter filters - removed blur() which was causing frame drops */
+  filter: contrast(1.08) saturate(1.05) brightness(0.97);
   border-radius: 18px;
+  /* Hint GPU acceleration for the container */
+  transform: translateZ(0);
+  will-change: contents;
 }
 
 .player-frame,
@@ -160,6 +164,7 @@ video:-moz-full-screen {
   border-radius: 0 !important;
 }
 
+/* Scanlines - now static instead of animated to reduce compositing overhead */
 .crt-frame::before,
 .crt::before {
   content: "";
@@ -169,15 +174,15 @@ video:-moz-full-screen {
   z-index: 2;
   background: repeating-linear-gradient(
     to bottom,
-    rgba(255, 255, 255, 0.08) 0px,
-    rgba(255, 255, 255, 0.08) 1px,
-    rgba(0, 0, 0, 0.24) 2px,
-    rgba(0, 0, 0, 0.24) 3px
+    rgba(255, 255, 255, 0.06) 0px,
+    rgba(255, 255, 255, 0.06) 1px,
+    rgba(0, 0, 0, 0.18) 2px,
+    rgba(0, 0, 0, 0.18) 3px
   );
   background-size: 100% 3px;
-  opacity: 0.5;
+  opacity: 0.4;
   mix-blend-mode: overlay;
-  animation: crt-scanlines 55s linear infinite;
+  /* Removed animation - static scanlines are much cheaper */
 }
 
 .crt-frame::after,
@@ -189,18 +194,9 @@ video:-moz-full-screen {
   z-index: 2;
   background: radial-gradient(
     ellipse at center,
-    transparent 60%,
-    rgba(0, 0, 0, 0.28)
+    transparent 65%,
+    rgba(0, 0, 0, 0.22)
   );
-}
-
-@keyframes crt-scanlines {
-  from {
-    background-position: 0 0, 0 0;
-  }
-  to {
-    background-position: 0 -10px, 0 -10px;
-  }
 }
 
 @font-face {

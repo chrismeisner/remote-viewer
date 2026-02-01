@@ -362,10 +362,10 @@ export default function SourceAdminPage() {
       </div>
 
       {/* Source Selection */}
-      <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+      <div className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Active Source</p>
+            <p className="text-xs uppercase text-neutral-400">Active Source</p>
             <p className="text-lg font-semibold text-neutral-50">
               {mediaSource === "remote" ? "Remote CDN" : "Local Files"}
             </p>
@@ -391,7 +391,7 @@ export default function SourceAdminPage() {
               <div className="flex items-center gap-2">
                 <p className="font-semibold text-neutral-100">Local</p>
                 {sourceConfig?.localMode && !isConfigured && (
-                  <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-200">
+                  <span className="rounded-full px-1.5 py-0.5 text-xs font-semibold bg-amber-500/20 text-amber-200">
                     Setup Required
                   </span>
                 )}
@@ -445,7 +445,7 @@ export default function SourceAdminPage() {
 
       {/* Media Folder Configuration - Only for local mode */}
       {sourceConfig?.localMode && pendingSource === "local" && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
           <div className="mb-4">
             <div className="flex items-center gap-3">
               <h2 className="text-sm font-semibold text-neutral-100">Media Folder</h2>
@@ -471,7 +471,9 @@ export default function SourceAdminPage() {
 
           <div className="space-y-2">
             <div className="flex gap-2">
+              <label htmlFor="folder-path-input" className="sr-only">Media folder path</label>
               <input
+                id="folder-path-input"
                 type="text"
                 value={folderPath}
                 onChange={(e) => setFolderPath(e.target.value)}
@@ -535,7 +537,7 @@ export default function SourceAdminPage() {
 
       {/* Local Data Summary - Only when local is active */}
       {mediaSource === "local" && isConfigured && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-neutral-100">Local Data</h2>
             <button
@@ -575,7 +577,7 @@ export default function SourceAdminPage() {
 
       {/* Remote Status - Only when remote is active */}
       {mediaSource === "remote" && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-sm font-semibold text-neutral-100">Remote Files</h2>
@@ -658,7 +660,7 @@ export default function SourceAdminPage() {
 
       {/* Push to Remote */}
       {mediaSource === "remote" && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
           <h2 className="text-sm font-semibold text-neutral-100 mb-1">Push to Remote</h2>
           <p className="text-xs text-neutral-400 mb-4">
             Upload local data to remote CDN via FTP.
@@ -697,7 +699,7 @@ export default function SourceAdminPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowBrowser(false); }}
         >
-          <div className="w-full max-w-xl rounded-xl border border-white/15 bg-neutral-900 shadow-2xl shadow-black/60">
+          <div className="w-full max-w-xl rounded-md border border-white/15 bg-neutral-900 shadow-2xl shadow-black/60">
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <div>
                 <h3 className="text-sm font-semibold text-neutral-100">Select Media Folder</h3>
@@ -705,8 +707,8 @@ export default function SourceAdminPage() {
                   {browserPath || "Select a location"}
                 </p>
               </div>
-              <button onClick={() => setShowBrowser(false)} className="rounded-md p-1 text-neutral-400 hover:bg-white/10 hover:text-neutral-100">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <button onClick={() => setShowBrowser(false)} aria-label="Close folder browser" className="rounded-md p-1 text-neutral-400 hover:bg-white/10 hover:text-neutral-100">
+                <svg className="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>

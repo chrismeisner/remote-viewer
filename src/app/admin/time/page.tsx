@@ -24,7 +24,7 @@ export default function TimeAdminPage() {
       <div className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-8">
         <header className="flex items-baseline justify-between gap-3">
           <div>
-            <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">
+            <p className="text-sm uppercase text-neutral-300">
               Time Admin
             </p>
             <p className="text-sm text-neutral-400">

@@ -311,19 +311,19 @@ export default function DataHealthPage() {
       {/* Summary Cards */}
       {auditResult && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4">
+          <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4">
             <p className="text-xs text-neutral-400 mb-1">Total Issues</p>
             <p className="text-2xl font-bold text-neutral-50">{auditResult.summary.total}</p>
           </div>
-          <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-4">
+          <div className="rounded-md border border-red-400/20 bg-red-500/10 p-4">
             <p className="text-xs text-red-300 mb-1">Errors</p>
             <p className="text-2xl font-bold text-red-100">{auditResult.summary.errors}</p>
           </div>
-          <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-4">
+          <div className="rounded-md border border-amber-400/20 bg-amber-500/10 p-4">
             <p className="text-xs text-amber-300 mb-1">Warnings</p>
             <p className="text-2xl font-bold text-amber-100">{auditResult.summary.warnings}</p>
           </div>
-          <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+          <div className="rounded-md border border-emerald-400/20 bg-emerald-500/10 p-4">
             <p className="text-xs text-emerald-300 mb-1">Fixable</p>
             <p className="text-2xl font-bold text-emerald-100">{auditResult.summary.fixable}</p>
           </div>
@@ -358,7 +358,7 @@ export default function DataHealthPage() {
 
       {/* Files Overview */}
       {auditResult && auditResult.files.length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
           <h2 className="text-sm font-semibold text-neutral-100 mb-4">JSON Files</h2>
           <div className="overflow-hidden rounded-lg border border-white/10">
             <table className="min-w-full text-sm">
@@ -425,7 +425,7 @@ export default function DataHealthPage() {
           <h2 className="text-sm font-semibold text-neutral-100">Issues</h2>
           
           {Object.entries(issuesByFile).map(([fileName, issues]) => (
-            <div key={fileName} className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+            <div key={fileName} className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
               <div className="flex items-center gap-3 mb-4">
                 <code className="rounded bg-white/10 px-2 py-1 text-sm text-neutral-100">{fileName}</code>
                 <span className="text-xs text-neutral-500">{issues.length} issue{issues.length === 1 ? "" : "s"}</span>
@@ -462,7 +462,7 @@ export default function DataHealthPage() {
 
       {/* All Clean State */}
       {auditResult && auditResult.summary.total === 0 && (
-        <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-8 text-center">
+        <div className="rounded-md border border-emerald-400/30 bg-emerald-500/10 p-8 text-center">
           <div className="text-4xl mb-3">✓</div>
           <h3 className="text-lg font-semibold text-emerald-100 mb-1">All Data Files Are Clean</h3>
           <p className="text-sm text-emerald-200/70">
@@ -473,7 +473,7 @@ export default function DataHealthPage() {
 
       {/* Loading State */}
       {loading && !auditResult && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-8 text-center">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-8 text-center">
           <div className="inline-block h-8 w-8 border-2 border-neutral-400 border-t-emerald-400 rounded-full animate-spin mb-3" />
           <p className="text-sm text-neutral-400">Scanning {mediaSource} data files…</p>
         </div>
@@ -481,7 +481,7 @@ export default function DataHealthPage() {
 
       {/* Fresh Start Section */}
       {auditResult && canFix && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
           <h2 className="text-sm font-semibold text-neutral-100 mb-1">Fresh Start</h2>
           <p className="text-xs text-neutral-400 mb-4">
             Reset to clean empty files. This removes all channels and schedules from the {isRemote ? "remote" : "local"} source.
@@ -500,7 +500,7 @@ export default function DataHealthPage() {
       {/* Fresh Start Modal */}
       {showFreshStartModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={() => setShowFreshStartModal(false)}>
-          <div className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900 p-6 shadow-2xl shadow-black/60" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-md border border-white/15 bg-neutral-900 p-6 shadow-2xl shadow-black/60" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-neutral-50 mb-2">Fresh Start?</h3>
             <p className="text-sm text-neutral-300 mb-4">
               This will reset the <span className="font-semibold">{isRemote ? "remote" : "local"}</span> source to a clean state.

@@ -232,7 +232,7 @@ export default function ChangelogPage() {
       )}
 
       {/* Add Entry Form */}
-      <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+      <div className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
         <h2 className="text-sm font-semibold text-neutral-100 mb-4">Add Entry</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-4">

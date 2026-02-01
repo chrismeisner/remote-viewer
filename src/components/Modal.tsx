@@ -34,7 +34,7 @@ export function Modal({
       onClick={handleBackdropClick}
     >
       <div
-        className={`w-full ${maxWidth} rounded-xl border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur`}
+        className={`w-full ${maxWidth} rounded-md border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur`}
       >
         {children}
       </div>

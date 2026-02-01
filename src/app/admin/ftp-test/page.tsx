@@ -57,7 +57,7 @@ export default function FtpTestPage() {
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4 px-6 py-8 text-neutral-100">
       <div>
-        <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">FTP Test</p>
+        <p className="text-sm uppercase text-neutral-300">FTP Test</p>
         <p className="text-sm text-neutral-400">
           Uses FTP_HOST/FTP_USER/FTP_PASS/FTP_REMOTE_PATH from env to try a connection and list the
           target directory.

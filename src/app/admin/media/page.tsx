@@ -560,7 +560,7 @@ function MediaDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
@@ -1755,10 +1755,10 @@ function CoverImageSection({
       {/* Image Browser Modal (for local mode) */}
       {showBrowser && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowBrowser(false); }}
         >
-          <div className="w-full max-w-xl rounded-xl border border-white/15 bg-neutral-900 shadow-2xl shadow-black/60">
+          <div className="w-full max-w-xl rounded-md border border-white/15 bg-neutral-900 shadow-2xl shadow-black/60">
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <div>
                 <h3 className="text-sm font-semibold text-neutral-100">Select Cover Image</h3>
@@ -1954,7 +1954,7 @@ function ScanReportModal({
   
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
@@ -2575,7 +2575,7 @@ export default function MediaAdminPage() {
     <div className="flex flex-col gap-6 text-neutral-100">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">
+          <p className="text-sm uppercase text-neutral-300">
             Media Library
           </p>
           <p className="text-sm text-neutral-400">
@@ -2602,17 +2602,17 @@ export default function MediaAdminPage() {
 
       {/* Stats Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4">
           <p className="text-xs text-neutral-400 mb-1">Total Files</p>
           <p className="text-2xl font-semibold text-neutral-50">{sortedFiles.length}</p>
         </div>
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4">
           <p className="text-xs text-neutral-400 mb-1">Supported</p>
           <p className="text-2xl font-semibold text-emerald-300">
             {sortedFiles.filter((f) => isBrowserSupported(f)).length}
           </p>
         </div>
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4">
           <p className="text-xs text-neutral-400 mb-1">Total Duration</p>
           <p className="text-2xl font-semibold text-neutral-50">
             {formatDuration(totalDurationSeconds)}
@@ -2621,7 +2621,7 @@ export default function MediaAdminPage() {
       </div>
 
       {/* Media Table */}
-      <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
+      <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-semibold text-neutral-100">
@@ -2876,7 +2876,7 @@ export default function MediaAdminPage() {
                                   {scheduledChannels.map((ch) => (
                                     <span
                                       key={ch}
-                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/30 text-purple-200 border border-purple-400/40"
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/30 text-purple-200 border border-purple-400/40"
                                       title={`Scheduled in channel ${ch}`}
                                     >
                                       {ch}

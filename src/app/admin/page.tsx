@@ -34,7 +34,7 @@ export default function AdminHome() {
   return (
     <div className="flex flex-col gap-6 text-neutral-100">
       <div>
-        <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">
+        <p className="text-sm uppercase text-neutral-300">
           Admin
         </p>
         <h1 className="text-xl font-semibold text-neutral-50">Control Panel</h1>
@@ -48,7 +48,7 @@ export default function AdminHome() {
           <Link
             key={link.href}
             href={link.href}
-            className="rounded-xl border border-white/10 bg-neutral-900/70 p-4 shadow-lg shadow-black/40 transition hover:border-white/20 hover:bg-neutral-900"
+            className="rounded-md border border-white/10 bg-neutral-900/70 p-4 shadow-lg shadow-black/40 transition hover:border-white/20 hover:bg-neutral-900"
           >
             <p className="text-sm font-semibold text-neutral-50">{link.title}</p>
             <p className="text-sm text-neutral-400 mt-1">{link.desc}</p>

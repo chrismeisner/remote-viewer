@@ -45,7 +45,7 @@ export default function StylingPage() {
     <div className="flex flex-col gap-8 text-neutral-100">
       {/* Header */}
       <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
+        <p className="text-xs uppercase text-neutral-400">
           Admin
         </p>
         <h1 className="text-xl font-semibold text-neutral-50">Styling Guide</h1>
@@ -116,7 +116,7 @@ export default function StylingPage() {
         <p className="text-sm text-neutral-400 mb-4">
           Font sizes using Inter (primary font).
         </p>
-        <div className="rounded-xl border border-white/10 bg-neutral-900/70 overflow-hidden">
+        <div className="rounded-md border border-white/10 bg-neutral-900/70 overflow-hidden">
           {fontSizes.map((font, i) => (
             <div
               key={font.name}
@@ -141,7 +141,7 @@ export default function StylingPage() {
         <h2 className="text-lg font-semibold text-neutral-50 mb-3">
           Font Weights
         </h2>
-        <div className="rounded-xl border border-white/10 bg-neutral-900/70 overflow-hidden">
+        <div className="rounded-md border border-white/10 bg-neutral-900/70 overflow-hidden">
           {[
             { name: "font-normal", weight: "400" },
             { name: "font-medium", weight: "500" },
@@ -199,7 +199,7 @@ export default function StylingPage() {
             { name: "rounded", class: "rounded" },
             { name: "rounded-md", class: "rounded-md" },
             { name: "rounded-lg", class: "rounded-lg" },
-            { name: "rounded-xl", class: "rounded-xl" },
+            { name: "rounded-md", class: "rounded-md" },
             { name: "rounded-2xl", class: "rounded-2xl" },
             { name: "rounded-full", class: "rounded-full" },
           ].map((r) => (
@@ -271,7 +271,7 @@ export default function StylingPage() {
         <p className="text-sm text-neutral-400 mb-4">
           Custom fonts loaded via <code className="px-1.5 py-0.5 bg-neutral-800 rounded text-neutral-300">@font-face</code> in globals.css.
         </p>
-        <div className="rounded-xl border border-white/10 bg-neutral-900/70 p-6">
+        <div className="rounded-md border border-white/10 bg-neutral-900/70 p-6">
           <p className="text-xs font-mono text-neutral-500 mb-2">
             font-family: &quot;HomeVideo&quot;
           </p>
@@ -303,7 +303,7 @@ export default function StylingPage() {
           {/* Cards */}
           <div>
             <p className="text-sm font-mono text-neutral-400 mb-2">Card</p>
-            <div className="rounded-xl border border-white/10 bg-neutral-900/70 p-4 shadow-lg shadow-black/40 max-w-sm">
+            <div className="rounded-md border border-white/10 bg-neutral-900/70 p-4 shadow-lg shadow-black/40 max-w-sm">
               <p className="text-sm font-semibold text-neutral-50">Card Title</p>
               <p className="text-sm text-neutral-400 mt-1">
                 Card description text goes here.

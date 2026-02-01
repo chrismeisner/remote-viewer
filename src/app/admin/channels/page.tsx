@@ -351,25 +351,30 @@ export default function ChannelAdminPage() {
 
       {/* Create Channel */}
       <div className="flex flex-wrap items-center gap-3 text-sm">
+        <label htmlFor="new-channel-id" className="sr-only">Channel number</label>
         <input
+          id="new-channel-id"
           value={newId}
           onChange={(e) => setNewId(e.target.value)}
           placeholder="Channel number (e.g., 1)"
           className="w-44 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-neutral-100 placeholder:text-neutral-500"
           onKeyDown={(e) => e.key === "Enter" && handleCreate()}
         />
+        <label htmlFor="new-channel-name" className="sr-only">Channel short name</label>
         <input
+          id="new-channel-name"
           value={newShortName}
           onChange={(e) => setNewShortName(e.target.value)}
           placeholder="Short name (optional)"
           className="w-48 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-neutral-100 placeholder:text-neutral-500"
           onKeyDown={(e) => e.key === "Enter" && handleCreate()}
         />
+        <label htmlFor="new-channel-type" className="sr-only">Schedule type</label>
         <select
+          id="new-channel-type"
           value={newType}
           onChange={(e) => setNewType(e.target.value as ScheduleType)}
           className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-neutral-100"
-          title="Schedule type"
         >
           <option value="24hour">24-Hour Schedule</option>
           <option value="looping">Looping Playlist</option>
@@ -398,7 +403,7 @@ export default function ChannelAdminPage() {
       </div>
 
       {/* Channels List */}
-      <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
+      <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-neutral-100">Channels</h3>
           <span className="text-xs text-neutral-400">
@@ -528,7 +533,7 @@ export default function ChannelAdminPage() {
       {/* Edit Modal */}
       {editModal.show && editModal.channel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={() => setEditModal({ show: false, channel: null })}>
-          <div className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-md border border-white/15 bg-neutral-900 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-neutral-50 mb-4">Edit Channel</h3>
             
             <div className="space-y-4">
@@ -593,7 +598,7 @@ export default function ChannelAdminPage() {
       {/* Delete Modal */}
       {deleteModal.show && deleteModal.channel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={() => setDeleteModal({ show: false, channel: null })}>
-          <div className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-md border border-white/15 bg-neutral-900 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-neutral-50 mb-2">Delete Channel?</h3>
             <p className="text-sm text-neutral-300 mb-4">
               Delete channel <span className="font-semibold">{deleteModal.channel.id}</span>
@@ -626,7 +631,7 @@ export default function ChannelAdminPage() {
       {/* Reset All Channels Modal */}
       {resetModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={() => !resetting && setResetModal(false)}>
-          <div className="w-full max-w-md rounded-xl border border-white/15 bg-neutral-900 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-md border border-white/15 bg-neutral-900 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-neutral-50 mb-2">Reset All Channels?</h3>
             <p className="text-sm text-neutral-300 mb-4">
               This will delete <span className="font-semibold">all {channels.length} channel{channels.length === 1 ? "" : "s"}</span> and their schedules from the <span className={`font-semibold ${mediaSource === "remote" ? "text-blue-300" : "text-emerald-300"}`}>{mediaSource || "unknown"}</span> source.
@@ -659,8 +664,8 @@ export default function ChannelAdminPage() {
 
       {/* Saving Overlay */}
       {saving !== null && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-xl border border-white/20 bg-neutral-900/90 p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-md border border-white/20 bg-neutral-900/90 p-6 shadow-2xl">
             <div className="flex items-center gap-3">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-neutral-600 border-t-emerald-400" />
               <span className="text-lg font-semibold text-neutral-100">Saving changes…</span>

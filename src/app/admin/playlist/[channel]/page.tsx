@@ -460,10 +460,10 @@ export default function ChannelPlaylistPage() {
     return (
       <div className="flex flex-col gap-6 text-neutral-100">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">Playlist Admin</p>
+          <p className="text-sm uppercase text-neutral-300">Playlist Admin</p>
           <p className="text-sm text-neutral-400">Channel: {channelId}</p>
         </div>
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-6">
+        <div className="rounded-md border border-red-500/30 bg-red-500/10 p-6">
           <p className="text-red-200">{error}</p>
           <Link href="/admin/playlist" className="text-sm text-red-300 underline mt-2 inline-block">
             ← Back to channel list
@@ -482,7 +482,7 @@ export default function ChannelPlaylistPage() {
               ← Channels
             </Link>
           </div>
-          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">
+          <p className="text-sm uppercase text-neutral-300">
             Playlist: {channelInfo?.shortName || channelId}
           </p>
           <p className="text-sm text-neutral-400">
@@ -557,7 +557,7 @@ export default function ChannelPlaylistPage() {
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-8 text-center">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-8 text-center">
           <div className="inline-flex items-center gap-2 text-neutral-300">
             <span className="h-4 w-4 rounded-full border-2 border-neutral-400 border-t-transparent animate-spin" />
             <span className="text-sm">Loading playlist…</span>
@@ -566,7 +566,7 @@ export default function ChannelPlaylistPage() {
       ) : (
         <div className="space-y-4">
           {/* Playlist info */}
-          <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-4">
+          <div className="rounded-md border border-purple-500/30 bg-purple-500/10 p-4">
             <div className="flex items-start gap-3">
               <span className="text-purple-300 text-lg">🔁</span>
               <div className="flex-1">
@@ -579,7 +579,7 @@ export default function ChannelPlaylistPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
+          <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
             {playlist.length === 0 ? (
               <p className="text-sm text-neutral-300">
                 No items in playlist yet. Add media to build your loop.
@@ -609,7 +609,7 @@ export default function ChannelPlaylistPage() {
                               {item.file}
                             </span>
                             {item.title && item.title !== item.file && (
-                              <span className="text-[11px] text-neutral-400">{item.title}</span>
+                              <span className="text-xs text-neutral-400">{item.title}</span>
                             )}
                           </div>
                         </td>
@@ -663,7 +663,7 @@ export default function ChannelPlaylistPage() {
           onClick={() => setShowAddModal(false)}
         >
           <div
-            className="w-full max-w-3xl rounded-xl border border-white/15 bg-neutral-900 p-5 shadow-2xl shadow-black/60"
+            className="w-full max-w-3xl rounded-md border border-white/15 bg-neutral-900 p-5 shadow-2xl shadow-black/60"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -756,7 +756,7 @@ export default function ChannelPlaylistPage() {
                                     {file.relPath}
                                   </p>
                                   {file.title && file.title !== file.relPath && (
-                                    <p className="text-[11px] text-neutral-400">{file.title}</p>
+                                    <p className="text-xs text-neutral-400">{file.title}</p>
                                   )}
                                 </td>
                                 <td className="px-3 py-2">
@@ -767,7 +767,7 @@ export default function ChannelPlaylistPage() {
                                       {scheduledChannels.map((ch) => (
                                         <span
                                           key={ch}
-                                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
                                             ch === channelId
                                               ? "bg-purple-500/30 text-purple-200 border border-purple-400/40"
                                               : "bg-neutral-600/40 text-neutral-300 border border-neutral-500/30"

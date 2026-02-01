@@ -374,10 +374,10 @@ export default function ChannelSchedulePage() {
     return (
       <div className="flex flex-col gap-6 text-neutral-100">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">Schedule Admin</p>
+          <p className="text-sm uppercase text-neutral-300">Schedule Admin</p>
           <p className="text-sm text-neutral-400">Channel: {channelId}</p>
         </div>
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-6">
+        <div className="rounded-md border border-red-500/30 bg-red-500/10 p-6">
           <p className="text-red-200">{error}</p>
           <Link href="/admin/schedule" className="text-sm text-red-300 underline mt-2 inline-block">
             ← Back to channel list
@@ -396,7 +396,7 @@ export default function ChannelSchedulePage() {
               ← Channels
             </Link>
           </div>
-          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">
+          <p className="text-sm uppercase text-neutral-300">
             Schedule: {channelInfo?.shortName || channelId}
           </p>
           <p className="text-sm text-neutral-400">
@@ -463,7 +463,7 @@ export default function ChannelSchedulePage() {
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-8 text-center">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-8 text-center">
           <div className="inline-flex items-center gap-2 text-neutral-300">
             <span className="h-4 w-4 rounded-full border-2 border-neutral-400 border-t-transparent animate-spin" />
             <span className="text-sm">Loading schedule…</span>
@@ -473,7 +473,7 @@ export default function ChannelSchedulePage() {
         <div className="space-y-4">
           {/* Conflict warnings */}
           {scheduleConflicts.length > 0 && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-4">
               <div className="flex items-start gap-3">
                 <span className="text-amber-300 text-lg">⚠️</span>
                 <div className="flex-1">
@@ -503,7 +503,7 @@ export default function ChannelSchedulePage() {
             </div>
           )}
 
-          <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
+          <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4 shadow-lg shadow-black/30">
             {slots.length === 0 ? (
               <p className="text-sm text-neutral-300">
                 No schedule items yet. Add the first item to build a 24h schedule.
@@ -543,7 +543,7 @@ export default function ChannelSchedulePage() {
                               <div className="flex items-center gap-2 text-sm font-mono text-neutral-100">
                                 <span>{slot.start}</span>
                                 {isMidnightCrossing && (
-                                  <span className="text-[10px] text-indigo-300" title="Crosses midnight">🌙</span>
+                                  <span className="text-xs text-indigo-300" title="Crosses midnight">🌙</span>
                                 )}
                               </div>
                             </td>
@@ -551,7 +551,7 @@ export default function ChannelSchedulePage() {
                               <div className="flex items-center gap-2 text-sm font-mono text-neutral-100">
                                 <span>{slot.end}</span>
                                 {isMidnightCrossing && (
-                                  <span className="text-[10px] text-indigo-300" title="Next day">+1d</span>
+                                  <span className="text-xs text-indigo-300" title="Next day">+1d</span>
                                 )}
                               </div>
                             </td>
@@ -561,7 +561,7 @@ export default function ChannelSchedulePage() {
                                   {slot.file || "—"}
                                 </span>
                                 {!slotIsSupported && slot.file && (
-                                  <span className="text-[11px] text-amber-300">Unsupported in browser</span>
+                                  <span className="text-xs text-amber-300">Unsupported in browser</span>
                                 )}
                               </div>
                             </td>
@@ -617,7 +617,7 @@ export default function ChannelSchedulePage() {
           onClick={() => setShowSlotModal(false)}
         >
           <div
-            className="w-full max-w-3xl rounded-xl border border-white/15 bg-neutral-900 p-5 shadow-2xl shadow-black/60"
+            className="w-full max-w-3xl rounded-md border border-white/15 bg-neutral-900 p-5 shadow-2xl shadow-black/60"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -718,7 +718,7 @@ export default function ChannelSchedulePage() {
                                       <div className="space-y-1">
                                         <p className="font-mono text-xs break-all text-neutral-100">{file.relPath}</p>
                                         {file.title && file.title !== file.relPath && (
-                                          <p className="text-[11px] text-neutral-400">{file.title}</p>
+                                          <p className="text-xs text-neutral-400">{file.title}</p>
                                         )}
                                       </div>
                                     </div>
@@ -727,7 +727,7 @@ export default function ChannelSchedulePage() {
                                     {formatDuration(file.durationSeconds)}
                                   </td>
                                   <td className="px-3 py-2 text-right">
-                                    <span className={`rounded-full px-2 py-1 text-[11px] ${supportClass}`}>
+                                    <span className={`rounded-full px-2 py-1 text-xs ${supportClass}`}>
                                       {supportLabel}
                                     </span>
                                   </td>
@@ -753,7 +753,7 @@ export default function ChannelSchedulePage() {
                     className="ml-2 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm"
                   />
                 </label>
-                <div className="flex flex-wrap items-center gap-1 text-[11px] text-neutral-300">
+                <div className="flex flex-wrap items-center gap-1 text-xs text-neutral-300">
                   <span className="text-neutral-400">Quick set:</span>
                   <button
                     type="button"

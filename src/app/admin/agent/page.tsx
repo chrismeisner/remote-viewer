@@ -267,7 +267,7 @@ export default function AgentPage() {
     return (
       <div className="flex flex-col gap-6 text-neutral-100">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">
+          <p className="text-sm uppercase  text-neutral-300">
             AI Agent
           </p>
           <p className="text-sm text-neutral-400">Checking configuration...</p>
@@ -284,14 +284,14 @@ export default function AgentPage() {
     return (
       <div className="flex flex-col gap-6 text-neutral-100">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">
+          <p className="text-sm uppercase  text-neutral-300">
             AI Agent
           </p>
           <p className="text-sm text-neutral-400">
             Chat with an AI assistant powered by OpenAI.
           </p>
         </div>
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-6">
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-6">
           <div className="flex items-start gap-4">
             <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
               <svg
@@ -345,7 +345,7 @@ export default function AgentPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">
+          <p className="text-sm uppercase  text-neutral-300">
             AI Agent
           </p>
           <p className="text-sm text-neutral-400">
@@ -410,7 +410,7 @@ export default function AgentPage() {
       </div>
 
       {/* Chat Container */}
-      <div className="flex-1 flex flex-col rounded-xl border border-white/10 bg-neutral-900/60 overflow-hidden">
+      <div className="flex-1 flex flex-col rounded-md border border-white/10 bg-neutral-900/60 overflow-hidden">
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 ? (
@@ -529,7 +529,7 @@ export default function AgentPage() {
               placeholder="Type a message..."
               disabled={isLoading}
               rows={1}
-              className="flex-1 resize-none rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-400 focus:bg-white/10 disabled:opacity-50"
+              className="flex-1 resize-none rounded-md border border-white/15 bg-white/5 px-4 py-3 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-400 focus:bg-white/10 disabled:opacity-50"
               style={{ minHeight: "48px", maxHeight: "120px" }}
             />
             <div className="flex gap-2">
@@ -537,7 +537,7 @@ export default function AgentPage() {
                 <button
                   onClick={clearChat}
                   disabled={isLoading}
-                  className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-neutral-300 transition hover:bg-white/10 disabled:opacity-50"
+                  className="rounded-md border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-neutral-300 transition hover:bg-white/10 disabled:opacity-50"
                   title="Clear chat"
                 >
                   Clear
@@ -546,7 +546,7 @@ export default function AgentPage() {
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() || isLoading}
-                className="rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-neutral-900 transition hover:bg-emerald-400 disabled:opacity-50 disabled:hover:bg-emerald-500"
+                className="rounded-md bg-emerald-500 px-5 py-3 text-sm font-semibold text-neutral-900 transition hover:bg-emerald-400 disabled:opacity-50 disabled:hover:bg-emerald-500"
               >
                 {isLoading ? (
                   <div className="w-5 h-5 border-2 border-neutral-900/30 border-t-neutral-900 rounded-full animate-spin" />

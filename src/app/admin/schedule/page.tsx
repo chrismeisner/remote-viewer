@@ -86,7 +86,7 @@ export default function ScheduleIndexPage() {
     <div className="flex flex-col gap-6 text-neutral-100">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-neutral-300">Schedule Admin</p>
+          <p className="text-sm uppercase text-neutral-300">Schedule Admin</p>
           <p className="text-sm text-neutral-400">
             Select a 24-hour channel to manage its schedule.
           </p>
@@ -97,18 +97,18 @@ export default function ScheduleIndexPage() {
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-8 text-center">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-8 text-center">
           <div className="inline-flex items-center gap-2 text-neutral-300">
             <span className="h-4 w-4 rounded-full border-2 border-neutral-400 border-t-transparent animate-spin" />
             <span className="text-sm">Loading channels…</span>
           </div>
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-6">
+        <div className="rounded-md border border-red-500/30 bg-red-500/10 p-6">
           <p className="text-red-200">{error}</p>
         </div>
       ) : scheduleChannels.length === 0 ? (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 text-center">
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-6 text-center">
           <p className="text-amber-200">No 24-hour channels found.</p>
           <p className="text-sm text-amber-300/70 mt-2">
             Create a 24-hour channel in the <Link href="/admin/channels" className="underline">Channels</Link> page first.
@@ -120,7 +120,7 @@ export default function ScheduleIndexPage() {
             <Link
               key={channel.id}
               href={`/admin/schedule/${encodeURIComponent(channel.id)}`}
-              className="group rounded-xl border border-blue-500/30 bg-blue-500/10 p-5 transition hover:border-blue-400/50 hover:bg-blue-500/20"
+              className="group rounded-md border border-blue-500/30 bg-blue-500/10 p-5 transition hover:border-blue-400/50 hover:bg-blue-500/20"
             >
               <div className="flex items-start justify-between">
                 <div>

@@ -188,7 +188,7 @@ export default function VideoHealthPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <button
             onClick={() => setFilter("all")}
-            className={`rounded-xl border p-4 text-left transition ${
+            className={`rounded-md border p-4 text-left transition ${
               filter === "all" 
                 ? "border-white/30 bg-white/10" 
                 : "border-white/10 bg-neutral-900/60 hover:border-white/20"
@@ -199,7 +199,7 @@ export default function VideoHealthPage() {
           </button>
           <button
             onClick={() => setFilter("good")}
-            className={`rounded-xl border p-4 text-left transition ${
+            className={`rounded-md border p-4 text-left transition ${
               filter === "good" 
                 ? "border-emerald-400/50 bg-emerald-500/20" 
                 : "border-emerald-400/20 bg-emerald-500/10 hover:border-emerald-400/30"
@@ -210,7 +210,7 @@ export default function VideoHealthPage() {
           </button>
           <button
             onClick={() => setFilter("needs")}
-            className={`rounded-xl border p-4 text-left transition ${
+            className={`rounded-md border p-4 text-left transition ${
               filter === "needs" 
                 ? "border-amber-400/50 bg-amber-500/20" 
                 : "border-amber-400/20 bg-amber-500/10 hover:border-amber-400/30"
@@ -221,7 +221,7 @@ export default function VideoHealthPage() {
           </button>
           <button
             onClick={() => setFilter("unknown")}
-            className={`rounded-xl border p-4 text-left transition ${
+            className={`rounded-md border p-4 text-left transition ${
               filter === "unknown" 
                 ? "border-neutral-400/50 bg-neutral-500/20" 
                 : "border-neutral-400/20 bg-neutral-500/10 hover:border-neutral-400/30"
@@ -235,7 +235,7 @@ export default function VideoHealthPage() {
 
       {/* How to Fix */}
       {data && data.summary.needsOptimization > 0 && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
           <h2 className="text-sm font-semibold text-neutral-100 mb-2">How to Fix</h2>
           <p className="text-xs text-neutral-400 mb-3">
             Re-mux files with faststart using ffmpeg. This is fast and doesn&apos;t re-encode the video:
@@ -251,7 +251,7 @@ export default function VideoHealthPage() {
 
       {/* Results Table */}
       {data && filteredResults.length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 shadow-lg shadow-black/30 overflow-hidden">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 shadow-lg shadow-black/30 overflow-hidden">
           <div className="p-4 border-b border-white/10">
             <h2 className="text-sm font-semibold text-neutral-100">
               {filter === "all" ? "All Files" : 
@@ -305,7 +305,7 @@ export default function VideoHealthPage() {
 
       {/* Loading State */}
       {loading && !data && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-8 text-center">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-8 text-center">
           <div className="inline-block h-8 w-8 border-2 border-neutral-400 border-t-emerald-400 rounded-full animate-spin mb-3" />
           <p className="text-sm text-neutral-400">Checking video files…</p>
           <p className="text-xs text-neutral-500 mt-1">This may take a moment for large libraries</p>
@@ -314,14 +314,14 @@ export default function VideoHealthPage() {
 
       {/* No Files State */}
       {data && data.summary.total === 0 && !data.error && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-8 text-center">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-8 text-center">
           <p className="text-neutral-400">No MP4/M4V/MOV files found in media index.</p>
         </div>
       )}
 
       {/* All Good State */}
       {data && data.summary.total > 0 && data.summary.needsOptimization === 0 && data.summary.unknown === 0 && (
-        <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-8 text-center">
+        <div className="rounded-md border border-emerald-400/30 bg-emerald-500/10 p-8 text-center">
           <div className="text-4xl mb-3">✓</div>
           <h3 className="text-lg font-semibold text-emerald-100 mb-1">All Files Optimized!</h3>
           <p className="text-sm text-emerald-200/70">

@@ -54,7 +54,7 @@ function MediaSourceBadge() {
         {mediaSource === "remote" ? "Remote" : "Local"}
       </span>
       {mediaSource === "remote" && (
-        <span className="hidden sm:inline text-[11px] text-neutral-400">
+        <span className="hidden sm:inline text-xs text-neutral-400">
           {REMOTE_MEDIA_BASE}
         </span>
       )}
@@ -81,11 +81,11 @@ function NowClocks() {
     <>
       <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1">
         <span className="text-neutral-400">Local</span>
-        <span className="font-mono text-neutral-100">{clock}</span>
+        <span className="font-mono tabular-nums text-neutral-100">{clock}</span>
       </div>
       <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1">
         <span className="text-neutral-400">UTC</span>
-        <span className="font-mono text-neutral-100">{clockUtc}</span>
+        <span className="font-mono tabular-nums text-neutral-100">{clockUtc}</span>
       </div>
     </>
   );

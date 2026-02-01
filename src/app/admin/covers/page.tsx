@@ -430,7 +430,7 @@ export default function CoversPage() {
 
       {/* Covers Folder Configuration - Only for local source */}
       {mediaSource === "local" && (
-        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-5 shadow-lg shadow-black/30">
           <div className="mb-4">
             <div className="flex items-center gap-3">
               <h2 className="text-sm font-semibold text-neutral-100">Covers Folder</h2>
@@ -566,7 +566,7 @@ export default function CoversPage() {
                       }}
                     />
                     {/* Usage badge */}
-                    <span className={`absolute top-1 right-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    <span className={`absolute top-1 right-1 text-xs font-bold px-1.5 py-0.5 rounded ${
                       isOrphaned
                         ? "bg-amber-500/80 text-amber-950"
                         : "bg-black/70 text-white"
@@ -575,7 +575,7 @@ export default function CoversPage() {
                     </span>
                     {/* Filename overlay on hover */}
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5 opacity-0 hover:opacity-100 transition">
-                      <p className="text-[10px] text-white truncate">{cover.filename}</p>
+                      <p className="text-xs text-white truncate">{cover.filename}</p>
                     </div>
                   </button>
                 );
@@ -751,7 +751,7 @@ export default function CoversPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowBrowser(false); }}
         >
-          <div className="w-full max-w-xl rounded-xl border border-white/15 bg-neutral-900 shadow-2xl shadow-black/60">
+          <div className="w-full max-w-xl rounded-md border border-white/15 bg-neutral-900 shadow-2xl shadow-black/60">
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <div>
                 <h3 className="text-sm font-semibold text-neutral-100">Select Covers Folder</h3>

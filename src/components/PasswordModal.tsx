@@ -56,7 +56,9 @@ export function PasswordModal({ open, onSuccess }: PasswordModalProps) {
         Enter the password to continue.
       </p>
       <form onSubmit={handleSubmit} className="mt-4">
+        <label htmlFor="password-input" className="sr-only">Password</label>
         <input
+          id="password-input"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
