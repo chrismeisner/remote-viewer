@@ -24,6 +24,7 @@ type AiLookupResponse = {
  *   - filename: string (the filename to analyze)
  *   - existingMetadata?: { title?, year?, director?, category?, makingOf?, plot?, type?, season?, episode? } (optional existing data for context)
  *   - maxTokens?: number (optional, default 512, controls response detail level)
+ *   - userContext?: string (optional user-provided context/hints to help identify the media)
  * 
  * Returns:
  *   - title: string
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { filename, existingMetadata, maxTokens = 512 } = body;
+    const { filename, existingMetadata, maxTokens = 512, userContext } = body;
 
     if (!filename || typeof filename !== "string") {
       return NextResponse.json(
@@ -135,6 +136,14 @@ General:
 
 Filename: ${filename}`;
 
+    // Add user-provided context if available
+    if (userContext && typeof userContext === "string" && userContext.trim()) {
+      userPrompt += `
+
+USER-PROVIDED CONTEXT (use this information to help identify the media):
+${userContext.trim()}`;
+    }
+
     // Try to detect and highlight date patterns for sports content
     const datePatterns = [
       /(\d{2}[-_.]\d{2}[-_.]\d{4})/g,  // MM-DD-YYYY or DD-MM-YYYY
@@ -200,7 +209,7 @@ ${existingFields.join("\n")}`;
     // Clamp maxTokens to reasonable range
     const tokenLimit = Math.min(Math.max(Number(maxTokens) || 512, 128), 2048);
     
-    console.log(`[AI Lookup] Analyzing filename: ${filename} (maxTokens: ${tokenLimit})`);
+    console.log(`[AI Lookup] Analyzing filename: ${filename} (maxTokens: ${tokenLimit}${userContext ? `, userContext: "${userContext}"` : ""})`);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini", // Fast and cost-effective for this task

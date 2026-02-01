@@ -149,6 +149,8 @@ function MediaDetailModal({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiConfigured, setAiConfigured] = useState(false);
   const [aiTokenLevel, setAiTokenLevel] = useState<"fast" | "balanced" | "detailed">("balanced");
+  const [aiContextEnabled, setAiContextEnabled] = useState(false);
+  const [aiContextText, setAiContextText] = useState("");
 
   // Filename rename state
   const [showRenameUI, setShowRenameUI] = useState(false);
@@ -334,6 +336,7 @@ function MediaDetailModal({
           filename: item.relPath,
           existingMetadata: Object.keys(existingMetadata).length > 0 ? existingMetadata : undefined,
           maxTokens,
+          userContext: aiContextEnabled && aiContextText.trim() ? aiContextText.trim() : undefined,
         }),
       });
       const data = await res.json();
@@ -1087,40 +1090,62 @@ function MediaDetailModal({
             {!metadataLoading && (
               <div className="flex items-center gap-3">
                 {aiConfigured && (
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={aiTokenLevel}
-                      onChange={(e) => setAiTokenLevel(e.target.value as "fast" | "balanced" | "detailed")}
-                      disabled={aiLoading}
-                      className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-300 disabled:opacity-50"
-                      title="AI detail level"
-                    >
-                      <option value="fast">Fast</option>
-                      <option value="balanced">Balanced</option>
-                      <option value="detailed">Detailed</option>
-                    </select>
-                    <button
-                      onClick={handleAiLookup}
-                      disabled={aiLoading}
-                      className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition disabled:opacity-50"
-                    >
-                      {aiLoading ? (
-                        <>
-                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                          Looking up...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                          Fill with AI
-                        </>
-                      )}
-                    </button>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={aiTokenLevel}
+                        onChange={(e) => setAiTokenLevel(e.target.value as "fast" | "balanced" | "detailed")}
+                        disabled={aiLoading}
+                        className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-300 disabled:opacity-50"
+                        title="AI detail level"
+                      >
+                        <option value="fast">Fast</option>
+                        <option value="balanced">Balanced</option>
+                        <option value="detailed">Detailed</option>
+                      </select>
+                      <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={aiContextEnabled}
+                          onChange={(e) => setAiContextEnabled(e.target.checked)}
+                          disabled={aiLoading}
+                          className="w-3.5 h-3.5 rounded border-white/15 bg-white/5 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 disabled:opacity-50"
+                        />
+                        Add context
+                      </label>
+                      <button
+                        onClick={handleAiLookup}
+                        disabled={aiLoading}
+                        className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition disabled:opacity-50"
+                      >
+                        {aiLoading ? (
+                          <>
+                            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            Looking up...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Fill with AI
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    {aiContextEnabled && (
+                      <input
+                        type="text"
+                        value={aiContextText}
+                        onChange={(e) => setAiContextText(e.target.value)}
+                        disabled={aiLoading}
+                        placeholder="e.g. This is a 1980s horror film..."
+                        className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-blue-300 disabled:opacity-50"
+                      />
+                    )}
                   </div>
                 )}
                 {!editingMetadata && (
@@ -2245,10 +2270,10 @@ export default function MediaAdminPage() {
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const [scanReport, setScanReport] = useState<ScanReport | null>(null);
   const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported" | "needs-conversion">(
-    "supported",
+    "all",
   );
   const [scheduledFilter, setScheduledFilter] = useState<"all" | "scheduled" | "not-scheduled">("all");
-  const [locationFilter, setLocationFilter] = useState<"all" | "in-folder" | "in-root">("in-root");
+  const [locationFilter, setLocationFilter] = useState<"all" | "in-folder" | "in-root">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"filename" | "title" | "year" | "duration" | "dateAdded">("filename");
   const [manifestUpdatedAt, setManifestUpdatedAt] = useState<string | null>(null);
