@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 
 type CoverFile = {
   filename: string;
@@ -13,6 +13,16 @@ export default function CoverFlowPage() {
   const [error, setError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
+
+  // Track when an image finishes loading
+  const handleImageLoad = useCallback((url: string) => {
+    setLoadedImages((prev) => {
+      const next = new Set(prev);
+      next.add(url);
+      return next;
+    });
+  }, []);
 
   // Hide header on mount, restore on unmount
   useEffect(() => {
@@ -248,18 +258,13 @@ export default function CoverFlowPage() {
     return columnData;
   }, [covers]);
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="h-8 w-8 border-2 border-neutral-600 border-t-emerald-400 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-neutral-400 text-sm">Loading covers...</p>
-        </div>
-      </div>
-    );
-  }
+  // Calculate loading progress
+  const totalUniqueCovers = covers.length;
+  const loadedCount = loadedImages.size;
+  const isFullyLoaded = totalUniqueCovers > 0 && loadedCount >= totalUniqueCovers;
 
-  if (error) {
+  // Show error only after loading is complete and there's an error
+  if (!loading && error) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <div className="text-center max-w-md px-6">
@@ -293,6 +298,15 @@ export default function CoverFlowPage() {
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
+      {/* Loading indicator - shows while fetching API or loading first images */}
+      {(loading || (covers.length > 0 && loadedCount < 3)) && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 text-center pointer-events-none">
+          <div className="h-8 w-8 border-2 border-neutral-700 border-t-emerald-400 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-neutral-500 text-sm">
+            {loading ? "Finding covers..." : `Loading ${loadedCount + 1}...`}
+          </p>
+        </div>
+      )}
       {/* Cover Flow Grid */}
       <div className="absolute inset-0 flex gap-2 sm:gap-3 p-2 sm:p-3">
         {columns.map((column, colIndex) => (
@@ -310,25 +324,34 @@ export default function CoverFlowPage() {
                 animationDelay: `-${(column.offset / 33.333) * column.speed}s`, // Start at different positions
               }}
             >
-              {column.covers.map((cover, idx) => (
-                <div
-                  key={`${cover.filename}-${idx}`}
-                  className="relative aspect-[2/3] rounded-lg overflow-hidden flex-shrink-0 bg-neutral-900"
-                >
-                  <img
-                    src={cover.url}
-                    alt=""
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                    onError={(e) => {
-                      // Hide broken images
-                      (e.target as HTMLImageElement).style.opacity = "0";
-                    }}
-                  />
-                  {/* Subtle shine overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-black/20 pointer-events-none" />
-                </div>
-              ))}
+              {column.covers.map((cover, idx) => {
+                const isLoaded = loadedImages.has(cover.url);
+                return (
+                  <div
+                    key={`${cover.filename}-${idx}`}
+                    className="relative aspect-[2/3] rounded-lg overflow-hidden flex-shrink-0 bg-neutral-900"
+                  >
+                    <img
+                      src={cover.url}
+                      alt=""
+                      className={`w-full h-full object-cover transition-opacity duration-700 ${
+                        isLoaded ? "opacity-100" : "opacity-0"
+                      }`}
+                      loading="lazy"
+                      onLoad={() => handleImageLoad(cover.url)}
+                      onError={(e) => {
+                        // Hide broken images but mark as "loaded" to avoid counting issues
+                        (e.target as HTMLImageElement).style.opacity = "0";
+                        handleImageLoad(cover.url);
+                      }}
+                    />
+                    {/* Subtle shine overlay */}
+                    <div className={`absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-black/20 pointer-events-none transition-opacity duration-700 ${
+                      isLoaded ? "opacity-100" : "opacity-0"
+                    }`} />
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}
@@ -359,7 +382,15 @@ export default function CoverFlowPage() {
             <div className="h-6 w-px bg-white/10" />
             <div className="text-sm">
               <p className="font-medium text-white">Remote Viewer</p>
-              <p className="text-xs text-neutral-500">{covers.length} covers</p>
+              <p className="text-xs text-neutral-500">
+                {loading ? (
+                  "Loading..."
+                ) : isFullyLoaded ? (
+                  `${covers.length} covers`
+                ) : (
+                  `${loadedCount}/${totalUniqueCovers} loaded`
+                )}
+              </p>
             </div>
           </div>
 
