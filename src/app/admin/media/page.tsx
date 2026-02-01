@@ -2931,6 +2931,11 @@ export default function MediaAdminPage() {
           meta.makingOf || "",
           meta.plot || "",
           meta.year?.toString() || "",
+          meta.releaseDate || "",
+          meta.type || "",
+          meta.season?.toString() || "",
+          meta.episode?.toString() || "",
+          meta.imdbUrl || "",
           tagsStr,
         ].join(" ").toLowerCase();
         if (!terms.every((term) => haystack.includes(term))) {
@@ -3100,7 +3105,7 @@ export default function MediaAdminPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search files, tags, actors, plot..."
+              placeholder="Search all metadata (title, tags, plot, type, etc.)"
               className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
             />
           </div>
