@@ -2269,13 +2269,12 @@ export default function MediaAdminPage() {
   const [scanningRemote, setScanningRemote] = useState(false);
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const [scanReport, setScanReport] = useState<ScanReport | null>(null);
-  const [supportedFilter, setSupportedFilter] = useState<"all" | "supported" | "unsupported" | "needs-conversion">(
-    "all",
-  );
-  const [scheduledFilter, setScheduledFilter] = useState<"all" | "scheduled" | "not-scheduled">("all");
-  const [locationFilter, setLocationFilter] = useState<"all" | "in-folder" | "in-root">("all");
+  const [showSupported, setShowSupported] = useState(true);
+  const [showScheduled, setShowScheduled] = useState(true);
+  const [showSeries, setShowSeries] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"filename" | "title" | "year" | "duration" | "dateAdded">("filename");
+  const [sortBy, setSortBy] = useState<"filename" | "format" | "supported" | "scheduled" | "title" | "year" | "tags" | "duration" | "dateAdded">("filename");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [manifestUpdatedAt, setManifestUpdatedAt] = useState<string | null>(null);
   const [mediaRoot, setMediaRoot] = useState<string>("media");
   const [allMetadata, setAllMetadata] = useState<Record<string, MediaMetadata>>({});
@@ -2488,44 +2487,119 @@ export default function MediaAdminPage() {
     };
   }, [mediaSource, mediaRefreshToken]);
 
+  // Handler for clicking column headers to sort
+  const handleColumnSort = (column: typeof sortBy) => {
+    if (sortBy === column) {
+      // Toggle direction if clicking same column
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      // Set new column with default direction
+      setSortBy(column);
+      setSortDirection("asc");
+    }
+  };
+
   const sortedFiles = useMemo(() => {
+    const direction = sortDirection === "asc" ? 1 : -1;
     return [...files].sort((a, b) => {
       const metaA = allMetadata[a.relPath] || {};
       const metaB = allMetadata[b.relPath] || {};
 
+      let result = 0;
       switch (sortBy) {
         case "filename":
-          return a.relPath.localeCompare(b.relPath, undefined, { sensitivity: "base" });
+          result = a.relPath.localeCompare(b.relPath, undefined, { sensitivity: "base" });
+          break;
+        
+        case "format": {
+          const extA = a.relPath.split(".").pop()?.toLowerCase() || "";
+          const extB = b.relPath.split(".").pop()?.toLowerCase() || "";
+          result = extA.localeCompare(extB, undefined, { sensitivity: "base" });
+          break;
+        }
+        
+        case "supported": {
+          const suppA = isBrowserSupported(a) ? 1 : 0;
+          const suppB = isBrowserSupported(b) ? 1 : 0;
+          result = suppA - suppB;
+          break;
+        }
+        
+        case "scheduled": {
+          const schedA = fileChannelMap.has(a.relPath) ? 1 : 0;
+          const schedB = fileChannelMap.has(b.relPath) ? 1 : 0;
+          result = schedA - schedB;
+          break;
+        }
         
         case "title": {
+          const hasA = !!metaA.title;
+          const hasB = !!metaB.title;
+          // Push items without title to bottom
+          if (hasA && !hasB) return -1;
+          if (!hasA && hasB) return 1;
           const titleA = metaA.title || a.relPath;
           const titleB = metaB.title || b.relPath;
-          return titleA.localeCompare(titleB, undefined, { sensitivity: "base" });
+          result = titleA.localeCompare(titleB, undefined, { sensitivity: "base" });
+          break;
         }
         
         case "year": {
-          const yearA = metaA.year || 0;
-          const yearB = metaB.year || 0;
-          // Sort descending (newest first)
-          return yearB - yearA;
+          const hasA = !!metaA.year;
+          const hasB = !!metaB.year;
+          // Push items without year to bottom
+          if (hasA && !hasB) return -1;
+          if (!hasA && hasB) return 1;
+          if (!hasA && !hasB) return 0;
+          result = (metaA.year || 0) - (metaB.year || 0);
+          break;
         }
         
-        case "duration":
-          // Sort descending (longest first)
-          return b.durationSeconds - a.durationSeconds;
+        case "tags": {
+          const tagsA = metaA.tags || [];
+          const tagsB = metaB.tags || [];
+          const hasA = tagsA.length > 0;
+          const hasB = tagsB.length > 0;
+          // Push items without tags to bottom
+          if (hasA && !hasB) return -1;
+          if (!hasA && hasB) return 1;
+          if (!hasA && !hasB) return 0;
+          // Sort by first tag alphabetically, then by tag count
+          const firstTagCompare = (tagsA[0] || "").localeCompare(tagsB[0] || "", undefined, { sensitivity: "base" });
+          result = firstTagCompare !== 0 ? firstTagCompare : tagsA.length - tagsB.length;
+          break;
+        }
+        
+        case "duration": {
+          const hasA = a.durationSeconds > 0;
+          const hasB = b.durationSeconds > 0;
+          // Push items without duration to bottom
+          if (hasA && !hasB) return -1;
+          if (!hasA && hasB) return 1;
+          if (!hasA && !hasB) return 0;
+          result = a.durationSeconds - b.durationSeconds;
+          break;
+        }
         
         case "dateAdded": {
           const dateA = metaA.dateAdded || a.dateAdded || "";
           const dateB = metaB.dateAdded || b.dateAdded || "";
-          // Sort descending (newest first)
-          return dateB.localeCompare(dateA);
+          const hasA = !!dateA;
+          const hasB = !!dateB;
+          // Push items without date to bottom
+          if (hasA && !hasB) return -1;
+          if (!hasA && hasB) return 1;
+          if (!hasA && !hasB) return 0;
+          result = dateA.localeCompare(dateB);
+          break;
         }
         
         default:
-          return a.relPath.localeCompare(b.relPath, undefined, { sensitivity: "base" });
+          result = a.relPath.localeCompare(b.relPath, undefined, { sensitivity: "base" });
       }
+      return result * direction;
     });
-  }, [files, sortBy, allMetadata]);
+  }, [files, sortBy, sortDirection, allMetadata, fileChannelMap]);
 
   const filteredFiles = useMemo(() => {
     const terms = searchQuery
@@ -2537,26 +2611,13 @@ export default function MediaAdminPage() {
     return sortedFiles.filter((file) => {
       // Support filter
       const browserSupported = isBrowserSupported(file);
-      if (supportedFilter === "supported" && !browserSupported) return false;
-      if (supportedFilter === "unsupported" && browserSupported) return false;
-      if (supportedFilter === "needs-conversion") {
-        // Must be unsupported AND have no supported version in same folder
-        if (browserSupported) return false;
-        const hasSupportedVersion = checkHasSupportedVersion(file, sortedFiles);
-        if (hasSupportedVersion) return false;
-      }
-      // Location filter (in folder vs root)
-      if (locationFilter !== "all") {
-        const isInFolder = file.relPath.includes("/");
-        if (locationFilter === "in-folder" && !isInFolder) return false;
-        if (locationFilter === "in-root" && isInFolder) return false;
-      }
+      if (!showSupported && browserSupported) return false;
+      // Series filter (files in folders are considered series)
+      const isSeries = file.relPath.includes("/");
+      if (!showSeries && isSeries) return false;
       // Scheduled filter
-      if (scheduledFilter !== "all") {
-        const isScheduled = fileChannelMap.has(file.relPath);
-        if (scheduledFilter === "scheduled" && !isScheduled) return false;
-        if (scheduledFilter === "not-scheduled" && isScheduled) return false;
-      }
+      const isScheduled = fileChannelMap.has(file.relPath);
+      if (!showScheduled && isScheduled) return false;
       // Search query - includes filename, title, and all metadata fields
       if (terms.length > 0) {
         const meta = allMetadata[file.relPath] || {};
@@ -2578,7 +2639,7 @@ export default function MediaAdminPage() {
       }
       return true;
     });
-  }, [sortedFiles, supportedFilter, scheduledFilter, locationFilter, searchQuery, allMetadata, fileChannelMap]);
+  }, [sortedFiles, showSupported, showScheduled, showSeries, searchQuery, allMetadata, fileChannelMap]);
 
   const totalDurationSeconds = useMemo(
     () => sortedFiles.reduce((sum, f) => sum + (f.durationSeconds || 0), 0),
@@ -2743,57 +2804,33 @@ export default function MediaAdminPage() {
               className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-neutral-400">Sort by</label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100"
-            >
-              <option value="filename">Filename</option>
-              <option value="title">Title</option>
-              <option value="year">Year</option>
-              <option value="duration">Duration</option>
-              <option value="dateAdded">Date Added</option>
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-neutral-400">Supported</label>
-            <select
-              value={supportedFilter}
-              onChange={(e) => setSupportedFilter(e.target.value as typeof supportedFilter)}
-              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100"
-            >
-              <option value="all">All</option>
-              <option value="supported">Supported</option>
-              <option value="unsupported">Unsupported</option>
-              <option value="needs-conversion">Needs conversion</option>
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-neutral-400">Scheduled</label>
-            <select
-              value={scheduledFilter}
-              onChange={(e) => setScheduledFilter(e.target.value as typeof scheduledFilter)}
-              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100"
-            >
-              <option value="all">All</option>
-              <option value="scheduled">Scheduled</option>
-              <option value="not-scheduled">Not scheduled</option>
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-neutral-400">Location</label>
-            <select
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value as typeof locationFilter)}
-              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100"
-            >
-              <option value="all">All</option>
-              <option value="in-folder">In folder</option>
-              <option value="in-root">In root</option>
-            </select>
-          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showSupported}
+              onChange={(e) => setShowSupported(e.target.checked)}
+              className="w-4 h-4 rounded border-white/15 bg-white/5 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+            />
+            <span className="text-xs text-neutral-400">Show Supported</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showScheduled}
+              onChange={(e) => setShowScheduled(e.target.checked)}
+              className="w-4 h-4 rounded border-white/15 bg-white/5 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+            />
+            <span className="text-xs text-neutral-400">Show Scheduled</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showSeries}
+              onChange={(e) => setShowSeries(e.target.checked)}
+              className="w-4 h-4 rounded border-white/15 bg-white/5 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+            />
+            <span className="text-xs text-neutral-400">Show Series</span>
+          </label>
         </div>
 
         {loading ? (
@@ -2823,24 +2860,158 @@ export default function MediaAdminPage() {
                         />
                       </th>
                       <th className="px-3 py-2 font-semibold w-16 text-center">Cover</th>
-                      <th className="px-3 py-2 font-semibold w-64">File</th>
-                      <th className="px-3 py-2 font-semibold w-20 text-left">
-                        Format
+                      <th 
+                        className="px-3 py-2 font-semibold w-64 cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("filename")}
+                      >
+                        <span className="flex items-center gap-1">
+                          File
+                          {sortBy === "filename" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
                       </th>
-                      <th className="px-3 py-2 font-semibold w-28 text-left">
-                        Supported
+                      <th 
+                        className="px-3 py-2 font-semibold w-20 text-left cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("format")}
+                      >
+                        <span className="flex items-center gap-1">
+                          Format
+                          {sortBy === "format" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
                       </th>
-                      <th className="px-3 py-2 font-semibold w-28 text-left">
-                        Scheduled
+                      <th 
+                        className="px-3 py-2 font-semibold w-28 text-left cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("supported")}
+                      >
+                        <span className="flex items-center gap-1">
+                          Supported
+                          {sortBy === "supported" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
                       </th>
-                      <th className="px-3 py-2 font-semibold min-w-[150px]">Title</th>
-                      <th className="px-3 py-2 font-semibold w-16 text-center">Year</th>
-                      <th className="px-3 py-2 font-semibold min-w-[120px]">Tags</th>
-                      <th className="px-3 py-2 font-semibold w-24 text-right">
-                        Duration
+                      <th 
+                        className="px-3 py-2 font-semibold w-28 text-left cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("scheduled")}
+                      >
+                        <span className="flex items-center gap-1">
+                          Scheduled
+                          {sortBy === "scheduled" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
                       </th>
-                      <th className="px-3 py-2 font-semibold w-28 text-left">
-                        Added
+                      <th 
+                        className="px-3 py-2 font-semibold min-w-[150px] cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("title")}
+                      >
+                        <span className="flex items-center gap-1">
+                          Title
+                          {sortBy === "title" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
+                      </th>
+                      <th 
+                        className="px-3 py-2 font-semibold w-16 text-center cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("year")}
+                      >
+                        <span className="flex items-center justify-center gap-1">
+                          Year
+                          {sortBy === "year" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
+                      </th>
+                      <th 
+                        className="px-3 py-2 font-semibold min-w-[120px] cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("tags")}
+                      >
+                        <span className="flex items-center gap-1">
+                          Tags
+                          {sortBy === "tags" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
+                      </th>
+                      <th 
+                        className="px-3 py-2 font-semibold w-24 text-right cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("duration")}
+                      >
+                        <span className="flex items-center justify-end gap-1">
+                          Duration
+                          {sortBy === "duration" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
+                      </th>
+                      <th 
+                        className="px-3 py-2 font-semibold w-28 text-left cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("dateAdded")}
+                      >
+                        <span className="flex items-center gap-1">
+                          Added
+                          {sortBy === "dateAdded" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
                       </th>
                     </tr>
                   </thead>
