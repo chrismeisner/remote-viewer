@@ -88,6 +88,7 @@ export default function ChannelPlaylistPage() {
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaFilter, setMediaFilter] = useState("");
   const [scheduledFilter, setScheduledFilter] = useState<"all" | "scheduled" | "not-scheduled">("all");
+  const [showSeries, setShowSeries] = useState(true);
   
   // Map of file relPath -> array of channel IDs where the file is scheduled
   const [fileChannelMap, setFileChannelMap] = useState<Map<string, string[]>>(new Map());
@@ -304,6 +305,7 @@ export default function ChannelPlaylistPage() {
     setShowAddModal(true);
     setMediaFilter("");
     setScheduledFilter("all");
+    setShowSeries(true);
     void loadMediaFiles();
   }, [loadMediaFiles]);
 
@@ -351,12 +353,15 @@ export default function ChannelPlaylistPage() {
         if (scheduledFilter === "scheduled" && !isScheduled) return false;
         if (scheduledFilter === "not-scheduled" && isScheduled) return false;
       }
+      // Series filter (files in folders are considered series)
+      const isSeries = file.relPath.includes("/");
+      if (!showSeries && isSeries) return false;
       if (!terms.length) return true;
       // Search all metadata fields
       const haystack = buildSearchableText(file);
       return terms.every((term) => haystack.includes(term));
     });
-  }, [mediaFilter, sortedFiles, scheduledFilter, fileChannelMap, buildSearchableText]);
+  }, [mediaFilter, sortedFiles, scheduledFilter, showSeries, fileChannelMap, buildSearchableText]);
 
   const totalDuration = useMemo(() => 
     playlist.reduce((sum, item) => sum + item.durationSeconds, 0),
@@ -764,6 +769,15 @@ export default function ChannelPlaylistPage() {
                     <option value="scheduled">Scheduled</option>
                     <option value="not-scheduled">Not scheduled</option>
                   </select>
+                  <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showSeries}
+                      onChange={(e) => setShowSeries(e.target.checked)}
+                      className="w-4 h-4 rounded border-white/15 bg-white/5 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+                    />
+                    Show Series
+                  </label>
                   <span className="text-xs text-neutral-500">
                     {loadingMedia ? "Loading…" : `${availableFiles.length} files`}
                   </span>
