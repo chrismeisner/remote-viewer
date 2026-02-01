@@ -156,6 +156,11 @@ function MediaDetailModal({
   const [renameLoading, setRenameLoading] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renameSuccess, setRenameSuccess] = useState(false);
+  const [renameResult, setRenameResult] = useState<{
+    scheduleUpdated?: boolean;
+    metadataUpdated?: boolean;
+    updatedChannels?: string[];
+  } | null>(null);
   const [currentRelPath, setCurrentRelPath] = useState(item.relPath);
 
   // Faststart status state
@@ -423,6 +428,7 @@ function MediaDetailModal({
     setProposedFilename(cleanedPath);
     setRenameError(null);
     setRenameSuccess(false);
+    setRenameResult(null);
   };
 
   const handleCancelRename = () => {
@@ -460,6 +466,11 @@ function MediaDetailModal({
       setCurrentRelPath(proposedFilename);
       setShowRenameUI(false);
       setRenameSuccess(true);
+      setRenameResult({
+        scheduleUpdated: data.scheduleUpdated,
+        metadataUpdated: data.metadataUpdated,
+        updatedChannels: data.updatedChannels,
+      });
       
       // Notify parent to refresh media list
       onFileRenamed?.(currentRelPath, proposedFilename);
@@ -588,7 +599,19 @@ function MediaDetailModal({
               </div>
             </div>
             {renameSuccess && (
-              <p className="text-xs text-emerald-400 mt-1">File renamed successfully</p>
+              <div className="text-xs text-emerald-400 mt-1">
+                <p>File renamed successfully</p>
+                {renameResult && (
+                  <p className="text-emerald-500/80 mt-0.5">
+                    {[
+                      renameResult.scheduleUpdated && renameResult.updatedChannels?.length
+                        ? `Updated ${renameResult.updatedChannels.length} channel${renameResult.updatedChannels.length !== 1 ? "s" : ""}: ${renameResult.updatedChannels.join(", ")}`
+                        : null,
+                      renameResult.metadataUpdated ? "Metadata preserved" : null,
+                    ].filter(Boolean).join(" • ") || "No schedule references found"}
+                  </p>
+                )}
+              </div>
             )}
           </div>
           <button
