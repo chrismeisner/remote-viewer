@@ -609,6 +609,28 @@ export default function Home() {
     video.volume = volume;
   }, [volume]);
 
+  // Fetch metadata when nowPlaying changes (for overlay cover and info modal)
+  useEffect(() => {
+    if (!nowPlaying) {
+      setInfoMetadata(null);
+      return;
+    }
+    
+    // Reset and fetch new metadata
+    setInfoLoading(true);
+    
+    fetch(`/api/media-metadata?file=${encodeURIComponent(nowPlaying.relPath)}&source=${mediaSource}`)
+      .then(res => res.json())
+      .then(data => {
+        setInfoMetadata(data.metadata || {});
+        setInfoLoading(false);
+      })
+      .catch(() => {
+        setInfoMetadata({});
+        setInfoLoading(false);
+      });
+  }, [nowPlaying?.relPath, mediaSource]);
+
   // Update current playback time when info modal is open
   useEffect(() => {
     if (!showInfoModal) return;
@@ -776,23 +798,9 @@ export default function Home() {
 
       if (key === "i") {
         event.preventDefault();
-        // Toggle info modal and fetch metadata if opening
+        // Toggle info modal - metadata is already fetched when nowPlaying changes
         if (!showInfoModal && nowPlaying) {
           setShowInfoModal(true);
-          setInfoLoading(true);
-          setInfoMetadata(null);
-          
-          // Fetch metadata for current item
-          fetch(`/api/media-metadata?file=${encodeURIComponent(nowPlaying.relPath)}&source=${mediaSource}`)
-            .then(res => res.json())
-            .then(data => {
-              setInfoMetadata(data.metadata || {});
-              setInfoLoading(false);
-            })
-            .catch(() => {
-              setInfoMetadata({});
-              setInfoLoading(false);
-            });
         } else {
           setShowInfoModal(false);
         }
@@ -1212,15 +1220,30 @@ export default function Home() {
                   showChannelOverlay || isVideoLoading || (channel && !nowPlaying) ? "opacity-100" : "opacity-0 pointer-events-none"
                 }`}
               >
-                <div className="channel-overlay font-mono">
-                  <span className="channel-number">{overlayChannelId}</span>
-                  {overlayChannel?.shortName && (
-                    <span className="channel-name">{overlayChannel.shortName}</span>
+                <div className="flex items-start gap-3">
+                  {/* Cover image - show when available and not loading */}
+                  {infoMetadata && buildCoverImageUrl(infoMetadata) && !isVideoLoading && (
+                    <div className="flex-shrink-0 overflow-hidden rounded border border-white/20 shadow-lg shadow-black/50">
+                      <img
+                        src={buildCoverImageUrl(infoMetadata)!}
+                        alt=""
+                        className="h-24 w-16 object-cover sm:h-32 sm:w-20"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
                   )}
-                  {/* Blinking cursor while loading or no programming */}
-                  {(isVideoLoading || (channel && !nowPlaying)) && (
-                    <span className="channel-cursor">▌</span>
-                  )}
+                  <div className="channel-overlay font-mono">
+                    <span className="channel-number">{overlayChannelId}</span>
+                    {overlayChannel?.shortName && (
+                      <span className="channel-name">{overlayChannel.shortName}</span>
+                    )}
+                    {/* Blinking cursor while loading or no programming */}
+                    {(isVideoLoading || (channel && !nowPlaying)) && (
+                      <span className="channel-cursor">▌</span>
+                    )}
+                  </div>
                 </div>
               </div>
 
