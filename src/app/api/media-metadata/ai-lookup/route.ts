@@ -391,6 +391,9 @@ ${userContext.trim()}`;
       detectedMonthYear = { month: monthYearMatch[1], year: monthYearMatch[2] };
     }
     
+    // Lowercase filename for case-insensitive matching
+    const lowerFilename = filename.toLowerCase();
+    
     // Extract potential team names from filename
     // Common NBA teams
     const nbaTeams = ['bulls', 'lakers', 'celtics', 'knicks', 'heat', 'warriors', 'nets', 'clippers',
