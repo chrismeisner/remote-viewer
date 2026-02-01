@@ -87,7 +87,7 @@ export default function ChannelPlaylistPage() {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaFilter, setMediaFilter] = useState("");
-  const [scheduledFilter, setScheduledFilter] = useState<"all" | "scheduled" | "not-scheduled">("all");
+  const [showScheduled, setShowScheduled] = useState(true);
   const [showSeries, setShowSeries] = useState(true);
   
   // Map of file relPath -> array of channel IDs where the file is scheduled
@@ -304,7 +304,7 @@ export default function ChannelPlaylistPage() {
   const openAddModal = useCallback(() => {
     setShowAddModal(true);
     setMediaFilter("");
-    setScheduledFilter("all");
+    setShowScheduled(true);
     setShowSeries(true);
     void loadMediaFiles();
   }, [loadMediaFiles]);
@@ -348,11 +348,8 @@ export default function ChannelPlaylistPage() {
       if (!file.durationSeconds || file.durationSeconds <= 0) return false;
       if (!isBrowserSupported(file)) return false;
       // Scheduled filter
-      if (scheduledFilter !== "all") {
-        const isScheduled = fileChannelMap.has(file.relPath);
-        if (scheduledFilter === "scheduled" && !isScheduled) return false;
-        if (scheduledFilter === "not-scheduled" && isScheduled) return false;
-      }
+      const isScheduled = fileChannelMap.has(file.relPath);
+      if (!showScheduled && isScheduled) return false;
       // Series filter (files in folders are considered series)
       const isSeries = file.relPath.includes("/");
       if (!showSeries && isSeries) return false;
@@ -361,7 +358,7 @@ export default function ChannelPlaylistPage() {
       const haystack = buildSearchableText(file);
       return terms.every((term) => haystack.includes(term));
     });
-  }, [mediaFilter, sortedFiles, scheduledFilter, showSeries, fileChannelMap, buildSearchableText]);
+  }, [mediaFilter, sortedFiles, showScheduled, showSeries, fileChannelMap, buildSearchableText]);
 
   const totalDuration = useMemo(() => 
     playlist.reduce((sum, item) => sum + item.durationSeconds, 0),
@@ -760,15 +757,15 @@ export default function ChannelPlaylistPage() {
                     className="w-64 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm focus:border-white/30 focus:outline-none"
                     title="Search across all metadata: title, year, director, category, plot, tags, etc."
                   />
-                  <select
-                    value={scheduledFilter}
-                    onChange={(e) => setScheduledFilter(e.target.value as typeof scheduledFilter)}
-                    className="rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-xs text-neutral-200 focus:border-white/30 focus:outline-none"
-                  >
-                    <option value="all">All</option>
-                    <option value="scheduled">Scheduled</option>
-                    <option value="not-scheduled">Not scheduled</option>
-                  </select>
+                  <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showScheduled}
+                      onChange={(e) => setShowScheduled(e.target.checked)}
+                      className="w-4 h-4 rounded border-white/15 bg-white/5 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+                    />
+                    Show Scheduled
+                  </label>
                   <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer">
                     <input
                       type="checkbox"
