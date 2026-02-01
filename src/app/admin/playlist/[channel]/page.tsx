@@ -22,6 +22,31 @@ type MediaFile = {
   audioCodec?: string;
 };
 
+type MediaMetadataItem = {
+  title?: string | null;
+  year?: number | null;
+  releaseDate?: string | null;
+  director?: string | null;
+  category?: string | null;
+  makingOf?: string | null;
+  plot?: string | null;
+  type?: string | null;
+  season?: number | null;
+  episode?: number | null;
+  imdbUrl?: string | null;
+  dateAdded?: string | null;
+  lastUpdated?: string | null;
+  coverUrl?: string | null;
+  coverLocal?: string | null;
+  coverPath?: string | null;
+  coverEmoji?: string | null;
+  tags?: string[] | null;
+};
+
+type MediaMetadataStore = {
+  items: Record<string, MediaMetadataItem>;
+};
+
 type ChannelInfo = {
   id: string;
   shortName?: string;
@@ -66,6 +91,9 @@ export default function ChannelPlaylistPage() {
   
   // Map of file relPath -> array of channel IDs where the file is scheduled
   const [fileChannelMap, setFileChannelMap] = useState<Map<string, string[]>>(new Map());
+  
+  // Media metadata for enhanced search
+  const [mediaMetadata, setMediaMetadata] = useState<MediaMetadataStore>({ items: {} });
   
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedPlaylistRef = useRef<string>("[]");
@@ -199,20 +227,22 @@ export default function ChannelPlaylistPage() {
     };
   }, [channelId, mediaSource]);
 
-  // Lazy-load media files and schedule data only when modal opens
+  // Lazy-load media files, schedule data, and metadata only when modal opens
   const loadMediaFiles = useCallback(async () => {
     if (mediaFiles.length > 0) return; // Already loaded
     
     setLoadingMedia(true);
     try {
-      // Fetch media files and full schedule in parallel
+      // Fetch media files, full schedule, and metadata in parallel
       const mediaPromise = mediaSource === "remote"
         ? fetch(`/api/media-index?base=${encodeURIComponent(REMOTE_MEDIA_BASE)}&t=${Date.now()}`, { cache: "no-store" })
         : fetch(`/api/media-files?t=${Date.now()}`, { cache: "no-store" });
       
       const schedulePromise = fetch(`/api/schedule?source=${encodeURIComponent(mediaSource || "local")}&t=${Date.now()}`, { cache: "no-store" });
       
-      const [mediaRes, scheduleRes] = await Promise.all([mediaPromise, schedulePromise]);
+      const metadataPromise = fetch(`/api/media-metadata?source=${encodeURIComponent(mediaSource || "local")}&t=${Date.now()}`, { cache: "no-store" });
+      
+      const [mediaRes, scheduleRes, metadataRes] = await Promise.all([mediaPromise, schedulePromise, metadataPromise]);
       
       // Process media files
       let filesJson: { items?: MediaFile[] } = {};
@@ -220,6 +250,12 @@ export default function ChannelPlaylistPage() {
         filesJson = await mediaRes.json();
       }
       setMediaFiles(filesJson.items || []);
+      
+      // Process metadata for enhanced search
+      if (metadataRes.ok) {
+        const metadataJson = await metadataRes.json() as MediaMetadataStore;
+        setMediaMetadata(metadataJson);
+      }
       
       // Process schedule to build file->channels map
       if (scheduleRes.ok) {
@@ -276,6 +312,32 @@ export default function ChannelPlaylistPage() {
     [mediaFiles]
   );
 
+  // Build searchable text from file and all metadata fields
+  const buildSearchableText = useCallback((file: MediaFile): string => {
+    const meta = mediaMetadata.items[file.relPath];
+    const parts: string[] = [
+      file.relPath,
+      file.title || "",
+    ];
+    
+    if (meta) {
+      // Add all searchable metadata fields
+      if (meta.title) parts.push(meta.title);
+      if (meta.year) parts.push(String(meta.year));
+      if (meta.releaseDate) parts.push(meta.releaseDate);
+      if (meta.director) parts.push(meta.director);
+      if (meta.category) parts.push(meta.category);
+      if (meta.makingOf) parts.push(meta.makingOf);
+      if (meta.plot) parts.push(meta.plot);
+      if (meta.type) parts.push(meta.type);
+      if (meta.season) parts.push(`season ${meta.season}`, `s${meta.season}`);
+      if (meta.episode) parts.push(`episode ${meta.episode}`, `e${meta.episode}`);
+      if (meta.tags && meta.tags.length > 0) parts.push(...meta.tags);
+    }
+    
+    return parts.join(" ").toLowerCase();
+  }, [mediaMetadata]);
+
   // Only files with verified durations and browser support
   const availableFiles = useMemo(() => {
     const query = mediaFilter.trim().toLowerCase();
@@ -290,10 +352,11 @@ export default function ChannelPlaylistPage() {
         if (scheduledFilter === "not-scheduled" && isScheduled) return false;
       }
       if (!terms.length) return true;
-      const haystack = `${file.relPath} ${file.title || ""}`.toLowerCase();
+      // Search all metadata fields
+      const haystack = buildSearchableText(file);
       return terms.every((term) => haystack.includes(term));
     });
-  }, [mediaFilter, sortedFiles, scheduledFilter, fileChannelMap]);
+  }, [mediaFilter, sortedFiles, scheduledFilter, fileChannelMap, buildSearchableText]);
 
   const totalDuration = useMemo(() => 
     playlist.reduce((sum, item) => sum + item.durationSeconds, 0),
@@ -686,10 +749,11 @@ export default function ChannelPlaylistPage() {
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    placeholder="Filter media…"
+                    placeholder="Search title, year, director, tags…"
                     value={mediaFilter}
                     onChange={(e) => setMediaFilter(e.target.value)}
-                    className="w-48 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm focus:border-white/30 focus:outline-none"
+                    className="w-64 rounded-md bg-neutral-900 border border-white/10 px-2 py-1 text-sm focus:border-white/30 focus:outline-none"
+                    title="Search across all metadata: title, year, director, category, plot, tags, etc."
                   />
                   <select
                     value={scheduledFilter}
