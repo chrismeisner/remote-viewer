@@ -2565,7 +2565,7 @@ export default function MediaAdminPage() {
   const [showSupported, setShowSupported] = useState(true);
   const [showScheduled, setShowScheduled] = useState(true);
   const [showSeries, setShowSeries] = useState(true);
-  const [coverFilter, setCoverFilter] = useState<"all" | "with" | "without">("all");
+  const [showNoCoverOnly, setShowNoCoverOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"filename" | "format" | "supported" | "scheduled" | "title" | "year" | "tags" | "duration" | "dateAdded">("filename");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -2912,12 +2912,11 @@ export default function MediaAdminPage() {
       // Scheduled filter
       const isScheduled = fileChannelMap.has(file.relPath);
       if (!showScheduled && isScheduled) return false;
-      // Cover filter
-      if (coverFilter !== "all") {
+      // Cover filter - show only items without covers when checkbox is checked
+      if (showNoCoverOnly) {
         const meta = allMetadata[file.relPath] || {};
         const hasCover = !!(meta.coverUrl || meta.coverLocal || meta.coverPath || meta.coverEmoji);
-        if (coverFilter === "with" && !hasCover) return false;
-        if (coverFilter === "without" && hasCover) return false;
+        if (hasCover) return false;
       }
       // Search query - includes filename, title, and all metadata fields
       if (terms.length > 0) {
@@ -2940,7 +2939,7 @@ export default function MediaAdminPage() {
       }
       return true;
     });
-  }, [sortedFiles, showSupported, showScheduled, showSeries, coverFilter, searchQuery, allMetadata, fileChannelMap]);
+  }, [sortedFiles, showSupported, showScheduled, showSeries, showNoCoverOnly, searchQuery, allMetadata, fileChannelMap]);
 
   const totalDurationSeconds = useMemo(
     () => sortedFiles.reduce((sum, f) => sum + (f.durationSeconds || 0), 0),
@@ -3132,18 +3131,15 @@ export default function MediaAdminPage() {
             />
             <span className="text-xs text-neutral-400">Show Series</span>
           </label>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-neutral-400">Cover:</span>
-            <select
-              value={coverFilter}
-              onChange={(e) => setCoverFilter(e.target.value as "all" | "with" | "without")}
-              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-emerald-300"
-            >
-              <option value="all">All</option>
-              <option value="with">Has Cover</option>
-              <option value="without">No Cover</option>
-            </select>
-          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showNoCoverOnly}
+              onChange={(e) => setShowNoCoverOnly(e.target.checked)}
+              className="w-4 h-4 rounded border-white/15 bg-white/5 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+            />
+            <span className="text-xs text-neutral-400">No Cover</span>
+          </label>
         </div>
 
         {loading ? (
