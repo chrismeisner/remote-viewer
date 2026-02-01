@@ -90,31 +90,72 @@ export default function CoverFlowPage() {
         ]);
         
         const allCovers: CoverFile[] = remoteCoversData.covers || [];
-        const localMetadata: Record<string, { coverLocal?: string; coverUrl?: string }> = localMetadataData.items || {};
-        const remoteMetadata: Record<string, { coverLocal?: string; coverUrl?: string }> = remoteMetadataData.items || {};
+        type MetadataItem = { coverLocal?: string; coverUrl?: string; imdbUrl?: string };
+        const localMetadata: Record<string, MetadataItem> = localMetadataData.items || {};
+        const remoteMetadata: Record<string, MetadataItem> = remoteMetadataData.items || {};
         
         // Build set of covers that are actually in use by media items (from both sources)
         const usedCoverFilenames = new Set<string>();
         const usedCoverUrls = new Set<string>();
+        const imdbUrlsWithoutCovers: string[] = [];
         
-        // Collect from local metadata
-        for (const item of Object.values(localMetadata)) {
-          if (item.coverLocal) {
-            usedCoverFilenames.add(item.coverLocal);
+        // Helper to process metadata items
+        const processMetadata = (items: Record<string, MetadataItem>) => {
+          for (const item of Object.values(items)) {
+            if (item.coverLocal) {
+              usedCoverFilenames.add(item.coverLocal);
+            }
+            if (item.coverUrl) {
+              usedCoverUrls.add(item.coverUrl);
+            }
+            // Collect IMDB URLs for items that don't have an explicit cover
+            if (item.imdbUrl && !item.coverLocal && !item.coverUrl) {
+              if (!imdbUrlsWithoutCovers.includes(item.imdbUrl)) {
+                imdbUrlsWithoutCovers.push(item.imdbUrl);
+              }
+            }
           }
-          if (item.coverUrl) {
-            usedCoverUrls.add(item.coverUrl);
-          }
-        }
+        };
         
-        // Collect from remote metadata
-        for (const item of Object.values(remoteMetadata)) {
-          if (item.coverLocal) {
-            usedCoverFilenames.add(item.coverLocal);
+        processMetadata(localMetadata);
+        processMetadata(remoteMetadata);
+        
+        // Fetch IMDB covers for items that have imdbUrl but no cover
+        // Do this in parallel, max 5 at a time to avoid overwhelming the server
+        const imdbCovers: CoverFile[] = [];
+        if (imdbUrlsWithoutCovers.length > 0) {
+          console.log(`[CoverFlow] Fetching ${imdbUrlsWithoutCovers.length} IMDB covers...`);
+          
+          // Batch fetch in groups of 5
+          for (let i = 0; i < imdbUrlsWithoutCovers.length; i += 5) {
+            const batch = imdbUrlsWithoutCovers.slice(i, i + 5);
+            const results = await Promise.allSettled(
+              batch.map(async (imdbUrl) => {
+                const res = await fetch("/api/media-metadata/imdb-cover", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ imdbUrl }),
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  return data.coverUrl as string;
+                }
+                return null;
+              })
+            );
+            
+            for (const result of results) {
+              if (result.status === "fulfilled" && result.value) {
+                imdbCovers.push({
+                  filename: result.value,
+                  url: result.value,
+                });
+                usedCoverUrls.add(result.value);
+              }
+            }
           }
-          if (item.coverUrl) {
-            usedCoverUrls.add(item.coverUrl);
-          }
+          
+          console.log(`[CoverFlow] Found ${imdbCovers.length} IMDB covers`);
         }
         
         // Filter covers to only those that are referenced in metadata

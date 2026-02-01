@@ -30,11 +30,11 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-4"
       onClick={handleBackdropClick}
     >
       <div
-        className={`w-full ${maxWidth} rounded-md border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur`}
+        className={`w-full ${maxWidth} max-h-[90vh] overflow-y-auto rounded-md border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur`}
       >
         {children}
       </div>
