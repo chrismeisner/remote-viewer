@@ -257,11 +257,29 @@ TV Episode Detection:
 
 Sports Content Detection:
 - Look for DATE patterns in filenames like "02-01-1998", "1998-02-01", "02.01.1998", "020198", etc.
+- ALSO look for MONTH-YEAR patterns like "february-1997", "jan-2005", "march-1998" - these indicate the approximate time period
 - Look for team names, player names, or sporting event indicators (e.g., "Bulls", "Lakers", "vs", "Game", "Championship", "Finals", "Olympics")
-- If you detect a date AND sports-related terms (team names, player names, sporting events), this is likely a SPORTS recording
-- For sports content, set type to "sports"
+- Look for broadcast network indicators (e.g., "nba-on-tbs", "nba-on-nbc", "espn", "monday-night-football") which confirm sports content
+- If you detect team names AND a date/month-year, this is likely a SPORTS recording
+
+CRITICAL - Finding the Exact Game Date:
+When you have a MONTH + YEAR but NOT an exact date (e.g., "february-1997"), you MUST research to find the exact date:
+1. Think: "When did [Team A] and [Team B] play in [Month] [Year]?"
+2. Recall the teams' schedules for that specific month
+3. If multiple games occurred that month, consider context clues (home/away, network, etc.)
+4. The releaseDate field MUST be the exact game date in YYYY-MM-DD format
+
+Example research process for "nba-on-tbs-bulls-lakers-february-1997-720p":
+- Question to answer: "When did the Bulls and Lakers play in February 1997?"
+- Research: Check NBA schedule - Bulls vs Lakers games in February 1997
+- Find: The game was on February 2, 1997 (or whichever date it actually was)
+- Set releaseDate to: "1997-02-02"
+
+For sports content:
+- Set type to "sports"
 - The "title" should be the matchup or event name (e.g., "Bulls vs Lakers" or "Super Bowl XXXII")
 - The "year" should be extracted from the date in the filename
+- The "releaseDate" MUST be the EXACT date of the game in YYYY-MM-DD format - research this!
 - The "category" should be the sport type (e.g., "Basketball", "Football", "Baseball", "Soccer", "Hockey", "Racing", etc.)
 - The "director" can be null or list notable commentators/broadcasters if known
 - The "makingOf" should include: key players who participated, coaches, venue/location, significance of the game (playoff game, rivalry, etc.), notable storylines going into the game
@@ -274,18 +292,58 @@ Sports Content Detection:
   * How the game unfolded and the final outcome
   * Post-game significance (playoff implications, records, etc.)
 - Example: For "Bulls-vs-Lakers-02-01-1998", search your knowledge for details about the Bulls vs Lakers game on February 1, 1998, including player stats and standout performances
+- Example: For "nba-on-tbs-bulls-lakers-february-1997-720p", first determine WHEN in February 1997 the Bulls played the Lakers, then get the game details
 
 Concert/Music Performance Detection:
-- Look for artist names, band names, or music-related keywords (e.g., "Live", "Concert", "Tour", "Festival", "Performance")
-- Look for venue names (e.g., "Madison Square Garden", "Wembley", "Red Rocks")
+- Look for artist names, band names, or music-related keywords (e.g., "Live", "Concert", "Tour", "Festival", "Performance", "Unplugged")
+- Look for venue names (e.g., "Madison Square Garden", "Wembley", "Red Rocks", "Earls Court", "Budokan")
+- ALSO look for MONTH-YEAR patterns like "october-1994", "aug-1969" - these indicate the approximate time period
+- Look for year patterns even without month (e.g., "pink-floyd-1994" suggests a 1994 performance)
 - For concert content, set type to "concert"
-- The "title" should be the artist/band name and tour/show name (e.g., "Pink Floyd - The Wall Live" or "Beyoncé - Renaissance World Tour")
+
+CRITICAL - Finding the Exact Concert Date:
+When you have an ARTIST + VENUE but NOT an exact date, you MUST research to find the exact date:
+1. Think: "When did [Artist] play at [Venue] in [Year]?"
+2. Recall the artist's tour dates and history for that year
+3. Cross-reference with the venue's event history
+4. The releaseDate field MUST be the exact concert date in YYYY-MM-DD format
+
+When you have an ARTIST + MONTH-YEAR pattern:
+1. Think: "What [Artist] concerts happened in [Month] [Year]?"
+2. Look up the artist's tour schedule for that specific time period
+3. If multiple shows occurred, use venue or other context clues to identify the specific show
+
+Example research process for "pink-floyd-earls-court-october-1994-720p":
+- Question to answer: "When did Pink Floyd play at Earls Court in October 1994?"
+- Research: Pink Floyd's Division Bell Tour - Earls Court residency in October 1994
+- Find: They played multiple nights (Oct 13, 14, 15, 17, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29 1994)
+- If filename has additional clues (night 1, final night, etc.), use that; otherwise pick the most notable/recorded show
+- Set releaseDate to the specific date (e.g., "1994-10-20" for the famous recorded show)
+
+Example research process for "nirvana-reading-festival-1992":
+- Question to answer: "When did Nirvana play Reading Festival in 1992?"
+- Research: Nirvana's famous Reading Festival headline set
+- Find: August 30, 1992
+- Set releaseDate to: "1992-08-30"
+
+For concert content:
+- The "title" should be the artist/band name and tour/show name (e.g., "Pink Floyd - The Division Bell Tour" or "Nirvana - Live at Reading 1992")
 - The "year" should be the year of the performance
+- The "releaseDate" MUST be the EXACT date of the concert in YYYY-MM-DD format - research this!
 - The "category" should be the music genre (e.g., "Rock", "Pop", "Hip-Hop", "Jazz", "Classical", "Electronic", etc.)
 - The "director" can list the tour director, musical director, or producer if known
-- The "makingOf" should include: band members/performers, backing musicians, special guests, venue information, tour context, production details, stage design, technical aspects
-- The "plot" should describe: the setlist highlights, memorable performances, special moments, audience interaction, visual production elements, encore performances, and overall atmosphere of the show
-- Example: For "Pink-Floyd-Live-Earls-Court-1994", provide details about the concert, setlist, and performance highlights
+- The "makingOf" should include: band members/performers at this specific show, backing musicians, special guests, opening acts, venue information (capacity, location), tour context (which tour, what leg), production details, stage design, was this officially recorded/released?
+- The "plot" should describe THIS SPECIFIC SHOW in detail:
+  * Setlist highlights (famous songs played, rare tracks, first/last time a song was performed)
+  * Memorable moments and standout performances
+  * Audience interaction and atmosphere
+  * Special guests who appeared on stage
+  * Encores and finale
+  * Any technical issues, incidents, or notable events
+  * Historical significance of the show (was this a legendary performance? Why?)
+  * Critical reception if known
+- Example: For "Pink-Floyd-Live-Earls-Court-1994", provide details about the Division Bell Tour, specific concert date, setlist, and performance highlights
+- Example: For "nirvana-reading-1992", provide the exact date (August 30, 1992), details about the legendary wheelchair entrance, setlist including "Smells Like Teen Spirit", and why this show is considered iconic
 
 General:
 - If you cannot identify the media, make your best guess based on the filename
@@ -322,28 +380,319 @@ ${userContext.trim()}`;
       }
     }
     
+    // Also detect month-year patterns like "february-1997", "jan-2005", etc.
+    const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 
+                        'july', 'august', 'september', 'october', 'november', 'december',
+                        'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec'];
+    const monthYearPattern = new RegExp(`(${monthNames.join('|')})[-_. ]?(\\d{4})`, 'i');
+    const monthYearMatch = filename.match(monthYearPattern);
+    let detectedMonthYear: { month: string; year: string } | null = null;
+    if (monthYearMatch) {
+      detectedMonthYear = { month: monthYearMatch[1], year: monthYearMatch[2] };
+    }
+    
+    // Extract potential team names from filename
+    // Common NBA teams
+    const nbaTeams = ['bulls', 'lakers', 'celtics', 'knicks', 'heat', 'warriors', 'nets', 'clippers',
+                      'rockets', 'spurs', 'mavericks', 'mavs', 'suns', 'nuggets', 'sixers', '76ers',
+                      'bucks', 'raptors', 'pistons', 'pacers', 'hawks', 'hornets', 'magic', 'wizards',
+                      'cavaliers', 'cavs', 'thunder', 'blazers', 'trailblazers', 'jazz', 'grizzlies',
+                      'pelicans', 'timberwolves', 'wolves', 'kings', 'chicago', 'los angeles', 'boston',
+                      'new york', 'miami', 'golden state', 'brooklyn', 'houston', 'san antonio', 'dallas',
+                      'phoenix', 'denver', 'philadelphia', 'milwaukee', 'toronto', 'detroit', 'indiana',
+                      'atlanta', 'charlotte', 'orlando', 'washington', 'cleveland', 'oklahoma city', 
+                      'portland', 'utah', 'memphis', 'new orleans', 'minnesota', 'sacramento'];
+    // Common NFL teams
+    const nflTeams = ['patriots', 'cowboys', 'packers', 'steelers', '49ers', 'niners', 'bears', 'giants',
+                      'eagles', 'broncos', 'raiders', 'chiefs', 'seahawks', 'dolphins', 'jets', 'ravens',
+                      'colts', 'saints', 'bills', 'rams', 'chargers', 'vikings', 'cardinals', 'falcons',
+                      'panthers', 'buccaneers', 'bucs', 'bengals', 'browns', 'texans', 'titans', 'jaguars',
+                      'lions', 'commanders', 'redskins'];
+    // Common MLB teams  
+    const mlbTeams = ['yankees', 'red sox', 'redsox', 'dodgers', 'cubs', 'mets', 'braves', 'cardinals',
+                      'astros', 'phillies', 'padres', 'giants', 'mariners', 'twins', 'guardians', 'indians',
+                      'orioles', 'rays', 'blue jays', 'royals', 'white sox', 'whitesox', 'tigers', 'rangers',
+                      'athletics', 'angels', 'rockies', 'brewers', 'reds', 'pirates', 'marlins', 'nationals',
+                      'diamondbacks', 'dbacks'];
+    // Common NHL teams
+    const nhlTeams = ['bruins', 'canadiens', 'habs', 'maple leafs', 'leafs', 'blackhawks', 'red wings',
+                      'penguins', 'rangers', 'flyers', 'oilers', 'flames', 'canucks', 'avalanche', 'lightning',
+                      'blues', 'capitals', 'caps', 'sharks', 'ducks', 'kings', 'devils', 'islanders', 'hurricanes',
+                      'panthers', 'predators', 'preds', 'wild', 'jets', 'senators', 'sens', 'sabres', 'coyotes',
+                      'golden knights', 'kraken', 'blue jackets'];
+    
+    const allTeams = [...nbaTeams, ...nflTeams, ...mlbTeams, ...nhlTeams];
+    const detectedTeams: string[] = [];
+    for (const team of allTeams) {
+      if (lowerFilename.includes(team.replace(/ /g, '')) || 
+          lowerFilename.includes(team.replace(/ /g, '-')) ||
+          lowerFilename.includes(team.replace(/ /g, '_'))) {
+        // Capitalize for readability
+        const capitalizedTeam = team.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        if (!detectedTeams.includes(capitalizedTeam)) {
+          detectedTeams.push(capitalizedTeam);
+        }
+      }
+    }
+    
     // Detect sports-related keywords
-    const sportsKeywords = ['vs', 'game', 'bulls', 'lakers', 'celtics', 'patriots', 'cowboys', 
-                           'yankees', 'championship', 'finals', 'playoff', 'bowl', 'cup', 
+    const sportsKeywords = ['vs', 'game', 'championship', 'finals', 'playoff', 'playoffs', 'bowl', 'cup', 
                            'match', 'race', 'fight', 'boxing', 'ufc', 'nba', 'nfl', 'mlb', 
-                           'nhl', 'soccer', 'football', 'basketball', 'baseball', 'hockey'];
-    const lowerFilename = filename.toLowerCase();
+                           'nhl', 'soccer', 'football', 'basketball', 'baseball', 'hockey',
+                           'espn', 'tnt', 'tbs', 'abc', 'cbs', 'nbc', 'fox', 'sports'];
     const hasSportsKeywords = sportsKeywords.some(keyword => lowerFilename.includes(keyword));
     
-    // If we detect both a date and sports keywords, add a hint to the prompt
-    if (detectedDate && hasSportsKeywords) {
+    // =====================
+    // CONCERT/MUSIC DETECTION
+    // =====================
+    
+    // Popular bands and artists for detection
+    const artists = [
+      // Classic Rock
+      'pink floyd', 'led zeppelin', 'the beatles', 'beatles', 'rolling stones', 'the who', 'queen',
+      'ac dc', 'acdc', 'aerosmith', 'black sabbath', 'deep purple', 'jimi hendrix', 'hendrix',
+      'the doors', 'doors', 'eric clapton', 'clapton', 'cream', 'grateful dead', 'dead',
+      'eagles', 'fleetwood mac', 'genesis', 'yes', 'rush', 'kansas', 'boston', 'journey',
+      'van halen', 'def leppard', 'bon jovi', 'guns n roses', 'gnr', 'motley crue',
+      // Metal
+      'metallica', 'iron maiden', 'judas priest', 'slayer', 'megadeth', 'anthrax', 'pantera',
+      'ozzy osbourne', 'ozzy', 'dio', 'motorhead', 'tool', 'slipknot', 'korn', 'system of a down',
+      'rammstein', 'nightwish', 'dream theater', 'opeth', 'mastodon', 'lamb of god', 'gojira',
+      // Alternative/Grunge
+      'nirvana', 'pearl jam', 'soundgarden', 'alice in chains', 'stone temple pilots', 'stp',
+      'smashing pumpkins', 'radiohead', 'u2', 'r.e.m.', 'rem', 'the cure', 'cure', 'depeche mode',
+      'nine inch nails', 'nin', 'rage against the machine', 'ratm', 'foo fighters', 'green day',
+      'blink 182', 'blink-182', 'red hot chili peppers', 'rhcp', 'weezer', 'oasis', 'blur',
+      // Pop/R&B
+      'michael jackson', 'prince', 'madonna', 'whitney houston', 'mariah carey', 'janet jackson',
+      'beyonce', 'beyoncé', 'taylor swift', 'lady gaga', 'bruno mars', 'adele', 'ed sheeran',
+      'katy perry', 'rihanna', 'justin timberlake', 'britney spears', 'christina aguilera',
+      'backstreet boys', 'nsync', '*nsync', 'one direction', 'bts', 'blackpink',
+      // Hip-Hop/Rap
+      'jay-z', 'jay z', 'kanye west', 'kanye', 'eminem', 'dr. dre', 'dr dre', 'snoop dogg',
+      'tupac', '2pac', 'biggie', 'notorious b.i.g.', 'nas', 'kendrick lamar', 'drake',
+      'travis scott', 'j. cole', 'j cole', 'lil wayne', 'outkast', 'a tribe called quest',
+      'wu-tang clan', 'wu tang', 'public enemy', 'run dmc', 'run-dmc', 'beastie boys',
+      // Electronic/DJ
+      'daft punk', 'deadmau5', 'skrillex', 'avicii', 'calvin harris', 'david guetta', 'tiesto',
+      'armin van buuren', 'above & beyond', 'bassnectar', 'pretty lights', 'odesza',
+      'the chemical brothers', 'chemical brothers', 'fatboy slim', 'prodigy', 'the prodigy',
+      'kraftwerk', 'aphex twin', 'boards of canada', 'massive attack', 'portishead',
+      // Country
+      'johnny cash', 'willie nelson', 'dolly parton', 'garth brooks', 'shania twain',
+      'tim mcgraw', 'faith hill', 'carrie underwood', 'keith urban', 'blake shelton',
+      'luke bryan', 'chris stapleton', 'jason aldean', 'kenny chesney', 'george strait',
+      // Jazz/Blues
+      'miles davis', 'john coltrane', 'coltrane', 'duke ellington', 'louis armstrong',
+      'charlie parker', 'thelonious monk', 'dizzy gillespie', 'herbie hancock', 'chick corea',
+      'bb king', 'b.b. king', 'muddy waters', 'howlin wolf', 'robert johnson', 'stevie ray vaughan',
+      // Modern Rock/Indie
+      'arctic monkeys', 'the strokes', 'strokes', 'the killers', 'killers', 'muse', 'coldplay',
+      'imagine dragons', 'twenty one pilots', 'the black keys', 'black keys', 'tame impala',
+      'vampire weekend', 'arcade fire', 'the national', 'lcd soundsystem', 'mgmt', 'phoenix',
+      // Punk
+      'the ramones', 'ramones', 'sex pistols', 'the clash', 'clash', 'bad religion', 'nofx',
+      'rancid', 'social distortion', 'dead kennedys', 'misfits', 'black flag', 'minor threat',
+      // Misc Legends
+      'david bowie', 'bowie', 'elton john', 'billy joel', 'bruce springsteen', 'springsteen',
+      'stevie wonder', 'bob dylan', 'dylan', 'neil young', 'joni mitchell', 'paul simon',
+      'tom petty', 'bob marley', 'marley', 'peter gabriel', 'phil collins', 'sting', 'the police',
+      'dire straits', 'mark knopfler', 'santana', 'zz top', 'lynyrd skynyrd', 'allman brothers'
+    ];
+    
+    // Detect artists in filename
+    const detectedArtists: string[] = [];
+    for (const artist of artists) {
+      const artistPattern = artist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '[-_. ]?');
+      const regex = new RegExp(artistPattern, 'i');
+      if (regex.test(lowerFilename)) {
+        // Capitalize for readability
+        const capitalizedArtist = artist.split(' ').map(w => 
+          w.charAt(0).toUpperCase() + w.slice(1)
+        ).join(' ');
+        if (!detectedArtists.some(a => a.toLowerCase() === capitalizedArtist.toLowerCase())) {
+          detectedArtists.push(capitalizedArtist);
+        }
+      }
+    }
+    
+    // Popular venues for detection
+    const venues = [
+      'madison square garden', 'msg', 'wembley', 'wembley stadium', 'earls court', "earl's court",
+      'red rocks', 'hollywood bowl', 'radio city', 'carnegie hall', 'royal albert hall',
+      'the forum', 'la forum', 'fillmore', 'fillmore west', 'fillmore east', 'apollo',
+      'hammersmith odeon', 'hammersmith', 'budokan', 'tokyo dome', 'sydney opera house',
+      'glastonbury', 'coachella', 'lollapalooza', 'bonnaroo', 'woodstock', 'monterey',
+      'isle of wight', 'reading', 'leeds', 'download', 'rock am ring', 'rock in rio',
+      'knebworth', 'live aid', 'live 8', 'us festival', 'ozzfest', 'warped tour',
+      'austin city limits', 'acl', 'outside lands', 'primavera', 'tomorrowland', 'ultra',
+      'burning man', 'sxsw', 'montreux', 'north sea jazz', 'new orleans jazz', 'newport'
+    ];
+    
+    // Detect venues in filename
+    const detectedVenues: string[] = [];
+    for (const venue of venues) {
+      const venuePattern = venue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '[-_. ]?');
+      const regex = new RegExp(venuePattern, 'i');
+      if (regex.test(lowerFilename)) {
+        const capitalizedVenue = venue.split(' ').map(w => 
+          w.charAt(0).toUpperCase() + w.slice(1)
+        ).join(' ');
+        if (!detectedVenues.some(v => v.toLowerCase() === capitalizedVenue.toLowerCase())) {
+          detectedVenues.push(capitalizedVenue);
+        }
+      }
+    }
+    
+    // Concert-related keywords
+    const concertKeywords = ['live', 'concert', 'tour', 'performance', 'show', 'gig', 
+                            'unplugged', 'acoustic', 'mtv', 'vhs', 'dvd', 'bootleg',
+                            'festival', 'fest', 'reunion', 'farewell', 'anniversary'];
+    const hasConcertKeywords = concertKeywords.some(keyword => lowerFilename.includes(keyword));
+    
+    // Determine if this is concert content
+    const isConcertContent = detectedArtists.length > 0 && 
+                            (hasConcertKeywords || detectedVenues.length > 0 || detectedDate || detectedMonthYear);
+    
+    // Determine if this is sports content
+    const isSportsContent = (detectedDate || detectedMonthYear) && (hasSportsKeywords || detectedTeams.length >= 2);
+    const hasTeamMatchup = detectedTeams.length >= 2;
+    
+    // If we detect sports content, add a detailed hint to the prompt
+    if (isSportsContent || hasTeamMatchup) {
+      let sportsHint = `
+
+IMPORTANT: This appears to be a SPORTS recording.`;
+      
+      // Add detected teams
+      if (detectedTeams.length >= 2) {
+        sportsHint += `
+DETECTED TEAMS: ${detectedTeams.slice(0, 2).join(' vs ')}`;
+      } else if (detectedTeams.length === 1) {
+        sportsHint += `
+DETECTED TEAM: ${detectedTeams[0]}`;
+      }
+      
+      // Add date/time period info
+      if (detectedDate) {
+        sportsHint += `
+DETECTED DATE: ${detectedDate}`;
+      } else if (detectedMonthYear) {
+        sportsHint += `
+DETECTED TIME PERIOD: ${detectedMonthYear.month} ${detectedMonthYear.year}`;
+      }
+      
+      // Guide the AI to research the exact date
+      sportsHint += `
+
+TO FIND THE EXACT GAME DATE, think about this search query:
+"when did ${detectedTeams.length >= 2 ? detectedTeams.slice(0, 2).join(' and ') + ' play' : 'this game happen'} in ${detectedMonthYear ? detectedMonthYear.month + ' ' + detectedMonthYear.year : detectedDate || 'this time period'}?"
+
+RESEARCH STRATEGY:
+1. Identify the league/sport (NBA, NFL, MLB, NHL, etc.) from context clues like "nba-on-tbs"
+2. Look up the teams' schedules for the specified month/year
+3. Find the EXACT DATE of the game (there may have been multiple games between these teams that month)
+4. Get details about that specific game
+
+REQUIRED FIELDS:
+- "title": Format as "Team A vs Team B" (e.g., "Bulls vs Lakers")
+- "releaseDate": The EXACT date of the game in YYYY-MM-DD format (THIS IS CRITICAL - research to find it!)
+- "year": The year extracted from the filename
+- "category": The sport type (Basketball, Football, Baseball, Hockey, etc.)
+- "type": Must be "sports"
+- "plot": Comprehensive game details including:
+  * EXACT FINAL SCORE
+  * Standout player performances WITH STATS (points, rebounds, assists, yards, TDs, etc.)
+  * Key plays and game-changing moments
+  * How the game unfolded (quarter by quarter, period by period, etc.)
+  * Context (playoff game, rivalry, streaks, etc.)
+- "makingOf": Key players, coaches, venue, broadcast info, significance of the matchup`;
+
+      userPrompt += sportsHint;
+    } else if (isConcertContent) {
+      // Concert content detection - add detailed hint
+      let concertHint = `
+
+IMPORTANT: This appears to be a CONCERT/LIVE PERFORMANCE recording.`;
+      
+      // Add detected artist(s)
+      if (detectedArtists.length > 0) {
+        concertHint += `
+DETECTED ARTIST(S): ${detectedArtists.join(', ')}`;
+      }
+      
+      // Add detected venue(s)
+      if (detectedVenues.length > 0) {
+        concertHint += `
+DETECTED VENUE(S): ${detectedVenues.join(', ')}`;
+      }
+      
+      // Add date/time period info
+      if (detectedDate) {
+        concertHint += `
+DETECTED DATE: ${detectedDate}`;
+      } else if (detectedMonthYear) {
+        concertHint += `
+DETECTED TIME PERIOD: ${detectedMonthYear.month} ${detectedMonthYear.year}`;
+      }
+      
+      // Guide the AI to research the exact concert date
+      const artistForQuery = detectedArtists.length > 0 ? detectedArtists[0] : 'the artist';
+      const venueForQuery = detectedVenues.length > 0 ? detectedVenues[0] : null;
+      const dateForQuery = detectedMonthYear 
+        ? `${detectedMonthYear.month} ${detectedMonthYear.year}` 
+        : detectedDate || 'the specified time period';
+      
+      concertHint += `
+
+TO FIND THE EXACT CONCERT DATE, think about this search query:
+"${artistForQuery} ${venueForQuery ? venueForQuery + ' concert' : 'live'} ${dateForQuery}"
+or
+"${artistForQuery} tour dates ${detectedMonthYear?.year || ''}"
+
+RESEARCH STRATEGY:
+1. Identify the artist/band and any tour name from the filename
+2. Look up the artist's tour history for the specified year/time period
+3. If a venue is mentioned, find when they played that specific venue
+4. Find the EXACT DATE of the concert/performance
+5. Get setlist and performance details if available
+
+REQUIRED FIELDS:
+- "title": Format as "Artist - Tour/Show Name" or "Artist - Live at Venue" (e.g., "Pink Floyd - The Division Bell Tour" or "Nirvana - Live at Reading")
+- "releaseDate": The EXACT date of the concert in YYYY-MM-DD format (THIS IS CRITICAL - research to find it!)
+- "year": The year of the performance
+- "category": The music genre (Rock, Metal, Pop, Hip-Hop, Electronic, Jazz, etc.)
+- "type": Must be "concert"
+- "plot": Comprehensive concert details including:
+  * Setlist highlights (notable songs performed, rare tracks, covers)
+  * Memorable moments and performances
+  * Audience interaction and atmosphere
+  * Special guests who appeared
+  * Encores and finale
+  * Any technical or notable incidents
+  * Historical significance of the show
+- "makingOf": Performance and production details including:
+  * Band members/lineup for this specific show
+  * Supporting acts/opening bands
+  * Tour context (tour name, leg of tour, tour dates)
+  * Venue capacity and attendance
+  * Stage production, visuals, and technical setup
+  * Recording/filming details if known (was this an official release?)
+  * Critical reception and reviews`;
+
+      userPrompt += concertHint;
+    } else if (hasSportsKeywords && detectedTeams.length > 0) {
+      // Partial sports detection - still add some guidance
       userPrompt += `
 
-IMPORTANT: This appears to be a SPORTS recording with date: ${detectedDate}
-- Extract team names, player names, and the date from the filename
-- Search your knowledge for details about this specific game/event on that date
-- Fill the "plot" field with comprehensive game details including:
-  * Final score
-  * Standout player performances WITH STATS (points, rebounds, assists, yards, touchdowns, etc.)
-  * Individual achievements and milestones
-  * Key plays and game-changing moments
-  * How the game unfolded quarter-by-quarter/period-by-period
-- Set type to "sports"`;
+Note: This may be sports content. Detected team(s): ${detectedTeams.join(', ')}
+If this is a game recording, set type to "sports" and try to determine the exact game date for the releaseDate field.`;
+    } else if (detectedArtists.length > 0) {
+      // Partial concert detection - still add some guidance
+      userPrompt += `
+
+Note: This may be concert/live performance content. Detected artist(s): ${detectedArtists.join(', ')}
+If this is a concert recording, set type to "concert" and try to determine the exact performance date for the releaseDate field.`;
     }
 
     // Add existing metadata as context if any fields are present
