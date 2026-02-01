@@ -141,15 +141,17 @@ export default function ChannelPlaylistPage() {
       console.log("[Playlist Page] loadPlaylist starting", { channelId, mediaSource });
       
       try {
-        // Fetch channel info and playlist in parallel
+        // Fetch channel info, playlist, and metadata in parallel
         const channelsUrl = `/api/channels?source=${encodeURIComponent(mediaSource)}`;
         const scheduleUrl = `/api/channels/${encodeURIComponent(channelId)}/schedule?source=${encodeURIComponent(mediaSource)}`;
+        const metadataUrl = `/api/media-metadata?source=${encodeURIComponent(mediaSource)}&t=${Date.now()}`;
         
         console.log("[Playlist Page] Fetching URLs:", { channelsUrl, scheduleUrl });
         
-        const [channelsRes, scheduleRes] = await Promise.all([
+        const [channelsRes, scheduleRes, metadataRes] = await Promise.all([
           fetch(channelsUrl),
           fetch(scheduleUrl),
+          fetch(metadataUrl, { cache: "no-store" }),
         ]);
         
         console.log("[Playlist Page] Fetch responses:", {
@@ -210,6 +212,12 @@ export default function ChannelPlaylistPage() {
         const normalized = Array.isArray(items) ? items : [];
         setPlaylist(normalized);
         lastSavedPlaylistRef.current = JSON.stringify(normalized);
+        
+        // Load metadata for year display
+        if (metadataRes.ok) {
+          const metadataJson = await metadataRes.json() as MediaMetadataStore;
+          setMediaMetadata(metadataJson);
+        }
         
         console.log("[Playlist Page] Load complete", { playlistLength: normalized.length });
         
@@ -656,12 +664,15 @@ export default function ChannelPlaylistPage() {
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold w-16">#</th>
                       <th className="px-3 py-2 text-left font-semibold">File</th>
+                      <th className="px-3 py-2 text-left font-semibold w-16">Year</th>
                       <th className="px-3 py-2 text-right font-semibold w-28">Duration</th>
                       <th className="px-3 py-2 text-right font-semibold w-32">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {playlist.map((item, idx) => (
+                    {playlist.map((item, idx) => {
+                      const meta = mediaMetadata.items[item.file];
+                      return (
                       <tr key={idx} className="text-neutral-100 bg-neutral-950/60">
                         <td className="px-3 py-2">
                           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-500/30 text-xs font-semibold text-purple-200">
@@ -677,6 +688,9 @@ export default function ChannelPlaylistPage() {
                               <span className="text-xs text-neutral-400">{item.title}</span>
                             )}
                           </div>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-neutral-400">
+                          {meta?.year || "—"}
                         </td>
                         <td className="px-3 py-2 text-right text-neutral-300">
                           {formatDuration(item.durationSeconds)}
@@ -709,7 +723,8 @@ export default function ChannelPlaylistPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
