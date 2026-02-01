@@ -62,69 +62,27 @@ export default function CoverFlowPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Fetch covers (only those actually in use by media)
+  // Fetch covers from remote CDN (primary source for deployed app)
   useEffect(() => {
     const fetchCovers = async () => {
       try {
-        // Fetch covers, metadata in parallel
-        const [localCoversRes, remoteCoversRes, metadataRes] = await Promise.all([
-          fetch("/api/covers?source=local"),
-          fetch("/api/covers?source=remote"),
-          fetch("/api/media-metadata"),
-        ]);
+        // Fetch remote covers first (from CDN), fall back to local
+        const remoteRes = await fetch("/api/covers?source=remote");
+        const remoteData = await remoteRes.json();
         
-        const [localData, remoteData, metadataData] = await Promise.all([
-          localCoversRes.json(),
-          remoteCoversRes.json(),
-          metadataRes.json(),
-        ]);
+        let allCovers: CoverFile[] = remoteData.covers || [];
         
-        // Build set of covers that are actually in use
-        const usedCovers = new Set<string>();
-        const metadata: Record<string, { coverLocal?: string; coverUrl?: string }> = metadataData.items || {};
-        
-        for (const item of Object.values(metadata)) {
-          if (item.coverLocal) {
-            usedCovers.add(item.coverLocal);
-          }
+        // If no remote covers, try local
+        if (allCovers.length === 0) {
+          const localRes = await fetch("/api/covers?source=local");
+          const localData = await localRes.json();
+          allCovers = localData.covers || [];
         }
-        
-        // Collect all available covers
-        let allCovers: CoverFile[] = localData.covers || [];
-        
-        if (remoteData.covers && remoteData.covers.length > 0) {
-          // Merge, avoiding duplicates by filename
-          const localFilenames = new Set(allCovers.map((c) => c.filename));
-          const uniqueRemote = remoteData.covers.filter(
-            (c: CoverFile) => !localFilenames.has(c.filename)
-          );
-          allCovers = [...allCovers, ...uniqueRemote];
-        }
-        
-        // Filter to only include covers that are actually in use
-        const activeCovers = allCovers.filter((cover) => usedCovers.has(cover.filename));
-        
-        // Also include any URL-based covers from metadata
-        const urlCovers: CoverFile[] = [];
-        for (const item of Object.values(metadata)) {
-          if (item.coverUrl) {
-            // Check if we haven't already added this URL
-            const exists = urlCovers.some((c) => c.url === item.coverUrl);
-            if (!exists) {
-              urlCovers.push({
-                filename: item.coverUrl,
-                url: item.coverUrl,
-              });
-            }
-          }
-        }
-        
-        const finalCovers = [...activeCovers, ...urlCovers];
 
-        if (finalCovers.length === 0) {
+        if (allCovers.length === 0) {
           setError("No covers found in your media library");
         } else {
-          setCovers(finalCovers);
+          setCovers(allCovers);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load covers");
