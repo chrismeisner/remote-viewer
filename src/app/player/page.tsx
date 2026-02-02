@@ -1109,7 +1109,7 @@ export default function Home() {
       <div className="flex w-full flex-nowrap gap-2 sm:flex-wrap">
         <button
           onClick={() => setCrtEnabled((c) => !c)}
-          className={`inline-flex min-w-0 flex-1 basis-1/4 items-center justify-center rounded-md border px-3 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
+          className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
             crtEnabled
               ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
               : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -1120,7 +1120,7 @@ export default function Home() {
         <button
           onClick={() => setMuted((m) => !m)}
           aria-pressed={muted}
-          className={`inline-flex min-w-0 flex-1 basis-1/4 items-center justify-center rounded-md border px-3 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none ${
+          className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
             muted
               ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
               : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -1130,9 +1130,20 @@ export default function Home() {
         </button>
         <button
           onClick={toggleFullscreen}
-          className="inline-flex min-w-0 flex-1 basis-1/4 items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none"
+          className="inline-flex min-w-0 flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-2 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:px-3"
         >
-          {isFullscreen ? "Exit" : "Fullscreen"}
+          {isFullscreen ? "Exit" : "Full"}
+        </button>
+        <button
+          onClick={() => nowPlaying && setShowInfoModal(true)}
+          disabled={!nowPlaying}
+          className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
+            !nowPlaying
+              ? "border-white/10 bg-white/5 text-neutral-500 cursor-not-allowed"
+              : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
+          }`}
+        >
+          Info
         </button>
       </div>
       <button
