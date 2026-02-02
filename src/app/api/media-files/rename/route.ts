@@ -2,7 +2,7 @@ import path from "node:path";
 import { Readable, Writable } from "node:stream";
 import { NextResponse } from "next/server";
 import { Client } from "basic-ftp";
-import { requireFtpConfig, getRemoteBaseDir, atomicJsonUpdate } from "@/lib/ftp";
+import { requireFtpConfig, getRemoteBaseDir, atomicJsonUpdate, type AtomicUpdateOptions } from "@/lib/ftp";
 import type { Schedule } from "@/lib/schedule";
 import type { MediaMetadataStore } from "@/lib/media";
 
@@ -182,8 +182,10 @@ export async function POST(request: Request) {
       }
 
       // Update schedule.json to fix references in channel playlists
+      // CRITICAL: Use requireExistingOnError to prevent wiping existing channels
       let scheduleUpdated = false;
       const updatedChannels: string[] = [];
+      const safetyOptions: AtomicUpdateOptions = { requireExistingOnError: true };
       try {
         await atomicJsonUpdate<Schedule>(
           "schedule.json",
@@ -233,7 +235,8 @@ export async function POST(request: Request) {
             
             return schedule;
           },
-          { channels: {} }
+          { channels: {} },
+          safetyOptions
         );
       } catch (scheduleError) {
         // Log but don't fail the whole operation if schedule update fails
@@ -241,7 +244,10 @@ export async function POST(request: Request) {
       }
 
       // Update media-metadata.json to move metadata to new key
+      // Note: For metadata, it's okay to use empty default if file doesn't exist,
+      // but we should still protect against network errors
       let metadataUpdated = false;
+      const metadataSafetyOptions: AtomicUpdateOptions = { requireExistingOnError: true };
       try {
         await atomicJsonUpdate<MediaMetadataStore>(
           "media-metadata.json",
@@ -262,7 +268,8 @@ export async function POST(request: Request) {
             
             return { ...metadata, items };
           },
-          { items: {} }
+          { items: {} },
+          metadataSafetyOptions
         );
       } catch (metadataError) {
         // Log but don't fail the whole operation if metadata update fails

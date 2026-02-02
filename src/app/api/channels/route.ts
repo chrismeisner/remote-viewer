@@ -9,7 +9,7 @@ import {
   saveFullSchedule,
   type ChannelInfo,
 } from "@/lib/media";
-import { normalizeChannelId, isFtpConfigured, atomicJsonUpdate, downloadJsonFromFtp } from "@/lib/ftp";
+import { normalizeChannelId, isFtpConfigured, atomicJsonUpdate, downloadJsonFromFtp, type AtomicUpdateOptions } from "@/lib/ftp";
 
 export const runtime = "nodejs";
 
@@ -161,7 +161,10 @@ export async function POST(request: NextRequest) {
 
       // Use atomic operation to prevent race conditions
       // This reads directly from FTP, modifies, and writes back with locking
+      // CRITICAL: Use requireExistingOnError to prevent wiping existing channels
+      // if there's a transient FTP error during the read phase
       let channelExists = false;
+      const safetyOptions: AtomicUpdateOptions = { requireExistingOnError: true };
       const updatedSchedule = await atomicJsonUpdate<ScheduleData>(
         "schedule.json",
         (schedule) => {
@@ -192,7 +195,8 @@ export async function POST(request: NextRequest) {
           console.log("[Channels API POST] Updated channels:", Object.keys(schedule.channels));
           return schedule;
         },
-        { channels: {} }
+        { channels: {} },
+        safetyOptions
       );
 
       console.log("[Channels API POST] Atomic update complete", { channelExists, updatedChannels: Object.keys(updatedSchedule.channels) });
@@ -257,9 +261,11 @@ export async function PATCH(request: NextRequest) {
       }
 
       // Use atomic operation to prevent race conditions
+      // CRITICAL: Use requireExistingOnError to prevent wiping existing channels
       let channelNotFound = false;
       let targetIdExists = false;
       let finalTargetId = id;
+      const safetyOptions: AtomicUpdateOptions = { requireExistingOnError: true };
 
       const updatedSchedule = await atomicJsonUpdate<ScheduleData>(
         "schedule.json",
@@ -310,7 +316,8 @@ export async function PATCH(request: NextRequest) {
 
           return schedule;
         },
-        { channels: {} }
+        { channels: {} },
+        safetyOptions
       );
 
       if (channelNotFound) {
@@ -412,7 +419,9 @@ export async function DELETE(request: NextRequest) {
       }
 
       // Use atomic operation to prevent race conditions
+      // CRITICAL: Use requireExistingOnError to prevent wiping existing channels
       let channelNotFound = false;
+      const safetyOptions: AtomicUpdateOptions = { requireExistingOnError: true };
       const updatedSchedule = await atomicJsonUpdate<ScheduleData>(
         "schedule.json",
         (schedule) => {
@@ -424,7 +433,8 @@ export async function DELETE(request: NextRequest) {
           delete schedule.channels[id];
           return schedule;
         },
-        { channels: {} }
+        { channels: {} },
+        safetyOptions
       );
 
       if (channelNotFound) {

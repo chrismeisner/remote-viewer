@@ -317,6 +317,50 @@ export async function listFtpDirectory(subPath: string): Promise<string[]> {
 // Atomic FTP Operations (Read-Modify-Write with Locking)
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type AtomicUpdateOptions = {
+  /**
+   * If true, throw an error if the file cannot be read (network error, parse error).
+   * Only use defaultValue if the file genuinely doesn't exist.
+   * This prevents accidental data wipes when the FTP connection fails.
+   */
+  requireExistingOnError?: boolean;
+  /**
+   * If true, completely skip using the default value - always require the file to exist.
+   * Throws if the file doesn't exist.
+   */
+  requireExisting?: boolean;
+};
+
+/**
+ * Result type for safe FTP file reads.
+ * Distinguishes between "file doesn't exist" and "error reading file".
+ */
+type SafeReadResult<T> =
+  | { status: "found"; data: T }
+  | { status: "not_found" }
+  | { status: "error"; error: Error };
+
+/**
+ * Safely read a JSON file from FTP, distinguishing between "not found" and "error".
+ */
+async function safeDownloadJsonFromFtp<T>(filename: string): Promise<SafeReadResult<T>> {
+  try {
+    const downloaded = await downloadJsonFromFtp<T>(filename);
+    if (downloaded === null) {
+      return { status: "not_found" };
+    }
+    return { status: "found", data: downloaded };
+  } catch (error) {
+    // Check if this is a "file not found" error (550)
+    const err = error as NodeJS.ErrnoException;
+    if (err?.code === "550" || err?.message?.includes("550") || err?.message?.includes("not found")) {
+      return { status: "not_found" };
+    }
+    // Otherwise, it's a real error (network, parse, etc.)
+    return { status: "error", error: error instanceof Error ? error : new Error(String(error)) };
+  }
+}
+
 /**
  * Atomically read, modify, and write a JSON file on FTP.
  * This prevents race conditions by:
@@ -326,28 +370,56 @@ export async function listFtpDirectory(subPath: string): Promise<string[]> {
  * 4. Writing back to FTP
  * 5. Releasing the lock
  * 
+ * IMPORTANT: By default, if the file read fails due to a network error or parse error,
+ * this function will use the defaultValue which can cause DATA LOSS. 
+ * Use options.requireExistingOnError = true to throw instead.
+ * 
  * @param filename - The JSON file to modify (relative to FTP base directory)
  * @param modifier - Function that receives current data and returns modified data
  * @param defaultValue - Default value if file doesn't exist
+ * @param options - Safety options to prevent data loss
  * @returns The modified data
  */
 export async function atomicJsonUpdate<T>(
   filename: string,
   modifier: (current: T) => T | Promise<T>,
-  defaultValue: T
+  defaultValue: T,
+  options?: AtomicUpdateOptions
 ): Promise<T> {
   return ftpMutex.withLock(filename, async () => {
     console.log(`[FTP Atomic] Starting atomic update for ${filename}`);
     
     // Read current data directly from FTP (not CDN)
+    const readResult = await safeDownloadJsonFromFtp<T>(filename);
+    
     let current: T;
-    try {
-      const downloaded = await downloadJsonFromFtp<T>(filename);
-      current = downloaded ?? defaultValue;
-      console.log(`[FTP Atomic] Read current data from FTP for ${filename}`);
-    } catch (error) {
-      console.log(`[FTP Atomic] File not found or error reading ${filename}, using default`);
-      current = defaultValue;
+    
+    switch (readResult.status) {
+      case "found":
+        current = readResult.data;
+        console.log(`[FTP Atomic] Read current data from FTP for ${filename}`);
+        break;
+        
+      case "not_found":
+        if (options?.requireExisting) {
+          throw new Error(`[FTP Atomic] File ${filename} does not exist and requireExisting is true`);
+        }
+        console.log(`[FTP Atomic] File ${filename} does not exist, using default value`);
+        current = defaultValue;
+        break;
+        
+      case "error":
+        // This is critical - if we can't read the file due to an error,
+        // using defaultValue could wipe existing data!
+        if (options?.requireExistingOnError) {
+          console.error(`[FTP Atomic] ERROR reading ${filename}: ${readResult.error.message}`);
+          throw new Error(`[FTP Atomic] Failed to read ${filename}: ${readResult.error.message}. Aborting to prevent data loss.`);
+        }
+        // Legacy behavior: use default (DANGEROUS - can cause data loss!)
+        console.warn(`[FTP Atomic] WARNING: Error reading ${filename}, using default. This may cause data loss!`);
+        console.warn(`[FTP Atomic] Error was: ${readResult.error.message}`);
+        current = defaultValue;
+        break;
     }
     
     // Apply modification

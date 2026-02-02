@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { loadSchedule, loadFullSchedule, saveSchedule, clearMediaCaches } from "@/lib/media";
 import type { ChannelSchedule, Schedule } from "@/lib/schedule";
 import type { MediaSource } from "@/constants/media";
-import { isFtpConfigured, normalizeChannelId, atomicJsonUpdate } from "@/lib/ftp";
+import { isFtpConfigured, normalizeChannelId, atomicJsonUpdate, type AtomicUpdateOptions } from "@/lib/ftp";
 
 export const runtime = "nodejs";
 
@@ -48,6 +48,8 @@ export async function PUT(request: NextRequest) {
 
       // Use atomic operation to prevent race conditions
       // This reads directly from FTP, modifies, and writes back with locking
+      // CRITICAL: Use requireExistingOnError to prevent wiping existing channels
+      const safetyOptions: AtomicUpdateOptions = { requireExistingOnError: true };
       await atomicJsonUpdate<Schedule>(
         "schedule.json",
         (fullSchedule) => {
@@ -73,7 +75,8 @@ export async function PUT(request: NextRequest) {
           // Normalize schedule for pushing (ensure active field is explicit)
           return normalizeScheduleForPush(fullSchedule);
         },
-        { channels: {} }
+        { channels: {} },
+        safetyOptions
       );
 
       return NextResponse.json({ schedule: payload, source: "remote" });
