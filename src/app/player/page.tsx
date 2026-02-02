@@ -116,18 +116,17 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   // Build title: "📺 03 Movies"
   const title = `📺 ${channelDisplay}`;
   
-  // Build description with now playing info
-  let description = "Local channel-style playback for your video library";
-  if (nowPlaying) {
-    const mediaTitle = nowPlaying.title || nowPlaying.relPath.split("/").pop() || "Unknown";
-    description = `Now playing: ${mediaTitle}`;
-  }
-  
-  // Get cover image if we have now playing content
+  // Get media metadata if we have now playing content (for title and cover image)
   let coverImageUrl: string | null = null;
+  let description = "Local channel-style playback for your video library";
+  
   if (nowPlaying) {
     const mediaMetadata = await getMediaMetadata(nowPlaying.relPath);
     coverImageUrl = buildCoverImageUrl(mediaMetadata);
+    
+    // Use metadata title if available, otherwise fall back to nowPlaying title or filename
+    const mediaTitle = mediaMetadata?.title || nowPlaying.title || nowPlaying.relPath.split("/").pop() || "Unknown";
+    description = `Now playing: ${mediaTitle}`;
   }
   
   // Use cover image if available, otherwise fallback to default OG image
