@@ -118,6 +118,8 @@ export function getRemoteBaseDir(remotePath: string): string {
 
 /**
  * Upload JSON data to a file on the FTP server.
+ * Uses atomic write pattern: write to temp file, then rename to target.
+ * This prevents file corruption from concurrent writes or interrupted uploads.
  */
 export async function uploadJsonToFtp(
   filename: string,
@@ -126,8 +128,18 @@ export async function uploadJsonToFtp(
   const { host, user, password, port, remotePath, secure } = requireFtpConfig();
 
   const json = JSON.stringify(data, null, 2);
+  
+  // Validate JSON can be parsed back (catch serialization issues)
+  try {
+    JSON.parse(json);
+  } catch (e) {
+    throw new Error(`[FTP Upload] Invalid JSON data - would corrupt file: ${e}`);
+  }
+  
   const baseDir = getRemoteBaseDir(remotePath);
   const targetPath = path.posix.join(baseDir, filename);
+  // Use a unique temp filename to avoid conflicts
+  const tempPath = path.posix.join(baseDir, `.${filename}.${Date.now()}.tmp`);
 
   const client = new Client(15000);
   try {
@@ -135,8 +147,28 @@ export async function uploadJsonToFtp(
     if (baseDir && baseDir !== ".") {
       await client.ensureDir(baseDir);
     }
+    
+    // Step 1: Upload to temp file
     const stream = Readable.from([json]);
-    await client.uploadFrom(stream, targetPath);
+    await client.uploadFrom(stream, tempPath);
+    console.log(`[FTP Upload] Uploaded to temp file: ${tempPath}`);
+    
+    // Step 2: Atomic rename temp -> target
+    // This is atomic on most filesystems, preventing partial writes
+    try {
+      await client.rename(tempPath, targetPath);
+      console.log(`[FTP Upload] Renamed ${tempPath} -> ${targetPath}`);
+    } catch (renameError) {
+      // If rename fails, try to clean up temp file
+      console.error(`[FTP Upload] Rename failed, cleaning up temp file:`, renameError);
+      try {
+        await client.remove(tempPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+      throw renameError;
+    }
+    
     return targetPath;
   } finally {
     client.close();

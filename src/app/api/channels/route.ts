@@ -28,24 +28,53 @@ type ScheduleData = {
 // NOTE: We read directly from FTP (not CDN) to avoid cache staleness issues.
 // CDN caching caused newly created channels to not appear immediately.
 
-async function fetchRemoteScheduleForRead(): Promise<ScheduleData | null> {
+type ScheduleReadResult = 
+  | { status: "ok"; schedule: ScheduleData }
+  | { status: "not_found" }
+  | { status: "error"; error: string };
+
+async function fetchRemoteScheduleForRead(): Promise<ScheduleReadResult> {
   try {
     // Read directly from FTP to avoid CDN cache staleness
     const schedule = await downloadJsonFromFtp<ScheduleData>("schedule.json");
-    return schedule;
+    if (schedule === null) {
+      return { status: "not_found" };
+    }
+    return { status: "ok", schedule };
   } catch (error) {
-    console.error("[Channels API] Failed to read schedule from FTP:", error);
-    return null;
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("[Channels API] Failed to read schedule from FTP:", errorMsg);
+    
+    // Check if this is a JSON parse error (corrupted file)
+    if (errorMsg.includes("JSON") || errorMsg.includes("parse") || errorMsg.includes("Unexpected")) {
+      return { status: "error", error: `Schedule file is corrupted: ${errorMsg}` };
+    }
+    
+    return { status: "error", error: errorMsg };
   }
 }
 
-async function listRemoteChannels(): Promise<ChannelInfo[]> {
+type RemoteChannelsResult =
+  | { status: "ok"; channels: ChannelInfo[] }
+  | { status: "error"; error: string };
+
+async function listRemoteChannels(): Promise<RemoteChannelsResult> {
   if (!isFtpConfigured()) {
     console.warn("[Channels API] FTP not configured for remote channel listing");
-    return [];
+    return { status: "error", error: "FTP not configured" };
   }
-  const schedule = await fetchRemoteScheduleForRead();
-  return channelsFromSchedule(schedule);
+  const result = await fetchRemoteScheduleForRead();
+  
+  switch (result.status) {
+    case "ok":
+      return { status: "ok", channels: channelsFromSchedule(result.schedule) };
+    case "not_found":
+      // File doesn't exist yet - this is fine, return empty list
+      return { status: "ok", channels: [] };
+    case "error":
+      // This is a real error (corrupted file, network issue)
+      return { status: "error", error: result.error };
+  }
 }
 
 // Sort channels numerically when IDs are numbers, otherwise alphabetically
@@ -102,16 +131,36 @@ export async function GET(request: NextRequest) {
     }
     
     console.log("[Channels API GET] Calling listChannels...");
-    const channels = isRemote 
-      ? await listRemoteChannels() 
-      : await listChannels("local");
     
-    console.log("[Channels API GET] Channels loaded:", {
-      count: channels.length,
-      channelIds: channels.map(c => c.id),
-    });
-    
-    return NextResponse.json({ channels, source });
+    if (isRemote) {
+      const result = await listRemoteChannels();
+      
+      if (result.status === "error") {
+        console.error("[Channels API GET] Remote error:", result.error);
+        // Return error with HTTP 500 so UI shows the actual problem
+        return NextResponse.json({ 
+          error: result.error, 
+          channels: [],
+          source,
+        }, { status: 500 });
+      }
+      
+      console.log("[Channels API GET] Remote channels loaded:", {
+        count: result.channels.length,
+        channelIds: result.channels.map(c => c.id),
+      });
+      
+      return NextResponse.json({ channels: result.channels, source });
+    } else {
+      const channels = await listChannels("local");
+      
+      console.log("[Channels API GET] Local channels loaded:", {
+        count: channels.length,
+        channelIds: channels.map(c => c.id),
+      });
+      
+      return NextResponse.json({ channels, source });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to list channels";
     console.error("[Channels API GET] Error:", message, error);
