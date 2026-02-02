@@ -15,7 +15,7 @@ export default function Header() {
       <div className="header-inner mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4 text-neutral-100">
         <div>
           <Link
-            href="/"
+            href="/player"
             className="text-sm font-semibold text-neutral-300 hover:text-neutral-100"
           >
             Remote Viewer

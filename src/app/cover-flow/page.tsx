@@ -281,9 +281,9 @@ export default function CoverFlowPage() {
         <div className="max-w-md mx-auto flex items-center justify-between bg-black/80 backdrop-blur-sm rounded-xl border border-white/10 px-4 py-3">
           <div className="flex items-center gap-3">
             <a
-              href="/"
+              href="/player"
               className="p-2 rounded-lg hover:bg-white/10 transition text-neutral-400 hover:text-white"
-              title="Back to home"
+              title="Back to player"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />

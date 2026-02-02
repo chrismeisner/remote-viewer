@@ -24,7 +24,7 @@ const links = [
     desc: "View global Tailwind styles and design tokens.",
   },
   {
-    href: "/",
+    href: "/player",
     title: "Player",
     desc: "Preview the current channel playback.",
   },
