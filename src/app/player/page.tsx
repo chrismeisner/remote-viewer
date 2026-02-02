@@ -113,8 +113,8 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     ? `${channelId.padStart(2, "0")} ${channelInfo.shortName}`
     : channelId.padStart(2, "0");
   
-  // Build title: "Remote Viewer - 03 Movies"
-  const title = `Remote Viewer - ${channelDisplay}`;
+  // Build title: "Remote Viewer 📺 03 Movies"
+  const title = `Remote Viewer 📺 ${channelDisplay}`;
   
   // Build description with now playing info
   let description = "Local channel-style playback for your video library";
