@@ -1088,10 +1088,16 @@ export default function Home() {
     }
   };
   
-  // Helper to build cover image URL
+  // Helper to build cover image URL - accounts for media source
   const buildCoverImageUrl = (metadata: MediaMetadata): string | null => {
     if (metadata.coverUrl) return metadata.coverUrl;
-    if (metadata.coverLocal) return `/api/covers/${encodeURIComponent(metadata.coverLocal)}`;
+    if (metadata.coverLocal) {
+      // For remote mode, coverLocal files are on the FTP/CDN server
+      if (mediaSource === "remote") {
+        return `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(metadata.coverLocal)}`;
+      }
+      return `/api/covers/${encodeURIComponent(metadata.coverLocal)}`;
+    }
     if (metadata.coverPath) return `/api/local-image?path=${encodeURIComponent(metadata.coverPath)}`;
     return null;
   };

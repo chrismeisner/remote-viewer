@@ -2088,8 +2088,12 @@ export function buildCoverUrl(filename: string): string {
 /**
  * Resolve the effective cover URL for a media item.
  * Priority: coverUrl > coverPath (local filesystem) > coverLocal (covers folder) > null
+ * 
+ * @param metadata - The media metadata item
+ * @param source - The media source ("local" or "remote"). When "remote", coverLocal
+ *                 files are resolved to the remote CDN URL instead of local API.
  */
-export function resolveCoverUrl(metadata: MediaMetadataItem): string | null {
+export function resolveCoverUrl(metadata: MediaMetadataItem, source: "local" | "remote" = "local"): string | null {
   if (metadata.coverUrl) {
     return metadata.coverUrl;
   }
@@ -2097,6 +2101,10 @@ export function resolveCoverUrl(metadata: MediaMetadataItem): string | null {
     return `/api/local-image?path=${encodeURIComponent(metadata.coverPath)}`;
   }
   if (metadata.coverLocal) {
+    // For remote mode, coverLocal files are on the FTP/CDN server
+    if (source === "remote") {
+      return `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(metadata.coverLocal)}`;
+    }
     return buildCoverUrl(metadata.coverLocal);
   }
   return null;

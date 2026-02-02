@@ -212,8 +212,8 @@ export async function PUT(request: NextRequest) {
     
     const updated = await updateMediaItemMetadataBySource(file, updates, source);
     
-    // Include resolved cover URL in response
-    const resolvedCover = resolveCoverUrl(updated);
+    // Include resolved cover URL in response (pass source for correct URL resolution)
+    const resolvedCover = resolveCoverUrl(updated, source);
     
     return NextResponse.json({
       file,

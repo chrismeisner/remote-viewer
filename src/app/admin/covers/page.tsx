@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   MEDIA_SOURCE_KEY,
+  REMOTE_MEDIA_BASE,
   type MediaSource,
 } from "@/constants/media";
 
@@ -103,11 +104,11 @@ export default function CoversPage() {
     setError(null);
     
     try {
-      // Fetch in parallel: local covers (with config), media items, metadata
+      // Fetch in parallel: covers (with config and source), media items, metadata
       const [coversRes, mediaRes, metadataRes] = await Promise.all([
-        fetch("/api/covers?config=true"),
+        fetch(`/api/covers?config=true&source=${mediaSource}`),
         fetch(`/api/media-files?source=${mediaSource}`),
-        fetch("/api/media-metadata"),
+        fetch(`/api/media-metadata?source=${mediaSource}`),
       ]);
       
       const [coversData, mediaData, metadataData] = await Promise.all([
@@ -120,7 +121,7 @@ export default function CoversPage() {
       if (!mediaRes.ok) throw new Error(mediaData.error || "Failed to load media");
       if (!metadataRes.ok) throw new Error(metadataData.error || "Failed to load metadata");
       
-      // Set folder config
+      // Set folder config (only relevant for local mode)
       setFolderConfig({
         coversFolder: coversData.coversFolder || null,
         customCoversFolder: coversData.customCoversFolder || null,
@@ -154,7 +155,10 @@ export default function CoversPage() {
           coverValue = itemMeta.coverLocal;
           if (coverFilenames.has(itemMeta.coverLocal)) {
             coverStatus = "local";
-            resolvedUrl = `/api/covers/${encodeURIComponent(itemMeta.coverLocal)}`;
+            // For remote mode, coverLocal files are on the FTP/CDN server
+            resolvedUrl = mediaSource === "remote"
+              ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(itemMeta.coverLocal)}`
+              : `/api/covers/${encodeURIComponent(itemMeta.coverLocal)}`;
             usedCovers.add(itemMeta.coverLocal);
           } else {
             coverStatus = "broken-local";
