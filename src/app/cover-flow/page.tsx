@@ -226,41 +226,37 @@ export default function CoverFlowPage() {
   }
 
   return (
-    <div className="fixed inset-0 bg-black overflow-hidden">
+    <div className="cover-flow-container">
       {/* Cover Flow Grid */}
-      <div className="absolute inset-0 flex gap-2 sm:gap-3 p-2 sm:p-3">
+      <div className="cover-flow-grid">
         {columns.map((column, colIndex) => (
           <div
             key={colIndex}
-            className="flex-1 overflow-hidden relative"
-            style={{ minWidth: 0 }}
+            className="cover-flow-column"
           >
             <div
-              className={`flex flex-col gap-2 sm:gap-3 ${isPaused ? "" : "animate-scroll"}`}
+              className={`cover-flow-scroll ${isPaused ? "paused" : ""}`}
               style={{
                 animationDuration: `${column.speed}s`,
                 animationDirection: column.reverse ? "reverse" : "normal",
-                animationPlayState: isPaused ? "paused" : "running",
-                animationDelay: `-${(column.offset / 33.333) * column.speed}s`, // Start at different positions
+                animationDelay: `-${(column.offset / 33.333) * column.speed}s`,
               }}
             >
               {column.covers.map((cover, idx) => (
                 <div
                   key={`${cover.filename}-${idx}`}
-                  className="relative aspect-[2/3] rounded-lg overflow-hidden flex-shrink-0 bg-neutral-900"
+                  className="cover-item"
                 >
                   <img
                     src={cover.url}
                     alt=""
-                    className="w-full h-full object-cover"
+                    className="cover-image"
                     loading="lazy"
                     onError={(e) => {
-                      // Hide broken images
                       (e.target as HTMLImageElement).style.opacity = "0";
                     }}
                   />
-                  {/* Subtle shine overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-black/20 pointer-events-none" />
+                  <div className="cover-shine" />
                 </div>
               ))}
             </div>
@@ -269,38 +265,30 @@ export default function CoverFlowPage() {
       </div>
 
       {/* Gradient overlays for depth */}
-      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black via-black/50 to-transparent pointer-events-none" />
-      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black via-black/50 to-transparent pointer-events-none" />
+      <div className="gradient-top" />
+      <div className="gradient-bottom" />
 
       {/* Controls overlay */}
-      <div
-        className={`fixed inset-x-0 bottom-0 p-6 transition-opacity duration-500 ${
-          showControls ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
-      >
-        <div className="max-w-md mx-auto flex items-center justify-between bg-black/80 backdrop-blur-sm rounded-xl border border-white/10 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <a
-              href="/player"
-              className="p-2 rounded-lg hover:bg-white/10 transition text-neutral-400 hover:text-white"
-              title="Back to player"
-            >
+      <div className={`controls-overlay ${showControls ? "visible" : ""}`}>
+        <div className="controls-bar">
+          <div className="controls-left">
+            <a href="/player" className="control-btn" title="Back to player">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </a>
-            <div className="h-6 w-px bg-white/10" />
+            <div className="divider" />
             <div className="text-sm">
               <p className="font-medium text-white">Cover Flow</p>
               <p className="text-xs text-neutral-500">{covers.length} covers</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="controls-right">
             <button
               onClick={() => setIsPaused(!isPaused)}
-              className="p-2 rounded-lg hover:bg-white/10 transition text-neutral-400 hover:text-white"
-              title={isPaused ? "Play (Space)" : "Pause (Space)"}
+              className="control-btn"
+              title={isPaused ? "Play" : "Pause"}
             >
               {isPaused ? (
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -315,44 +303,279 @@ export default function CoverFlowPage() {
           </div>
         </div>
         
-        {/* Keyboard hints */}
-        <div className="mt-3 flex items-center justify-center gap-4 text-xs text-neutral-600">
+        {/* Keyboard hints - hide on mobile */}
+        <div className="keyboard-hints">
           <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 font-mono">Space</kbd>
-            {" "}pause
+            <kbd>Space</kbd> pause
           </span>
           <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 font-mono">Esc</kbd>
-            {" "}exit
+            <kbd>Esc</kbd> exit
           </span>
         </div>
       </div>
 
-      {/* CSS for infinite scroll animation */}
+      {/* CSS for mobile-friendly cover flow */}
       <style jsx>{`
-        @keyframes scroll {
+        .cover-flow-container {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          width: 100%;
+          height: 100dvh; /* Dynamic viewport height for mobile */
+          background: black;
+          overflow: hidden;
+          touch-action: none; /* Prevent pull-to-refresh */
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .cover-flow-grid {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          display: flex;
+          gap: 8px;
+          padding: 8px;
+        }
+
+        @media (min-width: 640px) {
+          .cover-flow-grid {
+            gap: 12px;
+            padding: 12px;
+          }
+        }
+
+        .cover-flow-column {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          position: relative;
+        }
+
+        /* Hide extra columns on mobile */
+        .cover-flow-column:nth-child(n+4) {
+          display: none;
+        }
+
+        @media (min-width: 480px) {
+          .cover-flow-column:nth-child(n+4) {
+            display: block;
+          }
+          .cover-flow-column:nth-child(n+5) {
+            display: none;
+          }
+        }
+
+        @media (min-width: 640px) {
+          .cover-flow-column:nth-child(n+5) {
+            display: block;
+          }
+          .cover-flow-column:nth-child(n+6) {
+            display: none;
+          }
+        }
+
+        @media (min-width: 768px) {
+          .cover-flow-column:nth-child(n+6) {
+            display: block;
+          }
+          .cover-flow-column:nth-child(n+7) {
+            display: none;
+          }
+        }
+
+        @media (min-width: 1024px) {
+          .cover-flow-column:nth-child(n+7) {
+            display: block;
+          }
+        }
+
+        .cover-flow-scroll {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          will-change: transform;
+          -webkit-animation: scroll linear infinite;
+          animation: scroll linear infinite;
+        }
+
+        @media (min-width: 640px) {
+          .cover-flow-scroll {
+            gap: 12px;
+          }
+        }
+
+        .cover-flow-scroll.paused {
+          -webkit-animation-play-state: paused;
+          animation-play-state: paused;
+        }
+
+        @-webkit-keyframes scroll {
           0% {
+            -webkit-transform: translateY(0);
             transform: translateY(0);
           }
           100% {
+            -webkit-transform: translateY(-33.333%);
             transform: translateY(-33.333%);
           }
         }
 
-        .animate-scroll {
-          animation: scroll linear infinite;
-        }
-
-        /* Hide columns on smaller screens */
-        @media (max-width: 640px) {
-          .flex > div:nth-child(n+5) {
-            display: none;
+        @keyframes scroll {
+          0% {
+            -webkit-transform: translateY(0);
+            transform: translateY(0);
+          }
+          100% {
+            -webkit-transform: translateY(-33.333%);
+            transform: translateY(-33.333%);
           }
         }
 
-        @media (min-width: 641px) and (max-width: 1024px) {
-          .flex > div:nth-child(n+7) {
-            display: none;
+        .cover-item {
+          position: relative;
+          aspect-ratio: 2/3;
+          border-radius: 8px;
+          overflow: hidden;
+          flex-shrink: 0;
+          background: #171717;
+        }
+
+        .cover-image {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          -webkit-backface-visibility: hidden;
+          backface-visibility: hidden;
+        }
+
+        .cover-shine {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 50%, rgba(0,0,0,0.2) 100%);
+          pointer-events: none;
+        }
+
+        .gradient-top {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 80px;
+          background: linear-gradient(to bottom, black, rgba(0,0,0,0.5), transparent);
+          pointer-events: none;
+          z-index: 10;
+        }
+
+        .gradient-bottom {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 120px;
+          background: linear-gradient(to top, black, rgba(0,0,0,0.5), transparent);
+          pointer-events: none;
+          z-index: 10;
+        }
+
+        .controls-overlay {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          padding: 16px;
+          padding-bottom: max(16px, env(safe-area-inset-bottom));
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.5s;
+          z-index: 20;
+        }
+
+        .controls-overlay.visible {
+          opacity: 1;
+          pointer-events: auto;
+        }
+
+        .controls-bar {
+          max-width: 400px;
+          margin: 0 auto;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: rgba(0,0,0,0.8);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.1);
+          padding: 12px 16px;
+        }
+
+        .controls-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .controls-right {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .control-btn {
+          padding: 8px;
+          border-radius: 8px;
+          color: #a3a3a3;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .control-btn:hover,
+        .control-btn:active {
+          background: rgba(255,255,255,0.1);
+          color: white;
+        }
+
+        .divider {
+          width: 1px;
+          height: 24px;
+          background: rgba(255,255,255,0.1);
+        }
+
+        .keyboard-hints {
+          margin-top: 12px;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          font-size: 12px;
+          color: #525252;
+        }
+
+        @media (min-width: 640px) {
+          .keyboard-hints {
+            display: flex;
+          }
+        }
+
+        .keyboard-hints kbd {
+          padding: 2px 6px;
+          border-radius: 4px;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          font-family: monospace;
+          font-size: 11px;
+        }
+
+        /* Reduce motion for users who prefer it */
+        @media (prefers-reduced-motion: reduce) {
+          .cover-flow-scroll {
+            animation: none;
           }
         }
       `}</style>
