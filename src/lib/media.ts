@@ -496,6 +496,7 @@ export async function saveSchedule(
       ...existingChannel,
       type: "looping",
       playlist: schedule.playlist,
+      epochOffsetHours: schedule.epochOffsetHours,
       // Clear slots for looping channels
       slots: undefined,
     };
@@ -534,6 +535,7 @@ export async function loadSchedule(
     playlist: channelSchedule.playlist,
     shortName: channelSchedule.shortName,
     active: channelSchedule.active,
+    epochOffsetHours: channelSchedule.epochOffsetHours,
   };
 }
 
@@ -781,6 +783,9 @@ async function get24HourNowPlaying(
  * Get now playing for a looping schedule.
  * The playlist loops infinitely based on epoch time.
  * Everyone watching sees the same thing at the same time.
+ * 
+ * epochOffsetHours shifts when the loop "starts" - useful for fine-tuning
+ * when specific content plays without reordering the playlist.
  */
 async function getLoopingNowPlaying(
   schedule: ChannelSchedule,
@@ -795,8 +800,12 @@ async function getLoopingNowPlaying(
   if (totalDuration <= 0) return null;
 
   // Get current position in the infinite loop based on epoch seconds
+  // Apply epoch offset (in hours) to shift when the loop starts
+  const epochOffsetSeconds = (schedule.epochOffsetHours || 0) * 3600;
   const nowSeconds = Math.floor(now / 1000);
-  const positionInLoop = nowSeconds % totalDuration;
+  const adjustedSeconds = nowSeconds - epochOffsetSeconds;
+  // Use modulo that handles negative numbers correctly
+  const positionInLoop = ((adjustedSeconds % totalDuration) + totalDuration) % totalDuration;
 
   // Find which item is playing and at what offset
   let accumulated = 0;

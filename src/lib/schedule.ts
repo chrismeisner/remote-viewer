@@ -23,6 +23,7 @@ export type ChannelSchedule = {
   playlist?: PlaylistItem[]; // For "looping" type
   shortName?: string;
   active?: boolean; // Default true if undefined
+  epochOffsetHours?: number; // For "looping" type: offset in hours to shift the loop start (e.g., 1, 1.5, 4)
 };
 
 // Single schedule.json containing all channels

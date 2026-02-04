@@ -71,6 +71,7 @@ export default function ChannelPlaylistPage() {
   const channelId = params.channel as string;
   
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
+  const [epochOffsetHours, setEpochOffsetHours] = useState<number>(0);
   const [channelInfo, setChannelInfo] = useState<ChannelInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -98,6 +99,7 @@ export default function ChannelPlaylistPage() {
   
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedPlaylistRef = useRef<string>("[]");
+  const lastSavedOffsetRef = useRef<number>(0);
 
   // Load media source from localStorage - must complete before loading data
   useEffect(() => {
@@ -212,6 +214,11 @@ export default function ChannelPlaylistPage() {
         const normalized = Array.isArray(items) ? items : [];
         setPlaylist(normalized);
         lastSavedPlaylistRef.current = JSON.stringify(normalized);
+        
+        // Load epoch offset hours
+        const offset = scheduleJson?.schedule?.epochOffsetHours ?? 0;
+        setEpochOffsetHours(offset);
+        lastSavedOffsetRef.current = offset;
         
         // Load metadata for year display
         if (metadataRes.ok) {
@@ -374,8 +381,12 @@ export default function ChannelPlaylistPage() {
   );
 
   // Save function
-  const doSave = useCallback(async (playlistToSave: PlaylistItem[]) => {
-    const body: ChannelSchedule = { type: "looping", playlist: playlistToSave };
+  const doSave = useCallback(async (playlistToSave: PlaylistItem[], offsetHours: number) => {
+    const body: ChannelSchedule = { 
+      type: "looping", 
+      playlist: playlistToSave,
+      epochOffsetHours: offsetHours || undefined, // Only include if non-zero
+    };
     
     try {
       validateChannelSchedule(body);
@@ -406,9 +417,11 @@ export default function ChannelPlaylistPage() {
   useEffect(() => {
     if (loading) return;
 
-    const current = JSON.stringify(playlist);
+    const currentPlaylist = JSON.stringify(playlist);
+    const playlistChanged = currentPlaylist !== lastSavedPlaylistRef.current;
+    const offsetChanged = epochOffsetHours !== lastSavedOffsetRef.current;
     
-    if (current === lastSavedPlaylistRef.current) {
+    if (!playlistChanged && !offsetChanged) {
       setAutoSaveStatus("idle");
       return;
     }
@@ -420,11 +433,13 @@ export default function ChannelPlaylistPage() {
     }
 
     const savePlaylist = playlist;
+    const saveOffset = epochOffsetHours;
     
     autoSaveTimeoutRef.current = setTimeout(() => {
       setAutoSaveStatus("saving");
-      void doSave(savePlaylist).then((success) => {
+      void doSave(savePlaylist, saveOffset).then((success) => {
         if (success) {
+          lastSavedOffsetRef.current = saveOffset;
           setAutoSaveStatus("saved");
           setTimeout(() => setAutoSaveStatus("idle"), 1500);
         } else {
@@ -438,7 +453,7 @@ export default function ChannelPlaylistPage() {
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [playlist, loading, doSave]);
+  }, [playlist, epochOffsetHours, loading, doSave]);
 
   const addToPlaylist = useCallback((file: MediaFile) => {
     if (!file.durationSeconds || file.durationSeconds <= 0) {
@@ -516,7 +531,7 @@ export default function ChannelPlaylistPage() {
     setPlaylist([]);
     setAutoSaveStatus("saving");
 
-    const success = await doSave([]);
+    const success = await doSave([], epochOffsetHours);
     if (success) {
       setMessage("Playlist cleared");
       setAutoSaveStatus("saved");
@@ -648,6 +663,36 @@ export default function ChannelPlaylistPage() {
                   Total duration: <span className="font-semibold">{formatDuration(totalDuration)}</span>
                   {totalDuration > 0 && <> • Loops every {formatDuration(totalDuration)}</>}
                 </p>
+                
+                {/* Epoch Offset Control */}
+                <div className="mt-3 pt-3 border-t border-purple-400/20">
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs text-purple-300/80">
+                      Start offset (hours):
+                    </label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={epochOffsetHours}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setEpochOffsetHours(isNaN(val) ? 0 : val);
+                      }}
+                      className="w-20 rounded-md bg-neutral-900 border border-purple-400/30 px-2 py-1 text-sm text-neutral-100 focus:border-purple-400 focus:outline-none"
+                      title="Offset in hours to shift the loop start point (e.g., 1, 1.5, 4)"
+                    />
+                    <span className="text-xs text-purple-300/60">
+                      {epochOffsetHours > 0 
+                        ? `Shifts playback by ${epochOffsetHours}h`
+                        : "No offset"
+                      }
+                    </span>
+                  </div>
+                  <p className="text-xs text-purple-300/50 mt-1">
+                    Adjusts when the loop cycle starts without reordering the playlist.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
