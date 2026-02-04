@@ -75,6 +75,7 @@ export async function PUT(
               ...existingChannel,
               type: "looping",
               playlist: payload.playlist,
+              epochOffsetHours: payload.epochOffsetHours,
               slots: undefined,
             };
           } else {
@@ -83,6 +84,7 @@ export async function PUT(
               type: "24hour",
               slots: payload.slots,
               playlist: undefined,
+              epochOffsetHours: undefined,
             };
           }
 
