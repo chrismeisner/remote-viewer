@@ -108,26 +108,25 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     return defaultMetadata;
   }
   
-  // Build channel display name: "03 Movies" format
-  const channelDisplay = channelInfo.shortName
-    ? `${channelId.padStart(2, "0")} ${channelInfo.shortName}`
-    : channelId.padStart(2, "0");
-  
-  // Build title: "📺 03 Movies"
-  const title = `📺 ${channelDisplay}`;
-  
   // Get media metadata if we have now playing content (for title and cover image)
   let coverImageUrl: string | null = null;
   let description = "Local channel-style playback for your video library";
+  let mediaTitle: string | null = null;
   
   if (nowPlaying) {
     const mediaMetadata = await getMediaMetadata(nowPlaying.relPath);
     coverImageUrl = buildCoverImageUrl(mediaMetadata);
     
     // Use metadata title if available, otherwise fall back to nowPlaying title or filename
-    const mediaTitle = mediaMetadata?.title || nowPlaying.title || nowPlaying.relPath.split("/").pop() || "Unknown";
+    mediaTitle = mediaMetadata?.title || nowPlaying.title || nowPlaying.relPath.split("/").pop() || "Unknown";
     description = `Now playing: ${mediaTitle}`;
   }
+  
+  // Build title: "Remote Viewer | 03 • The Matrix" format
+  const channelNumber = channelId.padStart(2, "0");
+  const title = mediaTitle
+    ? `Remote Viewer | ${channelNumber} • ${mediaTitle}`
+    : `Remote Viewer | ${channelNumber}`;
   
   // Use cover image if available, otherwise fallback to default OG image
   const ogImage = coverImageUrl || `${BASE_URL}/og-image.png`;
@@ -145,7 +144,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
           url: ogImage,
           width: coverImageUrl ? 600 : 1200, // Cover images are typically portrait
           height: coverImageUrl ? 900 : 630,
-          alt: coverImageUrl ? `Now playing on ${channelDisplay}` : "Remote Viewer",
+          alt: coverImageUrl ? `Now playing on Channel ${channelNumber}` : "Remote Viewer",
         },
       ],
       type: "website",
