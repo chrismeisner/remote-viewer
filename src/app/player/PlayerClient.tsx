@@ -9,6 +9,17 @@ import {
 } from "@/constants/media";
 import { Modal, ModalTitle, ModalFooter, ModalButton } from "@/components/Modal";
 import { ChangelogModal } from "@/components/ChangelogModal";
+import {
+  trackChannelSelect,
+  trackVideoStart,
+  trackFullscreenToggle,
+  trackMuteToggle,
+  trackCrtToggle,
+  trackVideoError,
+  trackWatchDuration,
+  trackShare,
+  setUserProperties,
+} from "@/lib/analytics";
 
 const MUTED_PREF_KEY = "player-muted-default";
 const CRT_PREF_KEY = "player-crt-default";
@@ -237,6 +248,25 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     };
   }, []);
 
+  // Track watch duration when user leaves the page
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const video = videoRef.current;
+      if (nowPlaying && channel && video && video.currentTime > 0) {
+        trackWatchDuration({
+          videoTitle: nowPlaying.title || nowPlaying.relPath,
+          videoPath: nowPlaying.relPath,
+          channelId: channel,
+          watchedSeconds: video.currentTime - (nowPlaying.startOffsetSeconds || 0),
+          totalDurationSeconds: nowPlaying.durationSeconds,
+        });
+      }
+    };
+    
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [nowPlaying, channel]);
+
   // Show volume overlay when volume changes or mute toggles
   useEffect(() => {
     triggerVolumeOverlay(muted);
@@ -261,7 +291,9 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     const syncSource = () => {
       const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
       // Only switch to "local" if explicitly set; otherwise keep "remote" as default
-      setMediaSource(stored === "local" ? "local" : "remote");
+      const source = stored === "local" ? "local" : "remote";
+      setMediaSource(source);
+      setUserProperties({ media_source: source });
     };
     syncSource();
     window.addEventListener("storage", syncSource);
@@ -303,10 +335,11 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     }
   }, []);
 
-  // Persist CRT preference
+  // Persist CRT preference and update analytics user property
   useEffect(() => {
     if (typeof window === "undefined") return;
     localStorage.setItem(CRT_PREF_KEY, crtEnabled ? "true" : "false");
+    setUserProperties({ crt_enabled: crtEnabled });
   }, [crtEnabled]);
 
   // Load volume preference from localStorage
@@ -517,6 +550,15 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       try {
         await video.play();
         console.log("[player] autoplay started");
+        // Track video start
+        if (channel) {
+          trackVideoStart({
+            videoTitle: nowPlaying.title || nowPlaying.relPath,
+            videoPath: nowPlaying.relPath,
+            channelId: channel,
+            startOffset: nowPlaying.startOffsetSeconds,
+          });
+        }
         return true;
       } catch (err) {
         console.warn("Autoplay failed", err);
@@ -563,6 +605,31 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       console.log("[player] video playing, clearing loading state");
       onVideoReady();
     };
+    
+    // Called when video fails to load
+    const handleError = () => {
+      console.error("[player] video error", video.error);
+      if (channel) {
+        trackVideoError({
+          videoPath: nowPlaying.relPath,
+          channelId: channel,
+          errorType: "load_failed",
+          errorMessage: video.error?.message,
+        });
+      }
+    };
+    
+    // Called when video stalls for too long (buffer issues)
+    const handleStalled = () => {
+      console.warn("[player] video stalled (network issue)");
+      if (channel) {
+        trackVideoError({
+          videoPath: nowPlaying.relPath,
+          channelId: channel,
+          errorType: "buffer_stall",
+        });
+      }
+    };
 
     video.src = nowPlaying.src;
     video.preload = "auto";
@@ -577,6 +644,8 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     video.addEventListener("canplay", handleCanPlay);
     video.addEventListener("waiting", handleWaiting);
     video.addEventListener("playing", handlePlaying);
+    video.addEventListener("error", handleError);
+    video.addEventListener("stalled", handleStalled);
     const preventPause = () => {
       if (video.paused) {
         video
@@ -593,6 +662,8 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       video.removeEventListener("canplay", handleCanPlay);
       video.removeEventListener("waiting", handleWaiting);
       video.removeEventListener("playing", handlePlaying);
+      video.removeEventListener("error", handleError);
+      video.removeEventListener("stalled", handleStalled);
       video.removeEventListener("pause", preventPause);
       clearTimeout(lateSeek);
     };
@@ -737,9 +808,23 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const switchToChannel = (channelId: string) => {
     const channelInfo = channels.find(c => c.id === channelId);
     if (channelInfo) {
+      // Track watch duration for the video we're leaving (before switching)
+      const video = videoRef.current;
+      if (nowPlaying && channel && video && video.currentTime > 0) {
+        trackWatchDuration({
+          videoTitle: nowPlaying.title || nowPlaying.relPath,
+          videoPath: nowPlaying.relPath,
+          channelId: channel,
+          watchedSeconds: video.currentTime - (nowPlaying.startOffsetSeconds || 0),
+          totalDurationSeconds: nowPlaying.durationSeconds,
+        });
+      }
+      
       setChannel(channelId);
       triggerChannelOverlay(channelInfo);
       setRefreshToken((token) => token + 1);
+      // Track channel selection
+      trackChannelSelect(channelId, channelInfo.shortName);
     }
   };
 
@@ -784,13 +869,19 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
 
       if (key === "m") {
         event.preventDefault();
-        setMuted((prev) => !prev);
+        setMuted((prev) => {
+          trackMuteToggle(!prev);
+          return !prev;
+        });
         return;
       }
 
       if (key === "c") {
         event.preventDefault();
-        setCrtEnabled((prev) => !prev);
+        setCrtEnabled((prev) => {
+          trackCrtToggle(!prev);
+          return !prev;
+        });
         return;
       }
 
@@ -1037,21 +1128,25 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
 
       if (isDocFullscreen) {
         await document.exitFullscreen();
+        trackFullscreenToggle(false);
         return;
       }
       if (isWebkitFullscreen && videoWithWebkit.webkitExitFullscreen) {
         await videoWithWebkit.webkitExitFullscreen();
+        trackFullscreenToggle(false);
         return;
       }
 
       if (video.requestFullscreen) {
         await video.requestFullscreen();
         video.focus();
+        trackFullscreenToggle(true);
         return;
       }
       if (videoWithWebkit.webkitEnterFullscreen) {
         await videoWithWebkit.webkitEnterFullscreen();
         video.focus();
+        trackFullscreenToggle(true);
         return;
       }
     } catch (err) {
@@ -1087,6 +1182,8 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       await navigator.clipboard.writeText(url.toString());
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 2000);
+      // Track share action
+      trackShare("channel", channel);
     } catch (err) {
       console.warn('Failed to copy URL to clipboard', err);
     }
@@ -1118,7 +1215,10 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     <div className="flex w-full flex-wrap items-stretch justify-center gap-2 sm:flex-nowrap sm:gap-3">
       <div className="flex w-full flex-nowrap gap-2 sm:flex-wrap">
         <button
-          onClick={() => setCrtEnabled((c) => !c)}
+          onClick={() => setCrtEnabled((c) => {
+            trackCrtToggle(!c);
+            return !c;
+          })}
           className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
             crtEnabled
               ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
@@ -1128,7 +1228,10 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
           CRT
         </button>
         <button
-          onClick={() => setMuted((m) => !m)}
+          onClick={() => setMuted((m) => {
+            trackMuteToggle(!m);
+            return !m;
+          })}
           aria-pressed={muted}
           className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
             muted
