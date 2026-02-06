@@ -166,6 +166,19 @@ function MediaDetailModal({
   const [imdbSearchError, setImdbSearchError] = useState<string | null>(null);
   const [imdbSearchSelected, setImdbSearchSelected] = useState<string | null>(null);
 
+  // IMDB URL preview state
+  const [imdbPreview, setImdbPreview] = useState<{
+    title: string;
+    year: number | null;
+    type: string | null;
+    rating: number | null;
+    image: string | null;
+  } | null>(null);
+  const [imdbPreviewLoading, setImdbPreviewLoading] = useState(false);
+
+  // Use IMDB cover checkbox
+  const [useImdbCover, setUseImdbCover] = useState(false);
+
   // Filename rename state
   const [showRenameUI, setShowRenameUI] = useState(false);
   const [proposedFilename, setProposedFilename] = useState("");
@@ -389,25 +402,34 @@ function MediaDetailModal({
     setMetadataSaving(true);
     setMetadataError(null);
     try {
+      // Build metadata payload
+      const payload: Record<string, unknown> = {
+        file: item.relPath,
+        source: mediaSource,
+        title: editTitle.trim() || null,
+        year: editYear ? parseInt(editYear, 10) : null,
+        releaseDate: editReleaseDate.trim() || null,
+        director: editDirector.trim() || null,
+        category: editCategory.trim() || null,
+        makingOf: editMakingOf.trim() || null,
+        plot: editPlot.trim() || null,
+        type: editType || null,
+        season: editSeason ? parseInt(editSeason, 10) : null,
+        episode: editEpisode ? parseInt(editEpisode, 10) : null,
+        imdbUrl: editImdbUrl.trim() || null,
+        tags: editTags.length > 0 ? editTags : null,
+      };
+
+      // If "use IMDB cover" is checked and we have a preview image, include it
+      if (useImdbCover && imdbPreview?.image) {
+        payload.coverUrl = imdbPreview.image;
+        payload.coverEmoji = null;
+      }
+
       const res = await fetch("/api/media-metadata", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          file: item.relPath,
-          source: mediaSource,
-          title: editTitle.trim() || null,
-          year: editYear ? parseInt(editYear, 10) : null,
-          releaseDate: editReleaseDate.trim() || null,
-          director: editDirector.trim() || null,
-          category: editCategory.trim() || null,
-          makingOf: editMakingOf.trim() || null,
-          plot: editPlot.trim() || null,
-          type: editType || null,
-          season: editSeason ? parseInt(editSeason, 10) : null,
-          episode: editEpisode ? parseInt(editEpisode, 10) : null,
-          imdbUrl: editImdbUrl.trim() || null,
-          tags: editTags.length > 0 ? editTags : null,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -415,6 +437,7 @@ function MediaDetailModal({
       }
       setMetadata(data.metadata);
       setEditingMetadata(false);
+      setUseImdbCover(false);
       // Notify parent to update the table
       onMetadataUpdate?.(item.relPath, data.metadata);
     } catch (err) {
@@ -582,6 +605,48 @@ function MediaDetailModal({
   useEffect(() => {
     setCopiedCommand(false);
   }, [item]);
+
+  // Fetch IMDB title preview when URL changes
+  useEffect(() => {
+    const imdbIdMatch = editImdbUrl.match(/\/title\/(tt\d{7,8})/);
+    if (!imdbIdMatch) {
+      setImdbPreview(null);
+      setImdbPreviewLoading(false);
+      return;
+    }
+
+    const titleId = imdbIdMatch[1];
+    let cancelled = false;
+
+    setImdbPreviewLoading(true);
+    setImdbPreview(null);
+
+    fetch(`https://api.imdbapi.dev/titles/${titleId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setImdbPreview({
+          title: data.primaryTitle || data.originalTitle || null,
+          year: data.startYear ?? null,
+          type: data.type || null,
+          rating: data.rating?.aggregateRating ?? null,
+          image: data.primaryImage?.url ?? null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setImdbPreview(null);
+      })
+      .finally(() => {
+        if (!cancelled) setImdbPreviewLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editImdbUrl]);
 
   // Update time display
   const handleTimeUpdate = useCallback(() => {
@@ -1361,6 +1426,41 @@ function MediaDetailModal({
                   placeholder="e.g. https://www.imdb.com/title/tt0133093/"
                   className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
                 />
+                {/* IMDB preview */}
+                {imdbPreviewLoading && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <div className="h-3 w-3 animate-spin rounded-full border border-neutral-600 border-t-neutral-300" />
+                    <span className="text-xs text-neutral-500">Looking up IMDB...</span>
+                  </div>
+                )}
+                {imdbPreview && !imdbPreviewLoading && (
+                  <div className="mt-1.5 flex items-center gap-2.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-2">
+                    {imdbPreview.image && (
+                      <img
+                        src={imdbPreview.image}
+                        alt={imdbPreview.title}
+                        className="h-10 w-7 rounded object-cover shrink-0 bg-neutral-800"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-neutral-200 truncate">
+                        {imdbPreview.title}
+                        {imdbPreview.year ? (
+                          <span className="ml-1 text-neutral-500">({imdbPreview.year})</span>
+                        ) : null}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {imdbPreview.type && (
+                          <span className="text-[10px] uppercase text-neutral-500">{imdbPreview.type}</span>
+                        )}
+                        {imdbPreview.rating != null && (
+                          <span className="text-[10px] text-amber-400/80">&#9733; {imdbPreview.rating.toFixed(1)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-emerald-400 shrink-0">&#10003; Verified</span>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-xs text-neutral-500 mb-1">Making Of <span className="text-neutral-600">(cast, crew, production facts)</span></label>
@@ -1436,6 +1536,27 @@ function MediaDetailModal({
                   </button>
                 </div>
               </div>
+              {/* Use IMDB cover checkbox */}
+              {imdbPreview?.image && editImdbUrl.trim() && (
+                <label className="flex items-center gap-2.5 rounded-md border border-white/10 bg-white/5 px-3 py-2.5 cursor-pointer transition hover:bg-white/8">
+                  <input
+                    type="checkbox"
+                    checked={useImdbCover}
+                    onChange={(e) => setUseImdbCover(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-800 text-amber-500 accent-amber-500"
+                  />
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {useImdbCover && imdbPreview.image && (
+                      <img
+                        src={imdbPreview.image}
+                        alt="IMDB cover"
+                        className="h-8 w-5.5 rounded object-cover shrink-0 bg-neutral-800"
+                      />
+                    )}
+                    <span className="text-xs text-neutral-300">Use IMDB cover as artwork</span>
+                  </div>
+                </label>
+              )}
               {metadataError && (
                 <p className="text-xs text-amber-300">{metadataError}</p>
               )}
