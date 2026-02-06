@@ -4086,7 +4086,7 @@ export default function MediaAdminPage() {
               </h2>
               {!bulkFillRunning && (
                 <button
-                  onClick={() => setBulkFillOpen(false)}
+                  onClick={() => { setBulkFillOpen(false); setSelectedForConversion(new Set()); setCopiedBulkCommand(false); }}
                   className="text-neutral-400 hover:text-white transition"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -4212,7 +4212,7 @@ export default function MediaAdminPage() {
                 </button>
               ) : (
                 <button
-                  onClick={() => setBulkFillOpen(false)}
+                  onClick={() => { setBulkFillOpen(false); setSelectedForConversion(new Set()); setCopiedBulkCommand(false); }}
                   className="rounded-md border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-white/20"
                 >
                   Close
