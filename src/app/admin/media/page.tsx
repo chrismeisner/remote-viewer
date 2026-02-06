@@ -179,6 +179,14 @@ function MediaDetailModal({
 
   // Use IMDB cover checkbox
   const [useImdbCover, setUseImdbCover] = useState(false);
+  
+  // TV cover source: "episode" (still frame) or "series" (poster)
+  const [tvCoverSource, setTvCoverSource] = useState<"episode" | "series">("series");
+  const [seriesImdbUrl, setSeriesImdbUrl] = useState<string>("");
+  const [seriesPreview, setSeriesPreview] = useState<{
+    title: string;
+    image: string | null;
+  } | null>(null);
 
   // Filename rename state
   const [showRenameUI, setShowRenameUI] = useState(false);
@@ -251,6 +259,9 @@ function MediaDetailModal({
     let cancelled = false;
     setMetadataLoading(true);
     setMetadataError(null);
+    setSeriesImdbUrl("");
+    setSeriesPreview(null);
+    setTvCoverSource("series");
 
     // Fetch both metadata and available covers in parallel
     Promise.all([
@@ -389,6 +400,7 @@ function MediaDetailModal({
       if (data.season) setEditSeason(data.season.toString());
       if (data.episode) setEditEpisode(data.episode.toString());
       if (data.imdbUrl) setEditImdbUrl(data.imdbUrl);
+      if (data.seriesImdbUrl) setSeriesImdbUrl(data.seriesImdbUrl);
       
       // Switch to edit mode to show the filled fields
       setEditingMetadata(true);
@@ -454,9 +466,14 @@ function MediaDetailModal({
         tags: editTags.length > 0 ? editTags : null,
       };
 
-      // If "use IMDB cover" is checked and we have a preview image, include it
+      // If "use IMDB cover" is checked, include the selected cover image
       if (useImdbCover && imdbPreview?.image) {
-        payload.coverUrl = imdbPreview.image;
+        // For TV episodes with series preview, use the selected cover source
+        if (imdbPreview.type === "tvEpisode" && seriesPreview?.image && tvCoverSource === "series") {
+          payload.coverUrl = seriesPreview.image;
+        } else {
+          payload.coverUrl = imdbPreview.image;
+        }
         payload.coverEmoji = null;
       } else if (coverRef.current) {
         // Merge cover data from the cover section
@@ -691,6 +708,38 @@ function MediaDetailModal({
       cancelled = true;
     };
   }, [editImdbUrl]);
+
+  // Fetch series preview image when we have a series IMDB URL (for TV cover source picker)
+  useEffect(() => {
+    const seriesIdMatch = seriesImdbUrl.match(/\/title\/(tt\d{7,8})/);
+    if (!seriesIdMatch) {
+      setSeriesPreview(null);
+      return;
+    }
+
+    const seriesId = seriesIdMatch[1];
+    let cancelled = false;
+
+    fetch(`https://api.imdbapi.dev/titles/${seriesId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setSeriesPreview({
+          title: data.primaryTitle || data.originalTitle || null,
+          image: data.primaryImage?.url ?? null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSeriesPreview(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [seriesImdbUrl]);
 
   // Update time display
   const handleTimeUpdate = useCallback(() => {
@@ -1506,26 +1555,82 @@ function MediaDetailModal({
                   </div>
                 )}
               </div>
-              {/* Use IMDB cover checkbox */}
+              {/* Use IMDB cover - with source picker for TV episodes */}
               {imdbPreview?.image && editImdbUrl.trim() && (
-                <label className="flex items-center gap-2.5 rounded-md border border-white/10 bg-white/5 px-3 py-2 cursor-pointer transition hover:bg-white/8">
-                  <input
-                    type="checkbox"
-                    checked={useImdbCover}
-                    onChange={(e) => setUseImdbCover(e.target.checked)}
-                    className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-800 text-amber-500 accent-amber-500"
-                  />
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {imdbPreview.image && (
+                <div className="rounded-md border border-white/10 bg-white/5 px-3 py-2">
+                  <label className="flex items-center gap-2.5 cursor-pointer transition hover:bg-white/5 rounded -mx-1 px-1 py-0.5">
+                    <input
+                      type="checkbox"
+                      checked={useImdbCover}
+                      onChange={(e) => setUseImdbCover(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-800 text-amber-500 accent-amber-500"
+                    />
+                    <span className="text-xs text-neutral-300">Use IMDB cover as artwork</span>
+                  </label>
+                  
+                  {/* TV cover source picker - show when we have both episode & series images */}
+                  {useImdbCover && seriesPreview?.image && imdbPreview.type === "tvEpisode" && (
+                    <div className="mt-2 pt-2 border-t border-white/5">
+                      <span className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5 block">Cover source</span>
+                      <div className="flex gap-2">
+                        {/* Series poster option */}
+                        <button
+                          type="button"
+                          onClick={() => setTvCoverSource("series")}
+                          className={`flex-1 rounded-md border p-1.5 transition cursor-pointer ${
+                            tvCoverSource === "series"
+                              ? "border-amber-500/60 bg-amber-500/10"
+                              : "border-white/10 bg-white/5 hover:bg-white/8"
+                          }`}
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            <img
+                              src={seriesPreview.image}
+                              alt="Series poster"
+                              className="h-14 w-10 rounded object-cover bg-neutral-800"
+                            />
+                            <span className={`text-[10px] ${tvCoverSource === "series" ? "text-amber-400" : "text-neutral-400"}`}>
+                              Series
+                            </span>
+                          </div>
+                        </button>
+                        {/* Episode still option */}
+                        <button
+                          type="button"
+                          onClick={() => setTvCoverSource("episode")}
+                          className={`flex-1 rounded-md border p-1.5 transition cursor-pointer ${
+                            tvCoverSource === "episode"
+                              ? "border-amber-500/60 bg-amber-500/10"
+                              : "border-white/10 bg-white/5 hover:bg-white/8"
+                          }`}
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            <img
+                              src={imdbPreview.image}
+                              alt="Episode still"
+                              className="h-14 w-[100px] rounded object-cover bg-neutral-800"
+                            />
+                            <span className={`text-[10px] ${tvCoverSource === "episode" ? "text-amber-400" : "text-neutral-400"}`}>
+                              Episode
+                            </span>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Non-TV preview thumbnail */}
+                  {useImdbCover && !(seriesPreview?.image && imdbPreview.type === "tvEpisode") && (
+                    <div className="mt-1.5 flex items-center gap-2">
                       <img
                         src={imdbPreview.image}
                         alt="IMDB cover"
                         className="h-8 w-5.5 rounded object-cover shrink-0 bg-neutral-800"
                       />
-                    )}
-                    <span className="text-xs text-neutral-300">Use IMDB cover as artwork</span>
-                  </div>
-                </label>
+                      <span className="text-[10px] text-neutral-500">IMDB poster</span>
+                    </div>
+                  )}
+                </div>
               )}
               <div>
                 <label className="block text-xs text-neutral-500 mb-1">Making Of <span className="text-neutral-600">(cast, crew, production facts)</span></label>
@@ -3166,7 +3271,31 @@ export default function MediaAdminPage() {
         // --- Fetch IMDB cover image if we have an IMDB URL ---
         let coverUrl: string | null = null;
 
-        if (finalImdbUrl) {
+        // For TV content, prefer the series poster (portrait format, better as cover art)
+        // Fall back to episode still if series poster is not available
+        const bulkSeriesImdbUrl = aiData.seriesImdbUrl || null;
+        if (bulkSeriesImdbUrl && aiData.type === "tv") {
+          const seriesIdMatch = bulkSeriesImdbUrl.match(/\/title\/(tt\d{7,8})/);
+          if (seriesIdMatch) {
+            try {
+              const seriesRes = await fetch(
+                `https://api.imdbapi.dev/titles/${seriesIdMatch[1]}`,
+              );
+              if (seriesRes.ok) {
+                const seriesData = await seriesRes.json();
+                const seriesImage = seriesData.primaryImage?.url ?? null;
+                if (seriesImage) {
+                  coverUrl = seriesImage;
+                }
+              }
+            } catch {
+              // Series cover fetch is best-effort
+            }
+          }
+        }
+
+        // Fall back to the episode/title image if no series poster found
+        if (!coverUrl && finalImdbUrl) {
           const imdbIdMatch = finalImdbUrl.match(/\/title\/(tt\d{7,8})/);
           if (imdbIdMatch) {
             try {

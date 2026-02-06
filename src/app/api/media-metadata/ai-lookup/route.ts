@@ -916,6 +916,7 @@ ${existingFields.join("\n")}`;
     
     // Validate IMDB URL format and verify by fetching the page
     let validatedImdbUrl: string | null = null;
+    let seriesImdbUrl: string | null = null;
     
     // For TV content with season/episode info, use the IMDB API to find the correct episode URL
     // This is much more reliable than AI-generated IMDB IDs which are often hallucinated
@@ -924,6 +925,11 @@ ${existingFields.join("\n")}`;
       const { episodeUrl, seriesUrl } = await findTvEpisodeImdbUrl(
         parsedTitle, parsedSeason, parsedEpisode, parsedYear
       );
+      
+      // Always store the series URL for cover image options
+      if (seriesUrl) {
+        seriesImdbUrl = seriesUrl;
+      }
       
       if (episodeUrl) {
         validatedImdbUrl = episodeUrl;
@@ -996,6 +1002,8 @@ ${existingFields.join("\n")}`;
       season: parsedSeason,
       episode: parsedEpisode,
       imdbUrl: validatedImdbUrl,
+      // For TV content, also include the series IMDB URL for cover image options
+      ...(seriesImdbUrl ? { seriesImdbUrl } : {}),
     };
 
     console.log(`[AI Lookup] Result:`, result);
