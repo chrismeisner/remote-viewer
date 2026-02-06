@@ -2907,6 +2907,16 @@ export default function MediaAdminPage() {
   const [selectedForConversion, setSelectedForConversion] = useState<Set<string>>(new Set());
   const [copiedBulkCommand, setCopiedBulkCommand] = useState(false);
 
+  // Bulk AI fill state
+  const [bulkFillOpen, setBulkFillOpen] = useState(false);
+  const [bulkFillRunning, setBulkFillRunning] = useState(false);
+  const bulkFillAbortRef = useRef(false);
+  const [bulkFillItems, setBulkFillItems] = useState<Array<{
+    relPath: string;
+    status: "pending" | "ai-lookup" | "imdb-lookup" | "saving" | "done" | "error" | "skipped";
+    error?: string;
+  }>>([]);
+
   // Load media source preference from localStorage and stay in sync with other tabs/pages.
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -3047,6 +3057,220 @@ export default function MediaAdminPage() {
       setCopiedBulkCommand(false);
       window.prompt("Copy this bulk command", bulkCommand);
     }
+  };
+
+  // Bulk AI fill: run AI lookup + auto-save for each selected file
+  const handleBulkFill = async () => {
+    const selectedFiles = filteredFiles.filter((f) => selectedForConversion.has(f.relPath));
+    if (selectedFiles.length === 0) return;
+
+    // Initialize items list
+    const items = selectedFiles.map((f) => ({
+      relPath: f.relPath,
+      status: "pending" as const,
+    }));
+    setBulkFillItems(items);
+    setBulkFillOpen(true);
+    setBulkFillRunning(true);
+    bulkFillAbortRef.current = false;
+
+    for (let i = 0; i < selectedFiles.length; i++) {
+      if (bulkFillAbortRef.current) break;
+
+      const file = selectedFiles[i];
+
+      // Update status to ai-lookup
+      setBulkFillItems((prev) =>
+        prev.map((item, idx) =>
+          idx === i ? { ...item, status: "ai-lookup" } : item,
+        ),
+      );
+
+      try {
+        // Gather existing metadata as context for AI
+        const existingMeta = allMetadata[file.relPath] || {};
+        const existingMetadata: Record<string, unknown> = {};
+        if (existingMeta.title) existingMetadata.title = existingMeta.title;
+        if (existingMeta.year) existingMetadata.year = existingMeta.year;
+        if (existingMeta.releaseDate) existingMetadata.releaseDate = existingMeta.releaseDate;
+        if (existingMeta.director) existingMetadata.director = existingMeta.director;
+        if (existingMeta.category) existingMetadata.category = existingMeta.category;
+        if (existingMeta.makingOf) existingMetadata.makingOf = existingMeta.makingOf;
+        if (existingMeta.plot) existingMetadata.plot = existingMeta.plot;
+        if (existingMeta.type) existingMetadata.type = existingMeta.type;
+        if (existingMeta.season) existingMetadata.season = existingMeta.season;
+        if (existingMeta.episode) existingMetadata.episode = existingMeta.episode;
+        if (existingMeta.imdbUrl) existingMetadata.imdbUrl = existingMeta.imdbUrl;
+
+        // Call AI lookup (balanced: 512 tokens)
+        const aiRes = await fetch("/api/media-metadata/ai-lookup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.relPath,
+            existingMetadata:
+              Object.keys(existingMetadata).length > 0
+                ? existingMetadata
+                : undefined,
+            maxTokens: 512,
+          }),
+        });
+
+        if (!aiRes.ok) {
+          const errData = await aiRes.json();
+          throw new Error(errData.error || "AI lookup failed");
+        }
+
+        const aiData = await aiRes.json();
+
+        if (bulkFillAbortRef.current) break;
+
+        // --- IMDB URL lookup (if AI didn't return one) ---
+        let finalImdbUrl: string | null = aiData.imdbUrl || null;
+
+        const searchTitle = aiData.title || existingMeta.title;
+        if (searchTitle && !finalImdbUrl) {
+          setBulkFillItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "imdb-lookup" } : item,
+            ),
+          );
+          try {
+            const imdbRes = await fetch("/api/media-metadata/imdb-search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                filename: file.relPath.split("/").pop() || file.relPath,
+                title: searchTitle,
+                year: aiData.year || existingMeta.year || undefined,
+                type: aiData.type || existingMeta.type || undefined,
+                director: aiData.director || existingMeta.director || undefined,
+                category: aiData.category || existingMeta.category || undefined,
+                season: aiData.season || existingMeta.season || undefined,
+                episode: aiData.episode || existingMeta.episode || undefined,
+              }),
+            });
+            if (imdbRes.ok) {
+              const imdbData = await imdbRes.json();
+              if (imdbData.candidates?.length > 0) {
+                finalImdbUrl = imdbData.candidates[0].imdbUrl;
+              }
+            }
+          } catch {
+            // IMDB search is best-effort — don't block the fill
+          }
+        }
+
+        if (bulkFillAbortRef.current) break;
+
+        // --- Fetch IMDB cover image if we have an IMDB URL ---
+        let coverUrl: string | null = null;
+
+        if (finalImdbUrl) {
+          const imdbIdMatch = finalImdbUrl.match(/\/title\/(tt\d{7,8})/);
+          if (imdbIdMatch) {
+            try {
+              const previewRes = await fetch(
+                `https://api.imdbapi.dev/titles/${imdbIdMatch[1]}`,
+              );
+              if (previewRes.ok) {
+                const previewData = await previewRes.json();
+                const image = previewData.primaryImage?.url ?? null;
+                if (image) {
+                  coverUrl = image;
+                }
+              }
+            } catch {
+              // Cover fetch is best-effort
+            }
+          }
+        }
+
+        if (bulkFillAbortRef.current) break;
+
+        // Update status to saving
+        setBulkFillItems((prev) =>
+          prev.map((item, idx) =>
+            idx === i ? { ...item, status: "saving" } : item,
+          ),
+        );
+
+        // Build save payload from AI response + IMDB data
+        const payload: Record<string, unknown> = {
+          file: file.relPath,
+          source: mediaSource,
+          title: aiData.title || null,
+          year: aiData.year || null,
+          releaseDate: aiData.releaseDate || null,
+          director: aiData.director || null,
+          category: aiData.category || null,
+          makingOf: aiData.makingOf || null,
+          plot: aiData.plot || null,
+          type: aiData.type || null,
+          season: aiData.season || null,
+          episode: aiData.episode || null,
+          imdbUrl: finalImdbUrl,
+        };
+
+        // Include cover image from IMDB if found
+        if (coverUrl) {
+          payload.coverUrl = coverUrl;
+          payload.coverEmoji = null;
+        }
+
+        const saveRes = await fetch("/api/media-metadata", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!saveRes.ok) {
+          const errData = await saveRes.json();
+          throw new Error(errData.error || "Save failed");
+        }
+
+        const saveData = await saveRes.json();
+
+        // Update local metadata state so the table reflects changes
+        setAllMetadata((prev) => ({
+          ...prev,
+          [file.relPath]: saveData.metadata,
+        }));
+
+        // Mark as done
+        setBulkFillItems((prev) =>
+          prev.map((item, idx) =>
+            idx === i ? { ...item, status: "done" } : item,
+          ),
+        );
+      } catch (err) {
+        setBulkFillItems((prev) =>
+          prev.map((item, idx) =>
+            idx === i
+              ? {
+                  ...item,
+                  status: "error",
+                  error:
+                    err instanceof Error ? err.message : "Unknown error",
+                }
+              : item,
+          ),
+        );
+      }
+    }
+
+    // Mark remaining items as skipped if aborted
+    if (bulkFillAbortRef.current) {
+      setBulkFillItems((prev) =>
+        prev.map((item) =>
+          item.status === "pending"
+            ? { ...item, status: "skipped" }
+            : item,
+        ),
+      );
+    }
+
+    setBulkFillRunning(false);
   };
 
   // Load available media list
@@ -3411,6 +3635,12 @@ export default function MediaAdminPage() {
                 className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30"
               >
                 {copiedBulkCommand ? "Copied!" : "Copy conversion command"}
+              </button>
+              <button
+                onClick={handleBulkFill}
+                className="rounded-md border border-blue-300/50 bg-blue-500/20 px-4 py-2 text-sm font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30"
+              >
+                Fill Meta
               </button>
             </div>
             <button
@@ -3843,6 +4073,154 @@ export default function MediaAdminPage() {
             setMessage(`File renamed successfully`);
           }}
         />
+      )}
+
+      {/* Bulk AI Fill Progress Modal */}
+      {bulkFillOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="relative w-full max-w-lg rounded-xl border border-white/10 bg-neutral-900 shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+              <h2 className="text-lg font-semibold text-white">
+                Bulk Fill Meta with AI
+              </h2>
+              {!bulkFillRunning && (
+                <button
+                  onClick={() => setBulkFillOpen(false)}
+                  className="text-neutral-400 hover:text-white transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* Progress bar */}
+            <div className="px-6 pt-4">
+              {(() => {
+                const done = bulkFillItems.filter((it) => it.status === "done").length;
+                const errored = bulkFillItems.filter((it) => it.status === "error").length;
+                const skipped = bulkFillItems.filter((it) => it.status === "skipped").length;
+                const processed = done + errored + skipped;
+                const total = bulkFillItems.length;
+                const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+
+                return (
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-neutral-400 mb-1">
+                      <span>
+                        {bulkFillRunning
+                          ? `Processing ${processed + 1} of ${total}…`
+                          : `Done — ${done} saved, ${errored} failed${skipped > 0 ? `, ${skipped} skipped` : ""}`}
+                      </span>
+                      <span>{pct}%</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* File list */}
+            <div className="px-6 py-4 max-h-80 overflow-y-auto">
+              <ul className="space-y-1">
+                {bulkFillItems.map((item) => {
+                  const filename = item.relPath.split("/").pop() || item.relPath;
+                  return (
+                    <li
+                      key={item.relPath}
+                      className="flex items-center gap-2 text-sm py-1 border-b border-white/5 last:border-0"
+                    >
+                      {/* Status icon */}
+                      <span className="flex-shrink-0 w-5 text-center">
+                        {item.status === "pending" && (
+                          <span className="text-neutral-500">○</span>
+                        )}
+                        {item.status === "ai-lookup" && (
+                          <span className="text-blue-400 animate-pulse">●</span>
+                        )}
+                        {item.status === "imdb-lookup" && (
+                          <span className="text-amber-400 animate-pulse">●</span>
+                        )}
+                        {item.status === "saving" && (
+                          <span className="text-yellow-400 animate-pulse">●</span>
+                        )}
+                        {item.status === "done" && (
+                          <span className="text-emerald-400">✓</span>
+                        )}
+                        {item.status === "error" && (
+                          <span className="text-red-400">✗</span>
+                        )}
+                        {item.status === "skipped" && (
+                          <span className="text-neutral-500">—</span>
+                        )}
+                      </span>
+
+                      {/* Filename */}
+                      <span
+                        className={`truncate flex-1 ${
+                          item.status === "done"
+                            ? "text-emerald-300"
+                            : item.status === "error"
+                              ? "text-red-300"
+                              : item.status === "ai-lookup" || item.status === "imdb-lookup" || item.status === "saving"
+                                ? "text-white"
+                                : "text-neutral-500"
+                        }`}
+                        title={item.relPath}
+                      >
+                        {filename}
+                      </span>
+
+                      {/* Status label */}
+                      <span className="flex-shrink-0 text-xs text-neutral-500">
+                        {item.status === "ai-lookup" && "AI lookup…"}
+                        {item.status === "imdb-lookup" && "IMDB search…"}
+                        {item.status === "saving" && "Saving…"}
+                        {item.status === "done" && "Saved"}
+                        {item.status === "error" && (
+                          <span className="text-red-400" title={item.error}>
+                            {item.error && item.error.length > 30
+                              ? item.error.slice(0, 30) + "…"
+                              : item.error || "Failed"}
+                          </span>
+                        )}
+                        {item.status === "skipped" && "Skipped"}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 border-t border-white/10 px-6 py-4">
+              {bulkFillRunning ? (
+                <button
+                  onClick={() => {
+                    bulkFillAbortRef.current = true;
+                  }}
+                  className="rounded-md border border-red-300/50 bg-red-500/20 px-4 py-2 text-sm font-semibold text-red-50 transition hover:border-red-200 hover:bg-red-500/30"
+                >
+                  Stop
+                </button>
+              ) : (
+                <button
+                  onClick={() => setBulkFillOpen(false)}
+                  className="rounded-md border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-white/20"
+                >
+                  Close
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {scanReport && (
