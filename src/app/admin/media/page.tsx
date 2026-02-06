@@ -161,7 +161,7 @@ function MediaDetailModal({
   const [imdbSearchOpen, setImdbSearchOpen] = useState(false);
   const [imdbSearchLoading, setImdbSearchLoading] = useState(false);
   const [imdbSearchResults, setImdbSearchResults] = useState<
-    { imdbUrl: string; title: string; year: number | null; type: string }[]
+    { imdbUrl: string; title: string; year: number | null; type: string; rating?: number | null; image?: string | null }[]
   >([]);
   const [imdbSearchError, setImdbSearchError] = useState<string | null>(null);
   const [imdbSearchSelected, setImdbSearchSelected] = useState<string | null>(null);
@@ -1668,34 +1668,49 @@ function MediaDetailModal({
                           : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/8"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-3">
+                        {/* Poster thumbnail */}
+                        {result.image && (
+                          <img
+                            src={result.image}
+                            alt={result.title}
+                            className="h-16 w-11 rounded object-cover shrink-0 bg-neutral-800"
+                          />
+                        )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-neutral-100 truncate">
-                            {result.title}
-                            {result.year ? (
-                              <span className="ml-1.5 text-neutral-400">({result.year})</span>
-                            ) : null}
-                          </p>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium text-neutral-100 truncate">
+                              {result.title}
+                              {result.year ? (
+                                <span className="ml-1.5 text-neutral-400">({result.year})</span>
+                              ) : null}
+                            </p>
+                            <span className="text-[10px] text-neutral-500 uppercase shrink-0 pt-0.5">{result.type}</span>
+                          </div>
                           <p className="text-xs text-neutral-500 mt-0.5 truncate">{result.imdbUrl}</p>
-                        </div>
-                        <span className="text-[10px] text-neutral-500 uppercase shrink-0 pt-1">{result.type}</span>
-                      </div>
-                      {/* Radio indicator */}
-                      <div className="mt-2 flex items-center gap-2">
-                        <div
-                          className={`h-3.5 w-3.5 rounded-full border-2 flex items-center justify-center ${
-                            imdbSearchSelected === result.imdbUrl
-                              ? "border-amber-400"
-                              : "border-neutral-600"
-                          }`}
-                        >
-                          {imdbSearchSelected === result.imdbUrl && (
-                            <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                          {result.rating != null && (
+                            <p className="text-xs text-amber-400/80 mt-1">
+                              &#9733; {result.rating.toFixed(1)}
+                            </p>
                           )}
+                          {/* Radio indicator */}
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <div
+                              className={`h-3.5 w-3.5 rounded-full border-2 flex items-center justify-center ${
+                                imdbSearchSelected === result.imdbUrl
+                                  ? "border-amber-400"
+                                  : "border-neutral-600"
+                              }`}
+                            >
+                              {imdbSearchSelected === result.imdbUrl && (
+                                <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                              )}
+                            </div>
+                            <span className="text-[11px] text-neutral-500">
+                              {imdbSearchSelected === result.imdbUrl ? "Selected" : "Click to select"}
+                            </span>
+                          </div>
                         </div>
-                        <span className="text-[11px] text-neutral-500">
-                          {imdbSearchSelected === result.imdbUrl ? "Selected" : "Click to select"}
-                        </span>
                       </div>
                     </button>
                   ))}
