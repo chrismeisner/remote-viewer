@@ -94,7 +94,48 @@ export async function POST(request: NextRequest) {
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const systemPrompt = `You are an IMDB search assistant. Given a media filename and optional metadata, return a JSON array of the most likely IMDB matches.
+    // Step 1: Perform actual Google search to find IMDB URLs
+    const searchQuery = title
+      ? `site:imdb.com "${title}" ${year || ""} ${director?.split(',')[0].trim() || ""}`.trim()
+      : `site:imdb.com ${filename.replace(/[._-]/g, ' ').replace(/\.(mp4|mkv|avi|mov)$/i, '')}`;
+
+    console.log(`[IMDB Search] Google search query: ${searchQuery}`);
+
+    let googleResults: { url: string; title: string }[] = [];
+    
+    try {
+      // Use Google Custom Search API or scrape Google results
+      const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&num=10`;
+      const response = await fetch(googleSearchUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (response.ok) {
+        const html = await response.text();
+        // Extract IMDB URLs from search results
+        const imdbUrlPattern = /https?:\/\/www\.imdb\.com\/title\/tt\d{7,8}\//g;
+        const matches = html.match(imdbUrlPattern);
+        
+        if (matches) {
+          const uniqueUrls = [...new Set(matches)];
+          googleResults = uniqueUrls.slice(0, 5).map(url => ({ url, title: "" }));
+          console.log(`[IMDB Search] Found ${googleResults.length} IMDB URLs from Google`);
+        }
+      }
+    } catch (error) {
+      console.warn("[IMDB Search] Google search failed, falling back to AI:", error);
+    }
+
+    // Step 2: Use OpenAI to refine and rank results, or generate if Google failed
+    const systemPrompt = `You are an IMDB search assistant. ${
+      googleResults.length > 0
+        ? "You are provided with IMDB URLs from Google search results. Analyze each URL and return them ranked by relevance."
+        : "Given media metadata, return the most likely IMDB matches based on your knowledge."
+    }
 
 Your response MUST be a valid JSON array of objects with these fields:
 [
@@ -108,17 +149,16 @@ Your response MUST be a valid JSON array of objects with these fields:
 
 Rules:
 - Return 2-5 candidates ordered by most likely match first
-- "imdbUrl" MUST be a valid IMDB URL in the format "https://www.imdb.com/title/ttXXXXXXX/" where X is a digit
+- "imdbUrl" MUST be a valid IMDB URL in the format "https://www.imdb.com/title/ttXXXXXXX/"
 - "title" should be the proper title as shown on IMDB
 - "year" should be the release year (number or null)
 - "type" should be one of: "film", "tv", "documentary", "sports", "concert", "other"
 - For TV shows, use the URL for the series page, not a specific episode
-- If the filename has season/episode info (S01E01 etc.), still return the series URL
-- Include possible alternatives: remakes, similarly-titled films, etc.
-- IMPORTANT: Make sure IMDB IDs are real and accurate. The format is always tt followed by 7-8 digits.
+- ${googleResults.length > 0 ? "Analyze the provided URLs and determine which best match the media. Remove irrelevant results." : "Make sure IMDB IDs are accurate based on your training data. Do NOT make up IDs."}
+- Include remakes/alternative versions if relevant
 - Only return valid JSON, nothing else`;
 
-    let userPrompt = `Find IMDB matches for this media:
+    let userPrompt = `Find the best IMDB matches for:
 
 Filename: ${filename}`;
 
@@ -130,7 +170,15 @@ Filename: ${filename}`;
     if (season) userPrompt += `\nSeason: ${season}`;
     if (episode) userPrompt += `\nEpisode: ${episode}`;
 
-    console.log(`[IMDB Search] Searching for: ${filename} (title: ${title}, year: ${year}, director: ${director})`);
+    if (googleResults.length > 0) {
+      userPrompt += `\n\nGoogle found these IMDB URLs (in order of appearance):\n`;
+      googleResults.forEach((result, i) => {
+        userPrompt += `${i + 1}. ${result.url}\n`;
+      });
+      userPrompt += `\nAnalyze these URLs and return the ones that best match the media, ranked by relevance.`;
+    }
+
+    console.log(`[IMDB Search] Searching with AI for: ${filename} (title: ${title}, year: ${year})`);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -139,7 +187,7 @@ Filename: ${filename}`;
         { role: "user", content: userPrompt },
       ],
       max_completion_tokens: 1024,
-      temperature: 0.3,
+      temperature: 0.2,
     });
 
     const content = completion.choices[0]?.message?.content;
