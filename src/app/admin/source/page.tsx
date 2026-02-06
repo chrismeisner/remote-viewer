@@ -52,6 +52,17 @@ export default function SourceAdminPage() {
   const [folderMessage, setFolderMessage] = useState<string | null>(null);
   const [folderError, setFolderError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [scanModal, setScanModal] = useState<{
+    open: boolean;
+    phase: "scanning" | "cleaning" | "done" | "error";
+    scanCount?: number;
+    cleanupStats?: {
+      metadataEntriesRemoved: number;
+      scheduleReferencesRemoved: number;
+      affectedChannels: string[];
+    };
+    error?: string;
+  }>({ open: false, phase: "scanning" });
   
   // Local status
   const [localStatus, setLocalStatus] = useState<LocalStatus>({
@@ -226,22 +237,46 @@ export default function SourceAdminPage() {
     }
   };
 
-  // Scan media folder
+  // Scan media folder and clean up orphaned entries
   const scanMediaFolder = async () => {
     setScanning(true);
     setFolderMessage(null);
     setFolderError(null);
+    setScanModal({ open: true, phase: "scanning" });
+    
     try {
-      const res = await fetch("/api/media-index/local", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.message || "Scan failed");
-      setFolderMessage(data.message || `Scanned ${data.count} files`);
+      // Step 1: Scan media files
+      const scanRes = await fetch("/api/media-index/local", { method: "POST" });
+      const scanData = await scanRes.json();
+      if (!scanRes.ok || !scanData.success) throw new Error(scanData.message || "Scan failed");
+      
+      const scanCount = scanData.count || 0;
+      
+      // Step 2: Clean up orphaned entries
+      setScanModal({ open: true, phase: "cleaning", scanCount });
+      const cleanupRes = await fetch("/api/media-index/cleanup", { method: "POST" });
+      const cleanupData = await cleanupRes.json();
+      
+      // Show results
+      const cleanupStats = cleanupRes.ok && cleanupData.success ? {
+        metadataEntriesRemoved: cleanupData.stats?.metadataEntriesRemoved || 0,
+        scheduleReferencesRemoved: cleanupData.stats?.scheduleReferencesRemoved || 0,
+        affectedChannels: cleanupData.stats?.affectedChannels || [],
+      } : { metadataEntriesRemoved: 0, scheduleReferencesRemoved: 0, affectedChannels: [] };
+      
+      setScanModal({ open: true, phase: "done", scanCount, cleanupStats });
       await loadLocalStatus();
     } catch (err) {
-      setFolderError(err instanceof Error ? err.message : "Scan failed");
+      const errorMsg = err instanceof Error ? err.message : "Scan failed";
+      setScanModal({ open: true, phase: "error", error: errorMsg });
+      setFolderError(errorMsg);
     } finally {
       setScanning(false);
     }
+  };
+  
+  const closeScanModal = () => {
+    setScanModal({ open: false, phase: "scanning" });
   };
 
   // Folder browser
@@ -791,6 +826,118 @@ export default function SourceAdminPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scan Progress Modal */}
+      {scanModal.open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
+          onClick={(e) => { if (e.target === e.currentTarget && scanModal.phase === "done") closeScanModal(); }}
+        >
+          <div className="w-full max-w-sm rounded-md border border-white/15 bg-neutral-900 shadow-2xl shadow-black/60">
+            {/* Scanning Phase */}
+            {scanModal.phase === "scanning" && (
+              <div className="p-6 text-center">
+                <div className="mx-auto mb-4 h-10 w-10 border-3 border-neutral-600 border-t-emerald-400 rounded-full animate-spin" />
+                <p className="text-sm font-semibold text-neutral-100">Scanning media folder...</p>
+                <p className="text-xs text-neutral-400 mt-1">Finding and analyzing media files</p>
+              </div>
+            )}
+
+            {/* Cleaning Phase */}
+            {scanModal.phase === "cleaning" && (
+              <div className="p-6 text-center">
+                <div className="mx-auto mb-4 h-10 w-10 border-3 border-neutral-600 border-t-amber-400 rounded-full animate-spin" />
+                <p className="text-sm font-semibold text-neutral-100">Cleaning up...</p>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Found {scanModal.scanCount} files, removing orphaned entries
+                </p>
+              </div>
+            )}
+
+            {/* Done Phase */}
+            {scanModal.phase === "done" && (
+              <div className="p-6">
+                <div className="flex items-center justify-center mb-4">
+                  <div className="rounded-full bg-emerald-500/20 p-3">
+                    <svg className="h-6 w-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                </div>
+                <p className="text-sm font-semibold text-neutral-100 text-center mb-4">Scan Complete</p>
+                
+                <div className="space-y-3">
+                  {/* Files scanned */}
+                  <div className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2">
+                    <span className="text-xs text-neutral-400">Media files found</span>
+                    <span className="text-sm font-semibold text-neutral-100">{scanModal.scanCount}</span>
+                  </div>
+                  
+                  {/* Cleanup results */}
+                  {scanModal.cleanupStats && (
+                    <>
+                      {(scanModal.cleanupStats.metadataEntriesRemoved > 0 || scanModal.cleanupStats.scheduleReferencesRemoved > 0) ? (
+                        <>
+                          {scanModal.cleanupStats.metadataEntriesRemoved > 0 && (
+                            <div className="flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
+                              <span className="text-xs text-amber-200/70">Orphaned metadata removed</span>
+                              <span className="text-sm font-semibold text-amber-200">{scanModal.cleanupStats.metadataEntriesRemoved}</span>
+                            </div>
+                          )}
+                          {scanModal.cleanupStats.scheduleReferencesRemoved > 0 && (
+                            <div className="flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
+                              <span className="text-xs text-amber-200/70">Broken schedule refs removed</span>
+                              <span className="text-sm font-semibold text-amber-200">{scanModal.cleanupStats.scheduleReferencesRemoved}</span>
+                            </div>
+                          )}
+                          {scanModal.cleanupStats.affectedChannels.length > 0 && (
+                            <p className="text-xs text-neutral-500 text-center">
+                              Affected channels: {scanModal.cleanupStats.affectedChannels.join(", ")}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex items-center justify-center rounded-lg bg-emerald-500/10 px-3 py-2">
+                          <span className="text-xs text-emerald-200">No orphaned entries found</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+                
+                <button
+                  onClick={closeScanModal}
+                  className="mt-4 w-full rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+
+            {/* Error Phase */}
+            {scanModal.phase === "error" && (
+              <div className="p-6">
+                <div className="flex items-center justify-center mb-4">
+                  <div className="rounded-full bg-red-500/20 p-3">
+                    <svg className="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </div>
+                </div>
+                <p className="text-sm font-semibold text-neutral-100 text-center mb-2">Scan Failed</p>
+                <p className="text-xs text-red-300 text-center mb-4">{scanModal.error}</p>
+                
+                <button
+                  onClick={closeScanModal}
+                  className="w-full rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                >
+                  Close
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -157,6 +157,15 @@ function MediaDetailModal({
   const [aiContextEnabled, setAiContextEnabled] = useState(false);
   const [aiContextText, setAiContextText] = useState("");
 
+  // IMDB search state
+  const [imdbSearchOpen, setImdbSearchOpen] = useState(false);
+  const [imdbSearchLoading, setImdbSearchLoading] = useState(false);
+  const [imdbSearchResults, setImdbSearchResults] = useState<
+    { imdbUrl: string; title: string; year: number | null; type: string }[]
+  >([]);
+  const [imdbSearchError, setImdbSearchError] = useState<string | null>(null);
+  const [imdbSearchSelected, setImdbSearchSelected] = useState<string | null>(null);
+
   // Filename rename state
   const [showRenameUI, setShowRenameUI] = useState(false);
   const [proposedFilename, setProposedFilename] = useState("");
@@ -433,6 +442,55 @@ function MediaDetailModal({
     setMetadataError(null);
   };
 
+  // IMDB search: trigger AI lookup for IMDB URL candidates
+  const handleImdbSearch = async () => {
+    setImdbSearchOpen(true);
+    setImdbSearchLoading(true);
+    setImdbSearchError(null);
+    setImdbSearchResults([]);
+    setImdbSearchSelected(null);
+
+    try {
+      const res = await fetch("/api/media-metadata/imdb-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: item.relPath.split("/").pop() || item.relPath,
+          title: editTitle.trim() || metadata.title || undefined,
+          year: editYear ? parseInt(editYear, 10) : metadata.year || undefined,
+          type: editType || metadata.type || undefined,
+          director: editDirector.trim() || metadata.director || undefined,
+          category: editCategory.trim() || metadata.category || undefined,
+          season: editSeason ? parseInt(editSeason, 10) : metadata.season || undefined,
+          episode: editEpisode ? parseInt(editEpisode, 10) : metadata.episode || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || `Search failed (${res.status})`);
+      }
+      const data = await res.json();
+      if (!data.candidates || data.candidates.length === 0) {
+        setImdbSearchError("No IMDB matches found. Try editing the title or year first.");
+      } else {
+        setImdbSearchResults(data.candidates);
+        // Auto-select the first (highest confidence) result
+        setImdbSearchSelected(data.candidates[0].imdbUrl);
+      }
+    } catch (err) {
+      setImdbSearchError(err instanceof Error ? err.message : "IMDB search failed");
+    } finally {
+      setImdbSearchLoading(false);
+    }
+  };
+
+  const handleImdbSearchConfirm = () => {
+    if (imdbSearchSelected) {
+      setEditImdbUrl(imdbSearchSelected);
+    }
+    setImdbSearchOpen(false);
+  };
+
   const handleMetadataKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !metadataSaving) {
       e.preventDefault();
@@ -505,14 +563,20 @@ function MediaDetailModal({
       ? `${REMOTE_MEDIA_BASE}${currentRelPath}`
       : `/api/media?file=${encodeURIComponent(currentRelPath)}`;
 
-  // Handle escape key to close modal
+  // Handle escape key to close modal (sub-modal first, then parent)
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (imdbSearchOpen) {
+          setImdbSearchOpen(false);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [onClose]);
+  }, [onClose, imdbSearchOpen]);
 
   // Reset copied state when item changes
   useEffect(() => {
@@ -1278,7 +1342,17 @@ function MediaDetailModal({
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-neutral-500 mb-1">IMDB URL</label>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="block text-xs text-neutral-500">IMDB URL</label>
+                  <button
+                    type="button"
+                    onClick={handleImdbSearch}
+                    disabled={imdbSearchLoading}
+                    className="text-xs text-amber-400 hover:text-amber-300 underline underline-offset-2 disabled:opacity-50 disabled:cursor-wait"
+                  >
+                    {imdbSearchLoading ? "Searching..." : "Look up IMDB"}
+                  </button>
+                </div>
                 <input
                   type="url"
                   value={editImdbUrl}
@@ -1543,6 +1617,111 @@ function MediaDetailModal({
           }}
         />
       </div>
+
+      {/* IMDB Search Sub-Modal (overlay on top of the detail modal) */}
+      {imdbSearchOpen && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="relative w-full max-w-lg mx-4 rounded-xl border border-white/15 bg-neutral-900 shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+              <h3 className="text-base font-semibold text-neutral-100">IMDB Lookup</h3>
+              <button
+                onClick={() => setImdbSearchOpen(false)}
+                className="rounded-md p-1 text-neutral-400 transition hover:bg-white/10 hover:text-neutral-200"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
+              {imdbSearchLoading && (
+                <div className="flex flex-col items-center gap-3 py-8">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                  <p className="text-sm text-neutral-400">Searching IMDB...</p>
+                </div>
+              )}
+
+              {imdbSearchError && !imdbSearchLoading && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
+                  <p className="text-sm text-red-300">{imdbSearchError}</p>
+                </div>
+              )}
+
+              {!imdbSearchLoading && !imdbSearchError && imdbSearchResults.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-neutral-500 mb-3">
+                    Found {imdbSearchResults.length} possible match{imdbSearchResults.length !== 1 ? "es" : ""}. Select the correct one:
+                  </p>
+                  {imdbSearchResults.map((result) => (
+                    <button
+                      key={result.imdbUrl}
+                      onClick={() => setImdbSearchSelected(result.imdbUrl)}
+                      className={`w-full text-left rounded-lg border px-4 py-3 transition ${
+                        imdbSearchSelected === result.imdbUrl
+                          ? "border-amber-400/60 bg-amber-400/10"
+                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/8"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-neutral-100 truncate">
+                            {result.title}
+                            {result.year ? (
+                              <span className="ml-1.5 text-neutral-400">({result.year})</span>
+                            ) : null}
+                          </p>
+                          <p className="text-xs text-neutral-500 mt-0.5 truncate">{result.imdbUrl}</p>
+                        </div>
+                        <span className="text-[10px] text-neutral-500 uppercase shrink-0 pt-1">{result.type}</span>
+                      </div>
+                      {/* Radio indicator */}
+                      <div className="mt-2 flex items-center gap-2">
+                        <div
+                          className={`h-3.5 w-3.5 rounded-full border-2 flex items-center justify-center ${
+                            imdbSearchSelected === result.imdbUrl
+                              ? "border-amber-400"
+                              : "border-neutral-600"
+                          }`}
+                        >
+                          {imdbSearchSelected === result.imdbUrl && (
+                            <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                          )}
+                        </div>
+                        <span className="text-[11px] text-neutral-500">
+                          {imdbSearchSelected === result.imdbUrl ? "Selected" : "Click to select"}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 border-t border-white/10 px-5 py-3">
+              <button
+                onClick={() => setImdbSearchOpen(false)}
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImdbSearchConfirm}
+                disabled={!imdbSearchSelected || imdbSearchLoading}
+                className="rounded-md bg-amber-500 px-4 py-1.5 text-sm font-semibold text-black transition hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Use Selected
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
