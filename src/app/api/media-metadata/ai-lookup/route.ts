@@ -74,14 +74,27 @@ async function fetchImdbTitle(imdbUrl: string): Promise<{ title: string | null; 
     
     if (ogTitleMatch) {
       // og:title often looks like "The Matrix (1999) - IMDb"
+      // For TV episodes: "\"The Simpsons\" Bart Gets an F (TV Episode 2000) ⭐ 7.1 | Animation, Comedy"
       let rawTitle = ogTitleMatch[1]
         .replace(/\s*-\s*IMDb\s*$/i, "")
+        // Remove rating and genre info (⭐ 7.1 | Animation, Comedy)
+        .replace(/\s*⭐.*$/, "")
+        .replace(/\s*&#x2B50;.*$/, "")
         .trim();
       
-      // Extract year if present in title
-      const yearMatch = rawTitle.match(/\((\d{4})\)/);
-      if (yearMatch) {
-        year = parseInt(yearMatch[1], 10);
+      // Extract year from various IMDB formats:
+      // - "(1999)" for movies
+      // - "(TV Episode 2000)" for TV episodes
+      // - "(TV Series 1989–1998)" for TV series
+      // - "(TV Movie 2001)" for TV movies
+      const tvYearMatch = rawTitle.match(/\((?:TV Episode|TV Series|TV Movie|TV Special|TV Mini Series|Short)\s+(\d{4})/);
+      const plainYearMatch = rawTitle.match(/\((\d{4})\)/);
+      
+      if (tvYearMatch) {
+        year = parseInt(tvYearMatch[1], 10);
+        rawTitle = rawTitle.replace(/\s*\((?:TV Episode|TV Series|TV Movie|TV Special|TV Mini Series|Short)\s+\d{4}[^)]*\)\s*/, " ").trim();
+      } else if (plainYearMatch) {
+        year = parseInt(plainYearMatch[1], 10);
         rawTitle = rawTitle.replace(/\s*\(\d{4}\)\s*/, " ").trim();
       }
       
@@ -94,11 +107,18 @@ async function fetchImdbTitle(imdbUrl: string): Promise<{ title: string | null; 
       if (titleMatch) {
         let rawTitle = titleMatch[1]
           .replace(/\s*-\s*IMDb\s*$/i, "")
+          .replace(/\s*⭐.*$/, "")
+          .replace(/\s*&#x2B50;.*$/, "")
           .trim();
         
-        const yearMatch = rawTitle.match(/\((\d{4})\)/);
-        if (yearMatch) {
-          year = parseInt(yearMatch[1], 10);
+        const tvYearMatch = rawTitle.match(/\((?:TV Episode|TV Series|TV Movie|TV Special|TV Mini Series|Short)\s+(\d{4})/);
+        const plainYearMatch = rawTitle.match(/\((\d{4})\)/);
+        
+        if (tvYearMatch) {
+          year = parseInt(tvYearMatch[1], 10);
+          rawTitle = rawTitle.replace(/\s*\((?:TV Episode|TV Series|TV Movie|TV Special|TV Mini Series|Short)\s+\d{4}[^)]*\)\s*/, " ").trim();
+        } else if (plainYearMatch) {
+          year = parseInt(plainYearMatch[1], 10);
           rawTitle = rawTitle.replace(/\s*\(\d{4}\)\s*/, " ").trim();
         }
         
@@ -155,6 +175,118 @@ async function validateImdbUrl(
   }
   
   return { valid, actualTitle, similarity };
+}
+
+/**
+ * Search IMDB for a TV series and find the specific episode URL using imdbapi.dev
+ * Returns the episode-specific IMDB URL or null if not found
+ */
+async function findTvEpisodeImdbUrl(
+  seriesTitle: string,
+  season: number,
+  episode: number,
+  year?: number | null
+): Promise<{ episodeUrl: string | null; seriesUrl: string | null }> {
+  try {
+    // Step 1: Search for the series
+    const searchUrl = `https://api.imdbapi.dev/search/titles?query=${encodeURIComponent(seriesTitle)}`;
+    console.log(`[IMDB Episode Search] Searching for series: "${seriesTitle}" via ${searchUrl}`);
+    
+    const searchResponse = await fetch(searchUrl, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
+    
+    if (!searchResponse.ok) {
+      console.warn(`[IMDB Episode Search] Search API returned ${searchResponse.status}`);
+      return { episodeUrl: null, seriesUrl: null };
+    }
+    
+    const searchData = await searchResponse.json();
+    const results = searchData?.titles;
+    
+    if (!Array.isArray(results) || results.length === 0) {
+      console.log("[IMDB Episode Search] No search results");
+      return { episodeUrl: null, seriesUrl: null };
+    }
+    
+    // Step 2: Find the best matching TV series from results
+    // Prefer tvSeries type, then match by title similarity and year
+    const seriesCandidates = results
+      .filter((r: { id?: string; type?: string }) => 
+        r.id && typeof r.id === "string" && r.id.startsWith("tt") &&
+        (r.type === "tvSeries" || r.type === "tvMiniSeries")
+      )
+      .map((r: { id: string; primaryTitle?: string; originalTitle?: string; startYear?: number; type?: string }) => {
+        const title = r.primaryTitle || r.originalTitle || "";
+        const similarity = calculateSimilarity(seriesTitle, title);
+        let score = similarity * 100;
+        
+        // Year proximity bonus
+        if (year && r.startYear) {
+          if (Math.abs(year - r.startYear) <= 2) score += 20;
+          else if (Math.abs(year - r.startYear) <= 5) score += 10;
+        }
+        
+        return { id: r.id, title, year: r.startYear, score, type: r.type };
+      })
+      .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+    
+    if (seriesCandidates.length === 0) {
+      console.log("[IMDB Episode Search] No TV series found in search results");
+      return { episodeUrl: null, seriesUrl: null };
+    }
+    
+    const bestSeries = seriesCandidates[0];
+    const seriesUrl = `https://www.imdb.com/title/${bestSeries.id}/`;
+    console.log(`[IMDB Episode Search] Best series match: "${bestSeries.title}" (${bestSeries.year}) - ${bestSeries.id} (score: ${bestSeries.score.toFixed(1)})`);
+    
+    // Require reasonable confidence in the series match
+    if (bestSeries.score < 50) {
+      console.log(`[IMDB Episode Search] Series match score too low (${bestSeries.score.toFixed(1)}), skipping episode lookup`);
+      return { episodeUrl: null, seriesUrl: null };
+    }
+    
+    // Step 3: Get episodes for the specific season
+    const episodesUrl = `https://api.imdbapi.dev/titles/${bestSeries.id}/episodes?season=${season}`;
+    console.log(`[IMDB Episode Search] Fetching episodes: ${episodesUrl}`);
+    
+    const episodesResponse = await fetch(episodesUrl, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
+    
+    if (!episodesResponse.ok) {
+      console.warn(`[IMDB Episode Search] Episodes API returned ${episodesResponse.status}`);
+      return { episodeUrl: null, seriesUrl };
+    }
+    
+    const episodesData = await episodesResponse.json();
+    const episodes = episodesData?.episodes;
+    
+    if (!Array.isArray(episodes) || episodes.length === 0) {
+      console.log(`[IMDB Episode Search] No episodes found for season ${season}`);
+      return { episodeUrl: null, seriesUrl };
+    }
+    
+    // Step 4: Find the specific episode by episode number
+    const targetEpisode = episodes.find(
+      (ep: { episodeNumber?: number }) => ep.episodeNumber === episode
+    );
+    
+    if (!targetEpisode || !targetEpisode.id) {
+      console.log(`[IMDB Episode Search] Episode ${episode} not found in season ${season} (${episodes.length} episodes available)`);
+      return { episodeUrl: null, seriesUrl };
+    }
+    
+    const episodeUrl = `https://www.imdb.com/title/${targetEpisode.id}/`;
+    console.log(`[IMDB Episode Search] Found episode: "${targetEpisode.primaryTitle || targetEpisode.title || 'Unknown'}" - ${episodeUrl}`);
+    
+    return { episodeUrl, seriesUrl };
+  } catch (error) {
+    console.warn("[IMDB Episode Search] Error:", error);
+    return { episodeUrl: null, seriesUrl: null };
+  }
 }
 
 type AiLookupResponse = {
@@ -245,7 +377,7 @@ Rules:
 - "type" MUST be one of: "film" (for movies), "tv" (for TV shows/series), "documentary" (for documentaries), "sports" (for sporting events, games, matches, races, etc.), "concert" (for live music performances, concerts, music festivals), or "other" (for everything else like stand-up specials, stage plays, etc.)
 - "season" should be the season number as an integer for TV shows, or null for non-TV content
 - "episode" should be the episode number as an integer for TV shows, or null for non-TV content
-- "imdbUrl" should be the full IMDB URL for the movie or TV show (e.g., "https://www.imdb.com/title/tt0133093/" for The Matrix). The format is always "https://www.imdb.com/title/tt" followed by a 7-8 digit number. For TV shows, use the URL for the series, not a specific episode. Return null if you cannot determine the IMDB ID with confidence.
+- "imdbUrl" should be the full IMDB URL for the content. The format is always "https://www.imdb.com/title/tt" followed by a 7-8 digit number. For movies, use the movie's IMDB URL. For TV shows, use the IMDB URL for the SPECIFIC EPISODE if possible (e.g., "https://www.imdb.com/title/tt0701059/" for The Simpsons S02E01 "Bart Gets an F"), or the series URL if the episode ID is unknown. Return null if you cannot determine the IMDB ID with confidence. IMPORTANT: Do not guess or hallucinate IMDB IDs - only provide one if you are confident it is correct.
 
 TV Episode Detection:
 - Look for patterns like "S01E01", "S02E08", "s1e5", "S03E12" in filenames - these indicate Season and Episode numbers
@@ -773,9 +905,40 @@ ${existingFields.join("\n")}`;
       ? parsed.year 
       : null;
     
+    // Parse season/episode/type early for IMDB logic
+    const parsedSeason = typeof parsed.season === "number" && Number.isInteger(parsed.season) && parsed.season > 0
+      ? parsed.season : null;
+    const parsedEpisode = typeof parsed.episode === "number" && Number.isInteger(parsed.episode) && parsed.episode > 0
+      ? parsed.episode : null;
+    const parsedType = typeof parsed.type === "string" && validTypes.includes(parsed.type.toLowerCase())
+      ? parsed.type.toLowerCase() : null;
+    const isTvContent = parsedType === "tv" && parsedSeason && parsedEpisode;
+    
     // Validate IMDB URL format and verify by fetching the page
     let validatedImdbUrl: string | null = null;
-    if (typeof parsed.imdbUrl === "string" && parsed.imdbUrl.trim()) {
+    
+    // For TV content with season/episode info, use the IMDB API to find the correct episode URL
+    // This is much more reliable than AI-generated IMDB IDs which are often hallucinated
+    if (isTvContent && parsedTitle) {
+      console.log(`[AI Lookup] TV content detected: "${parsedTitle}" S${String(parsedSeason).padStart(2, '0')}E${String(parsedEpisode).padStart(2, '0')} - using IMDB API to find episode`);
+      const { episodeUrl, seriesUrl } = await findTvEpisodeImdbUrl(
+        parsedTitle, parsedSeason, parsedEpisode, parsedYear
+      );
+      
+      if (episodeUrl) {
+        validatedImdbUrl = episodeUrl;
+        console.log(`[AI Lookup] Found episode-specific IMDB URL via API: ${episodeUrl}`);
+      } else if (seriesUrl) {
+        // Fall back to series URL if episode not found
+        validatedImdbUrl = seriesUrl;
+        console.log(`[AI Lookup] Episode not found, using series IMDB URL: ${seriesUrl}`);
+      } else {
+        console.log(`[AI Lookup] Could not find IMDB URL via API search`);
+      }
+    }
+    
+    // For non-TV content (or if TV episode search failed), try the AI-provided URL with validation
+    if (!validatedImdbUrl && typeof parsed.imdbUrl === "string" && parsed.imdbUrl.trim()) {
       const imdbUrlTrimmed = parsed.imdbUrl.trim();
       // Check if it matches IMDB URL pattern
       const imdbPattern = /^https?:\/\/(www\.)?imdb\.com\/title\/tt\d{7,8}\/?$/i;
@@ -786,7 +949,7 @@ ${existingFields.join("\n")}`;
           const normalizedUrl = `https://www.imdb.com/title/${idMatch[0]}/`;
           
           // Validate by fetching the IMDB page and comparing titles
-          console.log(`[AI Lookup] Validating IMDB URL: ${normalizedUrl} against title: "${parsedTitle}" (${parsedYear})`);
+          console.log(`[AI Lookup] Validating AI-provided IMDB URL: ${normalizedUrl} against title: "${parsedTitle}" (${parsedYear})`);
           const validation = await validateImdbUrl(normalizedUrl, parsedTitle, parsedYear);
           
           if (validation.valid) {
@@ -829,15 +992,9 @@ ${existingFields.join("\n")}`;
       plot: typeof parsed.plot === "string" && parsed.plot.trim()
         ? parsed.plot.trim()
         : null,
-      type: typeof parsed.type === "string" && validTypes.includes(parsed.type.toLowerCase())
-        ? parsed.type.toLowerCase() as "film" | "tv" | "documentary" | "sports" | "concert" | "other"
-        : null,
-      season: typeof parsed.season === "number" && Number.isInteger(parsed.season) && parsed.season > 0
-        ? parsed.season
-        : null,
-      episode: typeof parsed.episode === "number" && Number.isInteger(parsed.episode) && parsed.episode > 0
-        ? parsed.episode
-        : null,
+      type: parsedType as "film" | "tv" | "documentary" | "sports" | "concert" | "other" | null,
+      season: parsedSeason,
+      episode: parsedEpisode,
       imdbUrl: validatedImdbUrl,
     };
 
