@@ -2784,7 +2784,7 @@ function ScanReportModal({
           <div className="mt-4">
             <div className="h-2 bg-neutral-700 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
+                className={`h-full transition-all duration-500 ${successRate === 100 ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' : 'bg-gradient-to-r from-blue-500 to-blue-400'}`}
                 style={{ width: `${successRate}%` }}
               />
             </div>
@@ -4247,7 +4247,7 @@ export default function MediaAdminPage() {
                     </div>
                     <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                        className={`h-full rounded-full transition-all duration-300 ${pct === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>

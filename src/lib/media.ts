@@ -545,6 +545,7 @@ export type ChannelInfo = {
   active?: boolean; // Default true if undefined
   scheduledCount?: number; // Number of scheduled items in this channel
   type?: ScheduleType; // "24hour" (default) or "looping"
+  totalDurationSeconds?: number; // Total duration of all media in this channel
 };
 
 export async function listChannels(source: MediaSource = "local"): Promise<ChannelInfo[]> {
@@ -560,6 +561,17 @@ export async function listChannels(source: MediaSource = "local"): Promise<Chann
         ? schedule.playlist?.length ?? 0
         : schedule.slots?.length ?? 0;
       
+      // Calculate total duration based on schedule type
+      let totalDurationSeconds = 0;
+      if (scheduleType === "looping" && schedule.playlist) {
+        // For looping playlists, sum up all item durations
+        totalDurationSeconds = schedule.playlist.reduce((sum, item) => {
+          return sum + (item.durationSeconds || 0);
+        }, 0);
+      }
+      // Note: For 24-hour schedules, we would need to load media files to get durations
+      // This is not done here to avoid performance overhead. We leave it as 0.
+      
       console.log("[Media Lib] listChannels - processing channel:", {
         id,
         shortName: schedule.shortName,
@@ -567,6 +579,7 @@ export async function listChannels(source: MediaSource = "local"): Promise<Chann
         hasShortName: "shortName" in schedule,
         scheduleKeys: Object.keys(schedule),
         scheduledCount,
+        totalDurationSeconds,
       });
       return {
         id,
@@ -574,6 +587,7 @@ export async function listChannels(source: MediaSource = "local"): Promise<Chann
         active: schedule.active ?? true, // Default to active if not set
         scheduledCount,
         type: scheduleType,
+        totalDurationSeconds,
       };
     },
   );

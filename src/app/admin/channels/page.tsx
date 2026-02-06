@@ -17,7 +17,21 @@ type Channel = {
   active?: boolean;
   scheduledCount?: number;
   type?: ScheduleType;
+  totalDurationSeconds?: number;
 };
+
+// Format duration in seconds to a human-readable string
+function formatDuration(totalSeconds: number | undefined): string {
+  if (!totalSeconds || totalSeconds === 0) return "—";
+  
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
 
 export default function ChannelAdminPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -429,6 +443,7 @@ export default function ChannelAdminPage() {
                   <th className="px-3 py-2 text-left font-semibold">Name</th>
                   <th className="w-28 px-3 py-2 text-center font-semibold">Type</th>
                   <th className="w-24 px-3 py-2 text-center font-semibold">Items</th>
+                  <th className="w-28 px-3 py-2 text-center font-semibold">Duration</th>
                   <th className="w-24 px-3 py-2 text-left font-semibold">Status</th>
                   <th className="w-48 px-3 py-2 text-right font-semibold">Actions</th>
                 </tr>
@@ -464,6 +479,15 @@ export default function ChannelAdminPage() {
                           : "text-neutral-500"
                       }`}>
                         {channel.scheduledCount ?? 0}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`text-xs font-medium ${
+                        (channel.totalDurationSeconds ?? 0) > 0
+                          ? "text-neutral-300"
+                          : "text-neutral-500"
+                      }`}>
+                        {formatDuration(channel.totalDurationSeconds)}
                       </span>
                     </td>
                     <td className="px-3 py-2">

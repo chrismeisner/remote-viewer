@@ -102,12 +102,27 @@ function channelsFromSchedule(schedule: ScheduleData | null): ChannelInfo[] {
         ? (Array.isArray(ch.playlist) ? ch.playlist.length : 0)
         : (Array.isArray(ch.slots) ? ch.slots.length : 0);
       
+      // Calculate total duration based on schedule type
+      let totalDurationSeconds = 0;
+      if (scheduleType === "looping" && Array.isArray(ch.playlist)) {
+        // For looping playlists, sum up all item durations
+        totalDurationSeconds = ch.playlist.reduce((sum: number, item: any) => {
+          return sum + (item.durationSeconds || 0);
+        }, 0);
+      } else if (scheduleType === "24hour" && Array.isArray(ch.slots)) {
+        // For 24-hour schedules, sum up slot durations
+        // Note: We can't easily get media durations here without loading media files
+        // So we'll leave it as 0 for now and calculate it in the backend if needed
+        totalDurationSeconds = 0;
+      }
+      
       return {
         id,
         shortName: ch.shortName,
         active: ch.active ?? true,
         scheduledCount,
         type: scheduleType as "24hour" | "looping",
+        totalDurationSeconds,
       };
     });
   
