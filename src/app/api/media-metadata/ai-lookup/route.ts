@@ -178,7 +178,7 @@ async function validateImdbUrl(
 }
 
 /**
- * Search IMDB for a TV series and find the specific episode URL using imdbapi.dev
+ * Search IMDB for a TV series and find the specific episode URL using IMDB's suggestion API
  * Returns the episode-specific IMDB URL or null if not found
  */
 async function findTvEpisodeImdbUrl(
@@ -188,22 +188,26 @@ async function findTvEpisodeImdbUrl(
   year?: number | null
 ): Promise<{ episodeUrl: string | null; seriesUrl: string | null }> {
   try {
-    // Step 1: Search for the series
-    const searchUrl = `https://api.imdbapi.dev/search/titles?query=${encodeURIComponent(seriesTitle)}`;
-    console.log(`[IMDB Episode Search] Searching for series: "${seriesTitle}" via ${searchUrl}`);
+    // Step 1: Search for the series using IMDB suggestion API
+    const firstChar = seriesTitle.charAt(0).toLowerCase();
+    const searchUrl = `https://v3.sg.media-imdb.com/suggestion/${firstChar}/${encodeURIComponent(seriesTitle)}.json`;
+    console.log(`[IMDB Episode Search] Searching for series: "${seriesTitle}" via suggestion API`);
     
     const searchResponse = await fetch(searchUrl, {
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
       signal: AbortSignal.timeout(10000),
     });
     
     if (!searchResponse.ok) {
-      console.warn(`[IMDB Episode Search] Search API returned ${searchResponse.status}`);
+      console.warn(`[IMDB Episode Search] Suggestion API returned ${searchResponse.status}`);
       return { episodeUrl: null, seriesUrl: null };
     }
     
     const searchData = await searchResponse.json();
-    const results = searchData?.titles;
+    const results = searchData?.d;
     
     if (!Array.isArray(results) || results.length === 0) {
       console.log("[IMDB Episode Search] No search results");
@@ -211,24 +215,24 @@ async function findTvEpisodeImdbUrl(
     }
     
     // Step 2: Find the best matching TV series from results
-    // Prefer tvSeries type, then match by title similarity and year
+    // Suggestion API fields: id, l (title), qid (type), y (year)
     const seriesCandidates = results
-      .filter((r: { id?: string; type?: string }) => 
+      .filter((r: { id?: string; qid?: string }) => 
         r.id && typeof r.id === "string" && r.id.startsWith("tt") &&
-        (r.type === "tvSeries" || r.type === "tvMiniSeries")
+        (r.qid === "tvSeries" || r.qid === "tvMiniSeries")
       )
-      .map((r: { id: string; primaryTitle?: string; originalTitle?: string; startYear?: number; type?: string }) => {
-        const title = r.primaryTitle || r.originalTitle || "";
+      .map((r: { id: string; l?: string; y?: number; qid?: string }) => {
+        const title = r.l || "";
         const similarity = calculateSimilarity(seriesTitle, title);
         let score = similarity * 100;
         
         // Year proximity bonus
-        if (year && r.startYear) {
-          if (Math.abs(year - r.startYear) <= 2) score += 20;
-          else if (Math.abs(year - r.startYear) <= 5) score += 10;
+        if (year && r.y) {
+          if (Math.abs(year - r.y) <= 2) score += 20;
+          else if (Math.abs(year - r.y) <= 5) score += 10;
         }
         
-        return { id: r.id, title, year: r.startYear, score, type: r.type };
+        return { id: r.id, title, year: r.y, score, type: r.qid };
       })
       .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
     
@@ -247,42 +251,43 @@ async function findTvEpisodeImdbUrl(
       return { episodeUrl: null, seriesUrl: null };
     }
     
-    // Step 3: Get episodes for the specific season
-    const episodesUrl = `https://api.imdbapi.dev/titles/${bestSeries.id}/episodes?season=${season}`;
-    console.log(`[IMDB Episode Search] Fetching episodes: ${episodesUrl}`);
+    // Step 3: Try to find the specific episode by searching IMDB suggestions
+    // with the series title + season/episode format
+    const epQuery = `${bestSeries.title} s${String(season).padStart(2, '0')}e${String(episode).padStart(2, '0')}`;
+    const epFirstChar = epQuery.charAt(0).toLowerCase();
+    const epSearchUrl = `https://v3.sg.media-imdb.com/suggestion/${epFirstChar}/${encodeURIComponent(epQuery)}.json`;
+    console.log(`[IMDB Episode Search] Searching for episode: "${epQuery}"`);
     
-    const episodesResponse = await fetch(episodesUrl, {
-      headers: { Accept: "application/json" },
+    const epResponse = await fetch(epSearchUrl, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
       signal: AbortSignal.timeout(10000),
     });
     
-    if (!episodesResponse.ok) {
-      console.warn(`[IMDB Episode Search] Episodes API returned ${episodesResponse.status}`);
-      return { episodeUrl: null, seriesUrl };
+    if (epResponse.ok) {
+      const epData = await epResponse.json();
+      const epResults = epData?.d;
+      
+      if (Array.isArray(epResults) && epResults.length > 0) {
+        // Look for a tvEpisode result
+        const episodeResult = epResults.find(
+          (r: { id?: string; qid?: string }) =>
+            r.id && typeof r.id === "string" && r.id.startsWith("tt") &&
+            r.qid === "tvEpisode"
+        );
+        
+        if (episodeResult) {
+          const episodeUrl = `https://www.imdb.com/title/${episodeResult.id}/`;
+          console.log(`[IMDB Episode Search] Found episode: "${episodeResult.l || 'Unknown'}" - ${episodeUrl}`);
+          return { episodeUrl, seriesUrl };
+        }
+      }
     }
     
-    const episodesData = await episodesResponse.json();
-    const episodes = episodesData?.episodes;
-    
-    if (!Array.isArray(episodes) || episodes.length === 0) {
-      console.log(`[IMDB Episode Search] No episodes found for season ${season}`);
-      return { episodeUrl: null, seriesUrl };
-    }
-    
-    // Step 4: Find the specific episode by episode number
-    const targetEpisode = episodes.find(
-      (ep: { episodeNumber?: number }) => ep.episodeNumber === episode
-    );
-    
-    if (!targetEpisode || !targetEpisode.id) {
-      console.log(`[IMDB Episode Search] Episode ${episode} not found in season ${season} (${episodes.length} episodes available)`);
-      return { episodeUrl: null, seriesUrl };
-    }
-    
-    const episodeUrl = `https://www.imdb.com/title/${targetEpisode.id}/`;
-    console.log(`[IMDB Episode Search] Found episode: "${targetEpisode.primaryTitle || targetEpisode.title || 'Unknown'}" - ${episodeUrl}`);
-    
-    return { episodeUrl, seriesUrl };
+    console.log(`[IMDB Episode Search] Episode not found via suggestion search, returning series URL only`);
+    return { episodeUrl: null, seriesUrl };
   } catch (error) {
     console.warn("[IMDB Episode Search] Error:", error);
     return { episodeUrl: null, seriesUrl: null };

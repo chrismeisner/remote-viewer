@@ -154,7 +154,7 @@ function MediaDetailModal({
   // AI lookup state
   const [aiLoading, setAiLoading] = useState(false);
   const [aiConfigured, setAiConfigured] = useState(false);
-  const [aiTokenLevel, setAiTokenLevel] = useState<"fast" | "balanced" | "detailed">("balanced");
+  const [aiMaxTokens, setAiMaxTokens] = useState<number>(512);
   const [aiContextEnabled, setAiContextEnabled] = useState(false);
   const [aiContextText, setAiContextText] = useState("");
 
@@ -177,8 +177,8 @@ function MediaDetailModal({
   } | null>(null);
   const [imdbPreviewLoading, setImdbPreviewLoading] = useState(false);
 
-  // Use IMDB cover checkbox
-  const [useImdbCover, setUseImdbCover] = useState(false);
+  // Use IMDB cover checkbox — default to checked
+  const [useImdbCover, setUseImdbCover] = useState(true);
   
   // TV cover source: "episode" (still frame) or "series" (poster)
   const [tvCoverSource, setTvCoverSource] = useState<"episode" | "series">("series");
@@ -351,6 +351,7 @@ function MediaDetailModal({
 
   // AI lookup to fill metadata fields
   const handleAiLookup = async () => {
+    console.log("[IMDB Cover] === AI LOOKUP START ===", { file: item.relPath });
     setAiLoading(true);
     setMetadataError(null);
     try {
@@ -368,10 +369,9 @@ function MediaDetailModal({
       if (metadata.episode) existingMetadata.episode = metadata.episode;
       if (metadata.imdbUrl) existingMetadata.imdbUrl = metadata.imdbUrl;
 
-      // Map token level to actual token count
-      const tokenMap = { fast: 256, balanced: 512, detailed: 1024 };
-      const maxTokens = tokenMap[aiTokenLevel];
+      const maxTokens = aiMaxTokens;
 
+      console.log("[IMDB Cover] Calling AI lookup API...", { maxTokens, existingMetadata });
       const res = await fetch("/api/media-metadata/ai-lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -385,8 +385,17 @@ function MediaDetailModal({
       const data = await res.json();
       
       if (!res.ok) {
+        console.error("[IMDB Cover] AI lookup API error:", data.error);
         throw new Error(data.error || "AI lookup failed");
       }
+      
+      console.log("[IMDB Cover] AI lookup response:", { 
+        title: data.title, 
+        year: data.year, 
+        type: data.type,
+        imdbUrl: data.imdbUrl || "(none)", 
+        seriesImdbUrl: data.seriesImdbUrl || "(none)" 
+      });
       
       // Fill in the edit fields with AI response
       if (data.title) setEditTitle(data.title);
@@ -399,8 +408,14 @@ function MediaDetailModal({
       if (data.type) setEditType(data.type);
       if (data.season) setEditSeason(data.season.toString());
       if (data.episode) setEditEpisode(data.episode.toString());
-      if (data.imdbUrl) setEditImdbUrl(data.imdbUrl);
-      if (data.seriesImdbUrl) setSeriesImdbUrl(data.seriesImdbUrl);
+      if (data.imdbUrl) {
+        console.log("[IMDB Cover] Setting editImdbUrl from AI:", data.imdbUrl);
+        setEditImdbUrl(data.imdbUrl);
+      }
+      if (data.seriesImdbUrl) {
+        console.log("[IMDB Cover] Setting seriesImdbUrl from AI:", data.seriesImdbUrl);
+        setSeriesImdbUrl(data.seriesImdbUrl);
+      }
       
       // Switch to edit mode to show the filled fields
       setEditingMetadata(true);
@@ -410,6 +425,7 @@ function MediaDetailModal({
       const searchTitle = data.title || metadata.title;
       if (searchTitle && !data.imdbUrl) {
         // Only auto-search if AI didn't already return an IMDB URL
+        console.log("[IMDB Cover] AI returned no IMDB URL, running auto-search for:", searchTitle);
         try {
           const imdbRes = await fetch("/api/media-metadata/imdb-search", {
             method: "POST",
@@ -427,17 +443,29 @@ function MediaDetailModal({
           });
           if (imdbRes.ok) {
             const imdbData = await imdbRes.json();
+            console.log("[IMDB Cover] IMDB auto-search results:", imdbData.candidates?.length || 0, "candidates");
             if (imdbData.candidates?.length > 0) {
+              console.log("[IMDB Cover] Auto-filling top IMDB result:", imdbData.candidates[0].imdbUrl);
               // Auto-fill the top result as our best guess
               setEditImdbUrl(imdbData.candidates[0].imdbUrl);
+            } else {
+              console.log("[IMDB Cover] No IMDB candidates found from auto-search");
             }
+          } else {
+            console.warn("[IMDB Cover] IMDB auto-search returned non-OK status:", imdbRes.status);
           }
-        } catch {
+        } catch (searchErr) {
           // IMDB search is best-effort — don't block the AI fill
-          console.warn("[AI Lookup] IMDB auto-search failed, skipping");
+          console.warn("[IMDB Cover] IMDB auto-search failed, skipping:", searchErr);
         }
+      } else if (data.imdbUrl) {
+        console.log("[IMDB Cover] AI already returned IMDB URL, skipping auto-search");
+      } else {
+        console.log("[IMDB Cover] No title available for IMDB auto-search");
       }
+      console.log("[IMDB Cover] === AI LOOKUP COMPLETE ===");
     } catch (err) {
+      console.error("[IMDB Cover] AI lookup failed:", err);
       setMetadataError(err instanceof Error ? err.message : "AI lookup failed");
     } finally {
       setAiLoading(false);
@@ -445,6 +473,17 @@ function MediaDetailModal({
   };
 
   const handleSaveAll = async () => {
+    console.log("[IMDB Cover] === SAVE START ===", { file: item.relPath });
+    console.log("[IMDB Cover] Save state:", {
+      useImdbCover,
+      hasImdbPreview: !!imdbPreview,
+      imdbPreviewImage: imdbPreview?.image ? imdbPreview.image.substring(0, 80) + "..." : "(none)",
+      imdbPreviewType: imdbPreview?.type || "(none)",
+      hasSeriesPreview: !!seriesPreview,
+      seriesPreviewImage: seriesPreview?.image ? "yes" : "(none)",
+      tvCoverSource,
+      editImdbUrl: editImdbUrl || "(empty)",
+    });
     setMetadataSaving(true);
     setMetadataError(null);
     try {
@@ -466,20 +505,48 @@ function MediaDetailModal({
         tags: editTags.length > 0 ? editTags : null,
       };
 
-      // If "use IMDB cover" is checked, include the selected cover image
-      if (useImdbCover && imdbPreview?.image) {
-        // For TV episodes with series preview, use the selected cover source
-        if (imdbPreview.type === "tvEpisode" && seriesPreview?.image && tvCoverSource === "series") {
-          payload.coverUrl = seriesPreview.image;
+      // If "use cover art" is checked, include the IMDB cover image
+      if (useImdbCover && editImdbUrl.trim()) {
+        if (imdbPreview?.image) {
+          // Preview already loaded — use it directly
+          if (imdbPreview.type === "tvEpisode" && seriesPreview?.image && tvCoverSource === "series") {
+            console.log("[IMDB Cover] Using SERIES poster as cover:", seriesPreview.image.substring(0, 80) + "...");
+            payload.coverUrl = seriesPreview.image;
+          } else {
+            console.log("[IMDB Cover] Using IMDB preview image as cover:", imdbPreview.image.substring(0, 80) + "...");
+            payload.coverUrl = imdbPreview.image;
+          }
         } else {
-          payload.coverUrl = imdbPreview.image;
+          // Preview not loaded yet — fetch cover from IMDB on the fly
+          console.log("[IMDB Cover] No preview image yet, fetching cover from IMDB...");
+          try {
+            const coverRes = await fetch("/api/media-metadata/imdb-cover", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ imdbUrl: editImdbUrl.trim() }),
+            });
+            if (coverRes.ok) {
+              const coverData = await coverRes.json();
+              if (coverData.coverUrl) {
+                console.log("[IMDB Cover] Fetched cover on save:", coverData.coverUrl.substring(0, 80) + "...");
+                payload.coverUrl = coverData.coverUrl;
+              }
+            }
+          } catch (coverErr) {
+            console.warn("[IMDB Cover] Failed to fetch cover on save:", coverErr);
+          }
         }
         payload.coverEmoji = null;
       } else if (coverRef.current) {
         // Merge cover data from the cover section
         const coverPayload = coverRef.current.getSavePayload();
+        console.log("[IMDB Cover] Using cover section payload:", coverPayload);
         Object.assign(payload, coverPayload);
+      } else {
+        console.log("[IMDB Cover] No cover data to include in save (useImdbCover:", useImdbCover, ", imdbPreview?.image:", !!imdbPreview?.image, ", coverRef:", !!coverRef.current, ")");
       }
+
+      console.log("[IMDB Cover] Final payload coverUrl:", payload.coverUrl || "(none)");
 
       const res = await fetch("/api/media-metadata", {
         method: "PUT",
@@ -488,14 +555,17 @@ function MediaDetailModal({
       });
       const data = await res.json();
       if (!res.ok) {
+        console.error("[IMDB Cover] Save API error:", data.error);
         throw new Error(data.error || "Failed to save");
       }
+      console.log("[IMDB Cover] Save SUCCESS — saved coverUrl:", data.metadata?.coverUrl || "(none)");
       setMetadata(data.metadata);
       setEditingMetadata(false);
       setUseImdbCover(false);
       // Notify parent to update the table
       onMetadataUpdate?.(item.relPath, data.metadata);
     } catch (err) {
+      console.error("[IMDB Cover] Save FAILED:", err);
       setMetadataError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setMetadataSaving(false);
@@ -522,40 +592,49 @@ function MediaDetailModal({
 
   // IMDB search: trigger AI lookup for IMDB URL candidates
   const handleImdbSearch = async () => {
+    console.log("[IMDB Cover] === MANUAL IMDB SEARCH START ===");
     setImdbSearchOpen(true);
     setImdbSearchLoading(true);
     setImdbSearchError(null);
     setImdbSearchResults([]);
     setImdbSearchSelected(null);
 
+    const searchParams = {
+      filename: item.relPath.split("/").pop() || item.relPath,
+      title: editTitle.trim() || metadata.title || undefined,
+      year: editYear ? parseInt(editYear, 10) : metadata.year || undefined,
+      type: editType || metadata.type || undefined,
+      director: editDirector.trim() || metadata.director || undefined,
+      category: editCategory.trim() || metadata.category || undefined,
+      season: editSeason ? parseInt(editSeason, 10) : metadata.season || undefined,
+      episode: editEpisode ? parseInt(editEpisode, 10) : metadata.episode || undefined,
+    };
+    console.log("[IMDB Cover] Search params:", searchParams);
+
     try {
       const res = await fetch("/api/media-metadata/imdb-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          filename: item.relPath.split("/").pop() || item.relPath,
-          title: editTitle.trim() || metadata.title || undefined,
-          year: editYear ? parseInt(editYear, 10) : metadata.year || undefined,
-          type: editType || metadata.type || undefined,
-          director: editDirector.trim() || metadata.director || undefined,
-          category: editCategory.trim() || metadata.category || undefined,
-          season: editSeason ? parseInt(editSeason, 10) : metadata.season || undefined,
-          episode: editEpisode ? parseInt(editEpisode, 10) : metadata.episode || undefined,
-        }),
+        body: JSON.stringify(searchParams),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
+        console.error("[IMDB Cover] IMDB search API error:", res.status, errData?.error);
         throw new Error(errData?.error || `Search failed (${res.status})`);
       }
       const data = await res.json();
       if (!data.candidates || data.candidates.length === 0) {
+        console.log("[IMDB Cover] IMDB search returned 0 candidates");
         setImdbSearchError("No IMDB matches found. Try editing the title or year first.");
       } else {
+        console.log("[IMDB Cover] IMDB search returned", data.candidates.length, "candidates:", 
+          data.candidates.map((c: { imdbUrl: string; title: string }) => `${c.title} (${c.imdbUrl})`));
         setImdbSearchResults(data.candidates);
         // Auto-select the first (highest confidence) result
         setImdbSearchSelected(data.candidates[0].imdbUrl);
       }
     } catch (err) {
+      console.error("[IMDB Cover] IMDB search FAILED:", err);
       setImdbSearchError(err instanceof Error ? err.message : "IMDB search failed");
     } finally {
       setImdbSearchLoading(false);
@@ -563,6 +642,7 @@ function MediaDetailModal({
   };
 
   const handleImdbSearchConfirm = () => {
+    console.log("[IMDB Cover] IMDB search confirmed, setting editImdbUrl:", imdbSearchSelected || "(none)");
     if (imdbSearchSelected) {
       setEditImdbUrl(imdbSearchSelected);
     }
@@ -663,41 +743,52 @@ function MediaDetailModal({
 
   // Fetch IMDB title preview when URL changes
   useEffect(() => {
+    console.log("[IMDB Cover] useEffect triggered — editImdbUrl changed:", editImdbUrl || "(empty)");
     const imdbIdMatch = editImdbUrl.match(/\/title\/(tt\d{7,8})/);
     if (!imdbIdMatch) {
+      console.log("[IMDB Cover] No valid IMDB ID found in URL, clearing preview");
       setImdbPreview(null);
       setImdbPreviewLoading(false);
-      setUseImdbCover(false);
       return;
     }
 
     const titleId = imdbIdMatch[1];
     let cancelled = false;
 
+    console.log("[IMDB Cover] Fetching IMDB preview for:", titleId);
     setImdbPreviewLoading(true);
     setImdbPreview(null);
 
-    fetch(`https://api.imdbapi.dev/titles/${titleId}`)
+    fetch(`/api/media-metadata/imdb-preview?id=${titleId}`)
       .then((res) => {
+        console.log("[IMDB Cover] Preview API response status:", res.status);
         if (!res.ok) throw new Error(`${res.status}`);
         return res.json();
       })
       .then((data) => {
-        if (cancelled) return;
-        const image = data.primaryImage?.url ?? null;
+        if (cancelled) {
+          console.log("[IMDB Cover] Preview fetch was cancelled (stale), ignoring");
+          return;
+        }
+        const image = data.image ?? null;
+        console.log("[IMDB Cover] Preview loaded:", {
+          title: data.title,
+          year: data.year,
+          type: data.type,
+          rating: data.rating,
+          hasImage: !!image,
+          imageUrl: image ? image.substring(0, 80) + "..." : "(none)",
+        });
         setImdbPreview({
-          title: data.primaryTitle || data.originalTitle || null,
-          year: data.startYear ?? null,
+          title: data.title || null,
+          year: data.year ?? null,
           type: data.type || null,
-          rating: data.rating?.aggregateRating ?? null,
+          rating: data.rating ?? null,
           image,
         });
-        // Auto-check "use IMDB cover" when a valid poster is available
-        if (image) {
-          setUseImdbCover(true);
-        }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[IMDB Cover] Preview fetch FAILED:", err);
         if (!cancelled) setImdbPreview(null);
       })
       .finally(() => {
@@ -711,8 +802,10 @@ function MediaDetailModal({
 
   // Fetch series preview image when we have a series IMDB URL (for TV cover source picker)
   useEffect(() => {
+    console.log("[IMDB Cover] Series useEffect triggered — seriesImdbUrl:", seriesImdbUrl || "(empty)");
     const seriesIdMatch = seriesImdbUrl.match(/\/title\/(tt\d{7,8})/);
     if (!seriesIdMatch) {
+      console.log("[IMDB Cover] No valid series IMDB ID, clearing series preview");
       setSeriesPreview(null);
       return;
     }
@@ -720,19 +813,30 @@ function MediaDetailModal({
     const seriesId = seriesIdMatch[1];
     let cancelled = false;
 
-    fetch(`https://api.imdbapi.dev/titles/${seriesId}`)
+    console.log("[IMDB Cover] Fetching series preview for:", seriesId);
+    fetch(`/api/media-metadata/imdb-preview?id=${seriesId}`)
       .then((res) => {
+        console.log("[IMDB Cover] Series preview API response status:", res.status);
         if (!res.ok) throw new Error(`${res.status}`);
         return res.json();
       })
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled) {
+          console.log("[IMDB Cover] Series fetch was cancelled (stale), ignoring");
+          return;
+        }
+        const seriesImage = data.image ?? null;
+        console.log("[IMDB Cover] Series preview loaded:", {
+          title: data.title,
+          hasImage: !!seriesImage,
+        });
         setSeriesPreview({
-          title: data.primaryTitle || data.originalTitle || null,
-          image: data.primaryImage?.url ?? null,
+          title: data.title || null,
+          image: seriesImage,
         });
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[IMDB Cover] Series preview fetch FAILED:", err);
         if (!cancelled) setSeriesPreview(null);
       });
 
@@ -740,6 +844,19 @@ function MediaDetailModal({
       cancelled = true;
     };
   }, [seriesImdbUrl]);
+
+  // Auto-load IMDB cover into Cover section when "use cover art" is checked
+  // and we have a preview image (or series image for TV content)
+  useEffect(() => {
+    if (!useImdbCover || !coverRef.current) return;
+
+    // For TV episodes using series poster
+    if (imdbPreview?.type === "tvEpisode" && seriesPreview?.image && tvCoverSource === "series") {
+      coverRef.current.setCoverFromUrl(seriesPreview.image);
+    } else if (imdbPreview?.image) {
+      coverRef.current.setCoverFromUrl(imdbPreview.image);
+    }
+  }, [useImdbCover, imdbPreview?.image, imdbPreview?.type, seriesPreview?.image, tvCoverSource]);
 
   // Update time display
   const handleTimeUpdate = useCallback(() => {
@@ -1329,15 +1446,15 @@ function MediaDetailModal({
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
                     <select
-                      value={aiTokenLevel}
-                      onChange={(e) => setAiTokenLevel(e.target.value as "fast" | "balanced" | "detailed")}
+                      value={aiMaxTokens}
+                      onChange={(e) => setAiMaxTokens(Number(e.target.value))}
                       disabled={aiLoading}
                       className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-300 disabled:opacity-50"
-                      title="AI detail level"
+                      title="Max tokens for AI response"
                     >
-                      <option value="fast">Fast</option>
-                      <option value="balanced">Balanced</option>
-                      <option value="detailed">Detailed</option>
+                      <option value={256}>256 tokens</option>
+                      <option value={512}>512 tokens</option>
+                      <option value={1024}>1024 tokens</option>
                     </select>
                     <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer">
                       <input
@@ -1554,84 +1671,24 @@ function MediaDetailModal({
                     <span className="text-[10px] text-emerald-400 shrink-0">&#10003; Verified</span>
                   </div>
                 )}
-              </div>
-              {/* Use IMDB cover - with source picker for TV episodes */}
-              {imdbPreview?.image && editImdbUrl.trim() && (
-                <div className="rounded-md border border-white/10 bg-white/5 px-3 py-2">
-                  <label className="flex items-center gap-2.5 cursor-pointer transition hover:bg-white/5 rounded -mx-1 px-1 py-0.5">
-                    <input
-                      type="checkbox"
-                      checked={useImdbCover}
-                      onChange={(e) => setUseImdbCover(e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-800 text-amber-500 accent-amber-500"
-                    />
-                    <span className="text-xs text-neutral-300">Use IMDB cover as artwork</span>
-                  </label>
-                  
-                  {/* TV cover source picker - show when we have both episode & series images */}
-                  {useImdbCover && seriesPreview?.image && imdbPreview.type === "tvEpisode" && (
-                    <div className="mt-2 pt-2 border-t border-white/5">
-                      <span className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5 block">Cover source</span>
-                      <div className="flex gap-2">
-                        {/* Series poster option */}
-                        <button
-                          type="button"
-                          onClick={() => setTvCoverSource("series")}
-                          className={`flex-1 rounded-md border p-1.5 transition cursor-pointer ${
-                            tvCoverSource === "series"
-                              ? "border-amber-500/60 bg-amber-500/10"
-                              : "border-white/10 bg-white/5 hover:bg-white/8"
-                          }`}
-                        >
-                          <div className="flex flex-col items-center gap-1">
-                            <img
-                              src={seriesPreview.image}
-                              alt="Series poster"
-                              className="h-14 w-10 rounded object-cover bg-neutral-800"
-                            />
-                            <span className={`text-[10px] ${tvCoverSource === "series" ? "text-amber-400" : "text-neutral-400"}`}>
-                              Series
-                            </span>
-                          </div>
-                        </button>
-                        {/* Episode still option */}
-                        <button
-                          type="button"
-                          onClick={() => setTvCoverSource("episode")}
-                          className={`flex-1 rounded-md border p-1.5 transition cursor-pointer ${
-                            tvCoverSource === "episode"
-                              ? "border-amber-500/60 bg-amber-500/10"
-                              : "border-white/10 bg-white/5 hover:bg-white/8"
-                          }`}
-                        >
-                          <div className="flex flex-col items-center gap-1">
-                            <img
-                              src={imdbPreview.image}
-                              alt="Episode still"
-                              className="h-14 w-[100px] rounded object-cover bg-neutral-800"
-                            />
-                            <span className={`text-[10px] ${tvCoverSource === "episode" ? "text-amber-400" : "text-neutral-400"}`}>
-                              Episode
-                            </span>
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Non-TV preview thumbnail */}
-                  {useImdbCover && !(seriesPreview?.image && imdbPreview.type === "tvEpisode") && (
-                    <div className="mt-1.5 flex items-center gap-2">
-                      <img
-                        src={imdbPreview.image}
-                        alt="IMDB cover"
-                        className="h-8 w-5.5 rounded object-cover shrink-0 bg-neutral-800"
+                {/* Use cover art checkbox — visible whenever an IMDB URL is entered */}
+                {editImdbUrl.trim() && (
+                  <div className="mt-1.5">
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={useImdbCover}
+                        onChange={(e) => setUseImdbCover(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-800 text-amber-500 accent-amber-500"
                       />
-                      <span className="text-[10px] text-neutral-500">IMDB poster</span>
-                    </div>
-                  )}
-                </div>
-              )}
+                      <span className="text-xs text-neutral-300 group-hover:text-neutral-200">Use cover art</span>
+                      {useImdbCover && imdbPreviewLoading && (
+                        <div className="h-3 w-3 animate-spin rounded-full border border-neutral-600 border-t-neutral-300" />
+                      )}
+                    </label>
+                  </div>
+                )}
+              </div>
               <div>
                 <label className="block text-xs text-neutral-500 mb-1">Making Of <span className="text-neutral-600">(cast, crew, production facts)</span></label>
                 <textarea
@@ -1840,6 +1897,7 @@ function MediaDetailModal({
           metadata={metadata}
           availableCovers={availableCovers}
           mediaSource={mediaSource}
+          effectiveImdbUrl={editImdbUrl.trim() || metadata.imdbUrl || ""}
         />
 
         {/* Unified Save / Cancel / Refill row at very bottom */}
@@ -2023,16 +2081,20 @@ type CoverMode = "image" | "emoji";
 type CoverSectionHandle = {
   getSavePayload: () => Record<string, unknown>;
   hasChanges: () => boolean;
+  /** Programmatically set the cover URL (e.g. from IMDB preview image) */
+  setCoverFromUrl: (url: string) => void;
 };
 
 const CoverImageSection = forwardRef<CoverSectionHandle, {
   metadata: MediaMetadata;
   availableCovers: CoverOption[];
   mediaSource: MediaSource;
+  effectiveImdbUrl?: string;
 }>(function CoverImageSection({
   metadata,
   availableCovers,
   mediaSource,
+  effectiveImdbUrl,
 }, ref) {
   // Determine initial cover mode based on existing metadata
   const getInitialCoverMode = (): CoverMode => {
@@ -2050,6 +2112,17 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
   const [success, setSuccess] = useState<string | null>(null);
   const [localCovers, setLocalCovers] = useState<CoverOption[]>(availableCovers);
   const [fetchingImdbCover, setFetchingImdbCover] = useState(false);
+
+  // Log IMDB URL visibility for cover section
+  useEffect(() => {
+    console.log("[IMDB Cover][CoverSection] IMDB URL state changed:", {
+      effectiveImdbUrl: effectiveImdbUrl || "(empty)",
+      "metadata.imdbUrl": metadata.imdbUrl || "(empty)",
+      imdbUrlToUse: (effectiveImdbUrl || metadata.imdbUrl || "") || "(empty)",
+      coverMode,
+      buttonVisible: !!(effectiveImdbUrl || metadata.imdbUrl) && coverMode === "image",
+    });
+  }, [effectiveImdbUrl, metadata.imdbUrl, coverMode]);
   
   // Image browser state (for local mode)
   const [showBrowser, setShowBrowser] = useState(false);
@@ -2111,6 +2184,12 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
       }
     },
     hasChanges: () => hasChanges,
+    setCoverFromUrl: (url: string) => {
+      setCoverUrl(url);
+      setCoverLocal("");
+      setCoverPath("");
+      setCoverMode("image");
+    },
   }), [coverMode, coverUrl, coverLocal, coverPath, coverEmoji, hasChanges]);
 
   // Upload new cover (for remote mode - uploads to FTP)
@@ -2201,24 +2280,34 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
   };
 
   // Fetch cover from IMDB
+  const imdbUrlToUse = effectiveImdbUrl || metadata.imdbUrl || "";
   const handleFetchImdbCover = async () => {
-    if (!metadata.imdbUrl) return;
+    console.log("[IMDB Cover][CoverSection] === FETCH IMDB COVER START ===", { imdbUrlToUse });
+    if (!imdbUrlToUse) {
+      console.log("[IMDB Cover][CoverSection] No IMDB URL available, aborting");
+      return;
+    }
     
     setFetchingImdbCover(true);
     setError(null);
     setSuccess(null);
 
     try {
+      console.log("[IMDB Cover][CoverSection] Calling /api/media-metadata/imdb-cover with:", imdbUrlToUse);
       const res = await fetch("/api/media-metadata/imdb-cover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imdbUrl: metadata.imdbUrl }),
+        body: JSON.stringify({ imdbUrl: imdbUrlToUse }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to fetch IMDB cover");
+      if (!res.ok) {
+        console.error("[IMDB Cover][CoverSection] API error:", res.status, data.error);
+        throw new Error(data.error || "Failed to fetch IMDB cover");
+      }
 
       if (data.coverUrl) {
+        console.log("[IMDB Cover][CoverSection] Cover found:", { coverUrl: data.coverUrl.substring(0, 80) + "...", title: data.title });
         // Set the cover URL and clear other cover fields
         setCoverUrl(data.coverUrl);
         setCoverLocal("");
@@ -2239,21 +2328,26 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
           const matchRatio = commonWords.length / Math.max(imdbWords.size, ourWords.size, 1);
           
           if (matchRatio < 0.5) {
+            console.warn("[IMDB Cover][CoverSection] Title mismatch — IMDB:", data.title, "vs ours:", metadata.title, "ratio:", matchRatio);
             // Titles don't match well - show warning
             setError(`Warning: IMDB title "${data.title}" may not match "${metadata.title}". Verify this is correct before saving.`);
           } else {
+            console.log("[IMDB Cover][CoverSection] Title match OK — ratio:", matchRatio);
             setSuccess(`Cover found for "${data.title}"`);
           }
         } else {
           setSuccess(`Cover found${data.title ? ` for "${data.title}"` : ""}`);
         }
       } else {
+        console.log("[IMDB Cover][CoverSection] API returned no coverUrl");
         throw new Error("No cover image found on IMDB");
       }
     } catch (err) {
+      console.error("[IMDB Cover][CoverSection] Fetch FAILED:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch IMDB cover");
     } finally {
       setFetchingImdbCover(false);
+      console.log("[IMDB Cover][CoverSection] === FETCH IMDB COVER END ===");
     }
   };
   
@@ -2497,8 +2591,8 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
                 Clear Cover
               </button>
             )}
-            {/* IMDB Cover Button - appears when imdbUrl is set */}
-            {metadata.imdbUrl && coverMode === "image" && (
+            {/* IMDB Cover Button - appears when imdbUrl is set (from saved metadata or current edit) */}
+            {imdbUrlToUse && coverMode === "image" && (
               <button
                 onClick={handleFetchImdbCover}
                 disabled={fetchingImdbCover}
@@ -3279,11 +3373,11 @@ export default function MediaAdminPage() {
           if (seriesIdMatch) {
             try {
               const seriesRes = await fetch(
-                `https://api.imdbapi.dev/titles/${seriesIdMatch[1]}`,
+                `/api/media-metadata/imdb-preview?id=${seriesIdMatch[1]}`,
               );
               if (seriesRes.ok) {
                 const seriesData = await seriesRes.json();
-                const seriesImage = seriesData.primaryImage?.url ?? null;
+                const seriesImage = seriesData.image ?? null;
                 if (seriesImage) {
                   coverUrl = seriesImage;
                 }
@@ -3300,11 +3394,11 @@ export default function MediaAdminPage() {
           if (imdbIdMatch) {
             try {
               const previewRes = await fetch(
-                `https://api.imdbapi.dev/titles/${imdbIdMatch[1]}`,
+                `/api/media-metadata/imdb-preview?id=${imdbIdMatch[1]}`,
               );
               if (previewRes.ok) {
                 const previewData = await previewRes.json();
-                const image = previewData.primaryImage?.url ?? null;
+                const image = previewData.image ?? null;
                 if (image) {
                   coverUrl = image;
                 }
@@ -3964,23 +4058,6 @@ export default function MediaAdminPage() {
                         </span>
                       </th>
                       <th 
-                        className="px-3 py-2 font-semibold min-w-[120px] cursor-pointer hover:bg-white/5 transition select-none"
-                        onClick={() => handleColumnSort("tags")}
-                      >
-                        <span className="flex items-center gap-1">
-                          Tags
-                          {sortBy === "tags" && (
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              {sortDirection === "asc" ? (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                              ) : (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              )}
-                            </svg>
-                          )}
-                        </span>
-                      </th>
-                      <th 
                         className="px-3 py-2 font-semibold w-24 text-right cursor-pointer hover:bg-white/5 transition select-none"
                         onClick={() => handleColumnSort("duration")}
                       >
@@ -4123,22 +4200,6 @@ export default function MediaAdminPage() {
                           </td>
                           <td className="px-3 py-2 text-center text-neutral-200">
                             {meta.year || <span className="text-neutral-500">—</span>}
-                          </td>
-                          <td className="px-3 py-2 text-neutral-200">
-                            {meta.tags && meta.tags.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {meta.tags.map((tag, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="inline-block px-2 py-0.5 text-xs rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/20"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-neutral-500">—</span>
-                            )}
                           </td>
                           <td className="px-3 py-2 text-right text-neutral-200">
                             {formatDuration(file.durationSeconds)}

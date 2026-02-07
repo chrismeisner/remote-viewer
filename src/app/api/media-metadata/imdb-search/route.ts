@@ -12,23 +12,20 @@ type ImdbCandidate = {
 };
 
 /**
- * Map IMDB title types from the API to our simplified types
+ * Map IMDB suggestion API qid types to our simplified types
  */
-function mapTitleType(apiType: string): string {
-  switch (apiType) {
+function mapSuggestionType(qid: string): string {
+  switch (qid) {
     case "movie":
     case "tvMovie":
+    case "short":
+    case "tvShort":
+    case "video":
       return "film";
     case "tvSeries":
     case "tvMiniSeries":
-      return "tv";
     case "tvSpecial":
       return "tv";
-    case "short":
-    case "tvShort":
-      return "film";
-    case "documentary":
-      return "documentary";
     default:
       return "film";
   }
@@ -37,7 +34,7 @@ function mapTitleType(apiType: string): string {
 /**
  * POST /api/media-metadata/imdb-search
  *
- * Uses the free IMDb API (imdbapi.dev) to search for real IMDB title matches.
+ * Uses IMDB's own suggestion API to search for real IMDB title matches.
  *
  * Body:
  *   - filename: string
@@ -87,13 +84,15 @@ export async function POST(request: NextRequest) {
 
     console.log(`[IMDB Search] Query: "${searchQuery}" (from title: "${title}", filename: "${filename}")`);
 
-    // Search via imdbapi.dev
-    const apiUrl = `https://api.imdbapi.dev/search/titles?query=${encodeURIComponent(searchQuery)}`;
+    // Search via IMDB's own suggestion API
+    const firstChar = searchQuery.charAt(0).toLowerCase();
+    const apiUrl = `https://v3.sg.media-imdb.com/suggestion/${firstChar}/${encodeURIComponent(searchQuery)}.json`;
     console.log(`[IMDB Search] API URL: ${apiUrl}`);
 
     const apiResponse = await fetch(apiUrl, {
       headers: {
         Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
       signal: AbortSignal.timeout(10000),
     });
@@ -107,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     const apiData = await apiResponse.json();
-    const results = apiData?.titles;
+    const results = apiData?.d;
 
     if (!Array.isArray(results) || results.length === 0) {
       console.log("[IMDB Search] No results from API");
@@ -116,24 +115,29 @@ export async function POST(request: NextRequest) {
 
     console.log(`[IMDB Search] API returned ${results.length} raw results`);
 
-    // Convert API results to our candidate format
+    // Convert IMDB suggestion results to our candidate format
+    // Suggestion API fields: id, l (label/title), q (type label), qid (type id), s (stars), y (year), i (image)
     const allCandidates: ImdbCandidate[] = results
-      .filter((r: { id?: string }) => r.id && typeof r.id === "string" && r.id.startsWith("tt"))
+      .filter((r: { id?: string; qid?: string }) =>
+        r.id && typeof r.id === "string" && r.id.startsWith("tt") &&
+        // Filter out people/company results (only keep titles)
+        r.qid && typeof r.qid === "string"
+      )
       .map((r: {
         id: string;
-        primaryTitle?: string;
-        originalTitle?: string;
-        type?: string;
-        startYear?: number;
-        rating?: { aggregateRating?: number };
-        primaryImage?: { url?: string };
+        l?: string;
+        q?: string;
+        qid?: string;
+        s?: string;
+        y?: number;
+        i?: { imageUrl?: string };
       }) => ({
         imdbUrl: `https://www.imdb.com/title/${r.id}/`,
-        title: r.primaryTitle || r.originalTitle || "Unknown",
-        year: typeof r.startYear === "number" ? r.startYear : null,
-        type: mapTitleType(r.type || ""),
-        rating: r.rating?.aggregateRating ?? null,
-        image: r.primaryImage?.url ?? null,
+        title: r.l || "Unknown",
+        year: typeof r.y === "number" ? r.y : null,
+        type: mapSuggestionType(r.qid || ""),
+        rating: null, // Suggestion API doesn't include ratings
+        image: r.i?.imageUrl ?? null,
       }));
 
     // Score and rank candidates based on how well they match our metadata
