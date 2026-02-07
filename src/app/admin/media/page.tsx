@@ -2119,6 +2119,28 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
 
   // Uploaded cover picker state
   const [showUploadedPicker, setShowUploadedPicker] = useState(false);
+  const [refreshingCovers, setRefreshingCovers] = useState(false);
+
+  // Refresh covers list from server/FTP
+  const handleRefreshCovers = async () => {
+    setRefreshingCovers(true);
+    try {
+      const res = await fetch(`/api/covers?source=${mediaSource}`, { cache: "no-store" });
+      const data = await res.json();
+      if (data.covers) {
+        setLocalCovers((prev) => {
+          // Merge: keep session-uploaded covers not yet on FTP
+          const incoming = new Set((data.covers as CoverOption[]).map((c: CoverOption) => c.filename));
+          const extras = prev.filter((c) => !incoming.has(c.filename));
+          return [...(data.covers as CoverOption[]), ...extras];
+        });
+      }
+    } catch (err) {
+      console.error("[CoverSection] Failed to refresh covers:", err);
+    } finally {
+      setRefreshingCovers(false);
+    }
+  };
 
   // IMDB poster picker state
   const [showPosterPicker, setShowPosterPicker] = useState(false);
@@ -2148,6 +2170,16 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
   const [browserParent, setBrowserParent] = useState<string | null>(null);
   const [browserLoading, setBrowserLoading] = useState(false);
   const [browserError, setBrowserError] = useState<string | null>(null);
+
+  // Sync available covers when the prop changes (e.g. after API fetch completes)
+  useEffect(() => {
+    setLocalCovers((prev) => {
+      // Merge: keep any covers we uploaded this session that aren't already in the list
+      const incoming = new Set(availableCovers.map((c) => c.filename));
+      const extras = prev.filter((c) => !incoming.has(c.filename));
+      return [...availableCovers, ...extras];
+    });
+  }, [availableCovers]);
 
   // Sync state when metadata prop changes
   useEffect(() => {
@@ -2620,7 +2652,7 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
             <div>
               <label className="block text-xs text-neutral-500 mb-1">Upload Cover</label>
               <div className="flex gap-2">
-                <label className="cursor-pointer flex-1 rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-neutral-300 hover:bg-white/10 transition flex items-center justify-center gap-2">
+                <label className="cursor-pointer rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-neutral-300 hover:bg-white/10 transition flex items-center justify-center gap-2">
                   {uploading ? (
                     <span>Uploading...</span>
                   ) : (
@@ -2639,83 +2671,114 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
                     className="hidden"
                   />
                 </label>
-                {localCovers.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowUploadedPicker(!showUploadedPicker)}
-                    className={`rounded-md border px-3 py-2 text-sm font-medium transition flex items-center gap-2 ${
-                      showUploadedPicker
-                        ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-300"
-                        : "border-white/20 bg-white/5 text-neutral-300 hover:bg-white/10"
-                    }`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                    </svg>
-                    Select from Uploaded
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const opening = !showUploadedPicker;
+                    setShowUploadedPicker(opening);
+                    // Auto-refresh when opening the picker
+                    if (opening) void handleRefreshCovers();
+                  }}
+                  className={`rounded-md border px-3 py-2 text-sm font-medium transition flex items-center gap-2 ${
+                    showUploadedPicker
+                      ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-300"
+                      : "border-white/20 bg-white/5 text-neutral-300 hover:bg-white/10"
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                  </svg>
+                  Select from Uploaded
+                </button>
               </div>
 
               {/* Uploaded covers picker grid */}
-              {showUploadedPicker && localCovers.length > 0 && (
+              {showUploadedPicker && (
                 <div className="mt-2 rounded-md border border-white/15 bg-neutral-900/80 p-2">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-neutral-400">{localCovers.length} uploaded cover{localCovers.length !== 1 ? "s" : ""}</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowUploadedPicker(false)}
-                      className="text-xs text-neutral-500 hover:text-neutral-300 transition"
-                    >
-                      Close
-                    </button>
+                    <span className="text-xs text-neutral-400">
+                      {refreshingCovers ? "Loading covers from server..." : `${localCovers.length} uploaded cover${localCovers.length !== 1 ? "s" : ""}`}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleRefreshCovers()}
+                        disabled={refreshingCovers}
+                        className="text-xs text-neutral-500 hover:text-neutral-300 transition flex items-center gap-1 disabled:opacity-50"
+                        title="Refresh covers list from server"
+                      >
+                        <svg className={`w-3 h-3 ${refreshingCovers ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Refresh
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowUploadedPicker(false)}
+                        className="text-xs text-neutral-500 hover:text-neutral-300 transition"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto">
-                    {localCovers.map((cover) => {
-                      const thumbUrl = mediaSource === "remote"
-                        ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(cover.filename)}`
-                        : `/api/covers/${encodeURIComponent(cover.filename)}`;
-                      const isSelected = coverLocal === cover.filename;
-                      return (
-                        <button
-                          key={cover.filename}
-                          type="button"
-                          onClick={() => {
-                            setCoverLocal(cover.filename);
-                            setCoverUrl("");
-                            setCoverPath("");
-                            setShowUploadedPicker(false);
-                            onCoverUploaded?.();
-                          }}
-                          className={`relative rounded-md overflow-hidden border-2 transition aspect-[7/10] group ${
-                            isSelected
-                              ? "border-emerald-400 ring-1 ring-emerald-400/30"
-                              : "border-white/10 hover:border-white/30"
-                          }`}
-                          title={cover.filename}
-                        >
-                          <img
-                            src={thumbUrl}
-                            alt={cover.filename}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = "none";
+                  {refreshingCovers && localCovers.length === 0 ? (
+                    <div className="flex items-center justify-center py-6">
+                      <div className="h-5 w-5 border-2 border-neutral-600 border-t-emerald-400 rounded-full animate-spin" />
+                      <span className="ml-2 text-xs text-neutral-400">Fetching covers...</span>
+                    </div>
+                  ) : localCovers.length === 0 ? (
+                    <div className="py-6 text-center">
+                      <p className="text-xs text-neutral-500">No uploaded covers found on the server.</p>
+                      <p className="text-xs text-neutral-600 mt-1">Upload an image above or add JPG files to the covers/ folder on FTP.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto">
+                      {localCovers.map((cover) => {
+                        const thumbUrl = mediaSource === "remote"
+                          ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(cover.filename)}`
+                          : `/api/covers/${encodeURIComponent(cover.filename)}`;
+                        const isSelected = coverLocal === cover.filename;
+                        return (
+                          <button
+                            key={cover.filename}
+                            type="button"
+                            onClick={() => {
+                              setCoverLocal(cover.filename);
+                              setCoverUrl("");
+                              setCoverPath("");
+                              setShowUploadedPicker(false);
+                              onCoverUploaded?.();
                             }}
-                          />
-                          {isSelected && (
-                            <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
-                              <svg className="w-5 h-5 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                              </svg>
+                            className={`relative rounded-md overflow-hidden border-2 transition aspect-[7/10] group ${
+                              isSelected
+                                ? "border-emerald-400 ring-1 ring-emerald-400/30"
+                                : "border-white/10 hover:border-white/30"
+                            }`}
+                            title={cover.filename}
+                          >
+                            <img
+                              src={thumbUrl}
+                              alt={cover.filename}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                            {isSelected && (
+                              <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
+                                <svg className="w-5 h-5 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            )}
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1 py-0.5 opacity-0 group-hover:opacity-100 transition">
+                              <p className="text-[9px] text-neutral-300 truncate">{cover.filename}</p>
                             </div>
-                          )}
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1 py-0.5 opacity-0 group-hover:opacity-100 transition">
-                            <p className="text-[9px] text-neutral-300 truncate">{cover.filename}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
