@@ -287,6 +287,18 @@ function MediaDetailModal({
             setEditEpisode(metaData.metadata.episode?.toString() ?? "");
             setEditImdbUrl(metaData.metadata.imdbUrl ?? "");
             setEditTags(metaData.metadata.tags ?? []);
+
+            // If the item already has a cover set (custom upload, local path, URL, or emoji),
+            // default "Use IMDB cover" to unchecked so the auto-load effect doesn't
+            // overwrite the existing cover with the IMDB poster.
+            // If no cover exists, default to checked so new items get auto-covered.
+            const hasExistingCover = !!(
+              metaData.metadata.coverLocal ||
+              metaData.metadata.coverPath ||
+              metaData.metadata.coverUrl ||
+              metaData.metadata.coverEmoji
+            );
+            setUseImdbCover(!hasExistingCover);
           }
           if (coversData.covers) {
             setAvailableCovers(coversData.covers);
