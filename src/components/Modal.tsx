@@ -30,12 +30,23 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-4"
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-black/80 px-4 pt-6 pb-32 sm:py-4"
       onClick={handleBackdropClick}
     >
       <div
-        className={`w-full ${maxWidth} max-h-[90vh] overflow-y-auto rounded-md border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur`}
+        className={`relative w-full ${maxWidth} rounded-md border border-white/15 bg-neutral-900/90 p-6 text-neutral-100 shadow-2xl shadow-black/60 backdrop-blur sm:max-h-[90vh] sm:overflow-y-auto`}
       >
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 transition hover:bg-white/10 hover:text-neutral-100"
+            aria-label="Close"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+              <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+            </svg>
+          </button>
+        )}
         {children}
       </div>
     </div>
@@ -51,7 +62,7 @@ export function ModalTitle({ children }: { children: ReactNode }) {
 }
 
 export function ModalFooter({ children }: { children: ReactNode }) {
-  return <div className="mt-4 flex justify-end gap-2">{children}</div>;
+  return <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">{children}</div>;
 }
 
 export function ModalButton({
@@ -68,7 +79,7 @@ export function ModalButton({
   disabled?: boolean;
 }) {
   const baseClasses =
-    "rounded-md border px-4 py-2 text-sm font-semibold text-neutral-100 transition";
+    "w-full sm:w-auto rounded-md border px-4 py-2 text-sm font-semibold text-neutral-100 transition";
   const variantClasses =
     variant === "primary"
       ? "border-emerald-400/40 bg-emerald-500/20 hover:border-emerald-400/60 hover:bg-emerald-500/30"

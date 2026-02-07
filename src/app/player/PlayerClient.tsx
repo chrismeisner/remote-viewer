@@ -1178,12 +1178,29 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     // Remove any other search params that shouldn't be shared
     url.hash = '';
     
+    const shareUrl = url.toString();
+    
+    // Use native share sheet on mobile if available
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Watch ${channel}`,
+          url: shareUrl,
+        });
+        trackShare("channel", channel, "native");
+        return;
+      } catch (err) {
+        // User cancelled share sheet – don't fall through
+        if ((err as DOMException)?.name === 'AbortError') return;
+      }
+    }
+    
+    // Fallback: copy to clipboard (desktop or if share API unavailable)
     try {
-      await navigator.clipboard.writeText(url.toString());
+      await navigator.clipboard.writeText(shareUrl);
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 2000);
-      // Track share action
-      trackShare("channel", channel);
+      trackShare("channel", channel, "clipboard");
     } catch (err) {
       console.warn('Failed to copy URL to clipboard', err);
     }
@@ -1512,7 +1529,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       />
 
       <Modal open={showInfoModal} onClose={closeInfoModal} maxWidth="max-w-2xl">
-        <ModalTitle>Now Playing Info</ModalTitle>
+        <ModalTitle>Remote Viewer</ModalTitle>
         {infoLoading ? (
           <div className="mt-4 text-center text-neutral-400">
             <p>Loading metadata...</p>

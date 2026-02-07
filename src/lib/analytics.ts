@@ -170,11 +170,11 @@ export function trackWatchDuration(params: {
 /**
  * Track share actions
  */
-export function trackShare(contentType: "channel" | "video", contentId: string) {
+export function trackShare(contentType: "channel" | "video", contentId: string, method: "native" | "clipboard" = "clipboard") {
   if (!isAnalyticsAvailable()) return;
   
   window.gtag?.("event", "share", {
-    method: "clipboard",
+    method,
     content_type: contentType,
     item_id: contentId,
   });
