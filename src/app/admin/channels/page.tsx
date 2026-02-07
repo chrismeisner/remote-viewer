@@ -20,6 +20,32 @@ type Channel = {
   totalDurationSeconds?: number;
 };
 
+type ChannelHealthIssue = {
+  file: string;
+  title?: string;
+  issue: "missing" | "unreachable" | "zero_duration";
+  details: string;
+};
+
+type ChannelHealthResult = {
+  channelId: string;
+  shortName?: string;
+  type: "24hour" | "looping";
+  active: boolean;
+  totalItems: number;
+  healthyItems: number;
+  issues: ChannelHealthIssue[];
+};
+
+type HealthCheckResult = {
+  source: string;
+  checkedAt: string;
+  totalChannels: number;
+  totalItems: number;
+  totalIssues: number;
+  channels: ChannelHealthResult[];
+};
+
 // Format duration in seconds to a human-readable string
 function formatDuration(totalSeconds: number | undefined): string {
   if (!totalSeconds || totalSeconds === 0) return "—";
@@ -56,6 +82,8 @@ export default function ChannelAdminPage() {
   const [editType, setEditType] = useState<ScheduleType>("24hour");
   const [resetModal, setResetModal] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [healthChecking, setHealthChecking] = useState(false);
+  const [healthResult, setHealthResult] = useState<HealthCheckResult | null>(null);
 
   // Sync media source from localStorage - must complete before loading channels
   useEffect(() => {
@@ -344,6 +372,27 @@ export default function ChannelAdminPage() {
     }
   };
 
+  // Health check
+  const handleHealthCheck = async () => {
+    if (!mediaSource) return;
+    setHealthChecking(true);
+    setHealthResult(null);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/channels/health?source=${mediaSource}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Health check failed");
+      setHealthResult(data as HealthCheckResult);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Health check failed");
+    } finally {
+      setHealthChecking(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 text-neutral-100">
       {/* Header */}
@@ -406,6 +455,13 @@ export default function ChannelAdminPage() {
           className="rounded-md border border-white/15 bg-white/5 px-3 py-2 font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
         >
           {loading ? "Loading…" : "Refresh"}
+        </button>
+        <button
+          onClick={handleHealthCheck}
+          disabled={healthChecking || loading || channels.length === 0}
+          className="rounded-md border border-amber-400/50 bg-amber-500/20 px-3 py-2 font-semibold text-amber-100 transition hover:border-amber-300 hover:bg-amber-500/30 disabled:opacity-50"
+        >
+          {healthChecking ? "Checking…" : "Health Check"}
         </button>
         <button
           onClick={() => setResetModal(true)}
@@ -680,6 +736,130 @@ export default function ChannelAdminPage() {
                 className="rounded-md border border-red-400/50 bg-red-500/20 px-4 py-2 text-sm font-semibold text-red-100 disabled:opacity-50"
               >
                 {resetting ? "Deleting…" : "Delete All Channels"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Health Check Results Modal */}
+      {healthResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={() => setHealthResult(null)}>
+          <div className="w-full max-w-2xl max-h-[80vh] flex flex-col rounded-md border border-white/15 bg-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-neutral-50">Health Check Results</h3>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  {new Date(healthResult.checkedAt).toLocaleString()} — {healthResult.source} source
+                </p>
+              </div>
+              <div className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                healthResult.totalIssues === 0
+                  ? "bg-emerald-500/20 text-emerald-200"
+                  : "bg-red-500/20 text-red-200"
+              }`}>
+                {healthResult.totalIssues === 0 ? "All Healthy" : `${healthResult.totalIssues} Issue${healthResult.totalIssues === 1 ? "" : "s"}`}
+              </div>
+            </div>
+
+            {/* Summary Bar */}
+            <div className="flex gap-6 border-b border-white/10 px-6 py-3 text-sm">
+              <div>
+                <span className="text-neutral-400">Channels: </span>
+                <span className="font-semibold text-neutral-100">{healthResult.totalChannels}</span>
+              </div>
+              <div>
+                <span className="text-neutral-400">Items: </span>
+                <span className="font-semibold text-neutral-100">{healthResult.totalItems}</span>
+              </div>
+              <div>
+                <span className="text-neutral-400">Issues: </span>
+                <span className={`font-semibold ${healthResult.totalIssues > 0 ? "text-red-300" : "text-emerald-300"}`}>
+                  {healthResult.totalIssues}
+                </span>
+              </div>
+            </div>
+
+            {/* Channel Results - Scrollable */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+              {healthResult.channels.length === 0 ? (
+                <p className="text-sm text-neutral-400">No channels to check.</p>
+              ) : (
+                healthResult.channels.map((ch) => (
+                  <div key={ch.channelId} className="rounded-lg border border-white/10 bg-white/5 overflow-hidden">
+                    {/* Channel header */}
+                    <div className="flex items-center justify-between px-4 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-neutral-200 font-mono">
+                          {ch.channelId.toString().padStart(2, "0")}
+                        </span>
+                        {ch.shortName && (
+                          <span className="text-sm text-neutral-200">{ch.shortName}</span>
+                        )}
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          ch.type === "looping"
+                            ? "bg-purple-500/20 text-purple-200"
+                            : "bg-blue-500/20 text-blue-200"
+                        }`}>
+                          {ch.type === "looping" ? "Looping" : "24-Hour"}
+                        </span>
+                        {!ch.active && (
+                          <span className="rounded-full bg-neutral-500/20 px-2 py-0.5 text-xs font-semibold text-neutral-400">
+                            Inactive
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-400">
+                          {ch.healthyItems}/{ch.totalItems} OK
+                        </span>
+                        {ch.issues.length === 0 ? (
+                          <span className="text-emerald-400 text-sm">&#10003;</span>
+                        ) : (
+                          <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-semibold text-red-300">
+                            {ch.issues.length} issue{ch.issues.length === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Issues list */}
+                    {ch.issues.length > 0 && (
+                      <div className="border-t border-white/5 bg-red-500/5 px-4 py-2 space-y-1.5">
+                        {ch.issues.map((issue, idx) => (
+                          <div key={idx} className="flex items-start gap-2 text-xs">
+                            <span className={`mt-0.5 shrink-0 ${
+                              issue.issue === "missing" ? "text-red-400" : 
+                              issue.issue === "unreachable" ? "text-amber-400" :
+                              "text-amber-400"
+                            }`}>
+                              {issue.issue === "missing" ? "MISSING" : 
+                               issue.issue === "unreachable" ? "UNREACHABLE" :
+                               "WARN"}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-neutral-200 font-mono truncate" title={issue.file}>
+                                {issue.file}
+                              </p>
+                              <p className="text-neutral-400">{issue.details}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-white/10 px-6 py-3 flex justify-end">
+              <button
+                onClick={() => setHealthResult(null)}
+                className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+              >
+                Close
               </button>
             </div>
           </div>
