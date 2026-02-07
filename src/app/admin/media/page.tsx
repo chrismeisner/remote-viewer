@@ -158,6 +158,9 @@ function MediaDetailModal({
   const [aiContextEnabled, setAiContextEnabled] = useState(false);
   const [aiContextText, setAiContextText] = useState("");
 
+  // Deep search state
+  const [deepSearchLoading, setDeepSearchLoading] = useState(false);
+
   // IMDB search state
   const [imdbSearchOpen, setImdbSearchOpen] = useState(false);
   const [imdbSearchLoading, setImdbSearchLoading] = useState(false);
@@ -469,6 +472,85 @@ function MediaDetailModal({
       setMetadataError(err instanceof Error ? err.message : "AI lookup failed");
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  // Deep search: uses all existing metadata to do a thorough, targeted AI lookup
+  const handleDeepSearch = async () => {
+    console.log("[Deep Search] === DEEP SEARCH START ===", { file: item.relPath });
+    setDeepSearchLoading(true);
+    setMetadataError(null);
+    try {
+      // Collect ALL current metadata (from edit fields if editing, otherwise from saved metadata)
+      const currentMetadata = {
+        title: editingMetadata ? editTitle.trim() : metadata.title,
+        year: editingMetadata ? (editYear ? parseInt(editYear, 10) : null) : metadata.year,
+        releaseDate: editingMetadata ? editReleaseDate.trim() : metadata.releaseDate,
+        director: editingMetadata ? editDirector.trim() : metadata.director,
+        category: editingMetadata ? editCategory.trim() : metadata.category,
+        makingOf: editingMetadata ? editMakingOf.trim() : metadata.makingOf,
+        plot: editingMetadata ? editPlot.trim() : metadata.plot,
+        type: editingMetadata ? editType : metadata.type,
+        season: editingMetadata ? (editSeason ? parseInt(editSeason, 10) : null) : metadata.season,
+        episode: editingMetadata ? (editEpisode ? parseInt(editEpisode, 10) : null) : metadata.episode,
+        imdbUrl: editingMetadata ? editImdbUrl.trim() : metadata.imdbUrl,
+        tags: editingMetadata ? editTags : metadata.tags,
+      };
+
+      console.log("[Deep Search] Sending metadata context:", {
+        title: currentMetadata.title,
+        type: currentMetadata.type,
+        season: currentMetadata.season,
+        episode: currentMetadata.episode,
+        imdbUrl: currentMetadata.imdbUrl,
+      });
+
+      const res = await fetch("/api/media-metadata/deep-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: item.relPath,
+          existingMetadata: currentMetadata,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("[Deep Search] API error:", data.error);
+        throw new Error(data.error || "Deep search failed");
+      }
+
+      console.log("[Deep Search] Response:", {
+        title: data.title,
+        type: data.type,
+        plotLength: data.plot?.length || 0,
+        makingOfLength: data.makingOf?.length || 0,
+        tagsCount: data.tags?.length || 0,
+      });
+
+      // Fill in edit fields with deep search results
+      if (data.title) setEditTitle(data.title);
+      if (data.year) setEditYear(data.year.toString());
+      if (data.releaseDate) setEditReleaseDate(data.releaseDate);
+      if (data.director) setEditDirector(data.director);
+      if (data.category) setEditCategory(data.category);
+      if (data.makingOf) setEditMakingOf(data.makingOf);
+      if (data.plot) setEditPlot(data.plot);
+      if (data.type) setEditType(data.type);
+      if (data.season) setEditSeason(data.season.toString());
+      if (data.episode) setEditEpisode(data.episode.toString());
+      if (data.imdbUrl) setEditImdbUrl(data.imdbUrl);
+      if (data.tags && Array.isArray(data.tags)) setEditTags(data.tags);
+
+      // Switch to edit mode to show the filled fields
+      setEditingMetadata(true);
+
+      console.log("[Deep Search] === DEEP SEARCH COMPLETE ===");
+    } catch (err) {
+      console.error("[Deep Search] Failed:", err);
+      setMetadataError(err instanceof Error ? err.message : "Deep search failed");
+    } finally {
+      setDeepSearchLoading(false);
     }
   };
 
@@ -1910,21 +1992,21 @@ function MediaDetailModal({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={handleSaveAll}
-                disabled={metadataSaving || aiLoading}
+                disabled={metadataSaving || aiLoading || deepSearchLoading}
                 className="rounded-md bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-sm font-semibold text-neutral-900 transition disabled:opacity-50"
               >
                 {metadataSaving ? "Saving..." : "Save"}
               </button>
               <button
                 onClick={handleCancelEdit}
-                disabled={metadataSaving || aiLoading}
+                disabled={metadataSaving || aiLoading || deepSearchLoading}
                 className="rounded-md border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-neutral-300 transition hover:bg-white/10 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAiLookup}
-                disabled={metadataSaving || aiLoading}
+                disabled={metadataSaving || aiLoading || deepSearchLoading}
                 className="rounded-md border border-blue-500/40 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-300 transition hover:bg-blue-500/20 hover:text-blue-200 disabled:opacity-50 flex items-center gap-1.5"
                 title="Re-fetch metadata using AI"
               >
@@ -1942,6 +2024,29 @@ function MediaDetailModal({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
                     Refill AI
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleDeepSearch}
+                disabled={metadataSaving || aiLoading || deepSearchLoading}
+                className="rounded-md border border-purple-500/40 bg-purple-500/10 px-4 py-2 text-sm font-semibold text-purple-300 transition hover:bg-purple-500/20 hover:text-purple-200 disabled:opacity-50 flex items-center gap-1.5"
+                title="Thorough AI search using all existing metadata to find specific details (episode plots, game stats, setlists, etc.)"
+              >
+                {deepSearchLoading ? (
+                  <>
+                    <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Deep searching...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                    Deep Search
                   </>
                 )}
               </button>
