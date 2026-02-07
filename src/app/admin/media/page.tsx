@@ -1898,6 +1898,7 @@ function MediaDetailModal({
           availableCovers={availableCovers}
           mediaSource={mediaSource}
           effectiveImdbUrl={editImdbUrl.trim() || metadata.imdbUrl || ""}
+          onCoverUploaded={() => setUseImdbCover(false)}
         />
 
         {/* Unified Save / Cancel / Refill row at very bottom */}
@@ -2090,11 +2091,14 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
   availableCovers: CoverOption[];
   mediaSource: MediaSource;
   effectiveImdbUrl?: string;
+  /** Called when the user uploads or selects an uploaded cover — parent can uncheck "Use cover art" */
+  onCoverUploaded?: () => void;
 }>(function CoverImageSection({
   metadata,
   availableCovers,
   mediaSource,
   effectiveImdbUrl,
+  onCoverUploaded,
 }, ref) {
   // Determine initial cover mode based on existing metadata
   const getInitialCoverMode = (): CoverMode => {
@@ -2112,6 +2116,9 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
   const [success, setSuccess] = useState<string | null>(null);
   const [localCovers, setLocalCovers] = useState<CoverOption[]>(availableCovers);
   const [fetchingImdbCover, setFetchingImdbCover] = useState(false);
+
+  // Uploaded cover picker state
+  const [showUploadedPicker, setShowUploadedPicker] = useState(false);
 
   // IMDB poster picker state
   const [showPosterPicker, setShowPosterPicker] = useState(false);
@@ -2231,6 +2238,8 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
       setCoverLocal(data.filename);
       setCoverUrl("");
       setCoverPath("");
+      // Notify parent so it can uncheck "Use cover art"
+      onCoverUploaded?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -2607,28 +2616,109 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
               </div>
             </>
           ) : (
-            /* Remote Mode: Upload only */
+            /* Remote Mode: Upload or select from uploaded */
             <div>
               <label className="block text-xs text-neutral-500 mb-1">Upload Cover</label>
-              <label className="cursor-pointer rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-neutral-300 hover:bg-white/10 transition flex items-center justify-center gap-2">
-                {uploading ? (
-                  <span>Uploading...</span>
-                ) : (
-                  <>
+              <div className="flex gap-2">
+                <label className="cursor-pointer flex-1 rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-neutral-300 hover:bg-white/10 transition flex items-center justify-center gap-2">
+                  {uploading ? (
+                    <span>Uploading...</span>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      Upload Image
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handleUpload}
+                    disabled={uploading}
+                    className="hidden"
+                  />
+                </label>
+                {localCovers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowUploadedPicker(!showUploadedPicker)}
+                    className={`rounded-md border px-3 py-2 text-sm font-medium transition flex items-center gap-2 ${
+                      showUploadedPicker
+                        ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-300"
+                        : "border-white/20 bg-white/5 text-neutral-300 hover:bg-white/10"
+                    }`}
+                  >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                     </svg>
-                    Upload Image
-                  </>
+                    Select from Uploaded
+                  </button>
                 )}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  onChange={handleUpload}
-                  disabled={uploading}
-                  className="hidden"
-                />
-              </label>
+              </div>
+
+              {/* Uploaded covers picker grid */}
+              {showUploadedPicker && localCovers.length > 0 && (
+                <div className="mt-2 rounded-md border border-white/15 bg-neutral-900/80 p-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-neutral-400">{localCovers.length} uploaded cover{localCovers.length !== 1 ? "s" : ""}</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowUploadedPicker(false)}
+                      className="text-xs text-neutral-500 hover:text-neutral-300 transition"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto">
+                    {localCovers.map((cover) => {
+                      const thumbUrl = mediaSource === "remote"
+                        ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(cover.filename)}`
+                        : `/api/covers/${encodeURIComponent(cover.filename)}`;
+                      const isSelected = coverLocal === cover.filename;
+                      return (
+                        <button
+                          key={cover.filename}
+                          type="button"
+                          onClick={() => {
+                            setCoverLocal(cover.filename);
+                            setCoverUrl("");
+                            setCoverPath("");
+                            setShowUploadedPicker(false);
+                            onCoverUploaded?.();
+                          }}
+                          className={`relative rounded-md overflow-hidden border-2 transition aspect-[7/10] group ${
+                            isSelected
+                              ? "border-emerald-400 ring-1 ring-emerald-400/30"
+                              : "border-white/10 hover:border-white/30"
+                          }`}
+                          title={cover.filename}
+                        >
+                          <img
+                            src={thumbUrl}
+                            alt={cover.filename}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                          {isSelected && (
+                            <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
+                              <svg className="w-5 h-5 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </div>
+                          )}
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1 py-0.5 opacity-0 group-hover:opacity-100 transition">
+                            <p className="text-[9px] text-neutral-300 truncate">{cover.filename}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Show resolved URL when a cover is uploaded */}
               {coverLocal && (
                 <div className="mt-2 p-2 rounded-md bg-emerald-500/10 border border-emerald-400/30">
