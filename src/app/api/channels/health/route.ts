@@ -282,8 +282,9 @@ async function getRemoteAvailableFiles(): Promise<Set<string>> {
 }
 
 async function getLocalAvailableFiles(): Promise<Set<string>> {
-  const mediaRoot = await getEffectiveMediaRoot();
-  if (!mediaRoot) return new Set();
+  const mediaRootRaw = await getEffectiveMediaRoot();
+  if (!mediaRootRaw) return new Set();
+  const mediaRoot: string = mediaRootRaw;
 
   const ALLOWED_EXTENSIONS = [".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm"];
   const set = new Set<string>();
