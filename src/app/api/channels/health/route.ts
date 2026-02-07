@@ -83,7 +83,8 @@ export async function POST(request: NextRequest) {
     // Check each channel
     const channelResults: ChannelHealthResult[] = [];
 
-    for (const [channelId, channelData] of Object.entries(schedule.channels)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const [channelId, channelData] of Object.entries(schedule.channels as Record<string, any>)) {
       const scheduleType = channelData.type || "24hour";
       const issues: ChannelHealthIssue[] = [];
       let totalItems = 0;
