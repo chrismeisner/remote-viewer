@@ -64,7 +64,11 @@ export async function POST(request: Request) {
     }
 
     // Validate paths don't try to escape the media directory
-    if (oldPath.includes("..") || newPath.includes("..")) {
+    // Check for directory traversal patterns (../ or /..) but allow .. in filenames
+    const hasTraversalPattern = (p: string) => 
+      p.includes("../") || p.includes("/..") || p.startsWith("..") || p.endsWith("..");
+    
+    if (hasTraversalPattern(oldPath) || hasTraversalPattern(newPath)) {
       return NextResponse.json(
         { success: false, message: "Invalid path: cannot contain .." } satisfies RenameResult,
         { status: 400 }

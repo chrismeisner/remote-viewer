@@ -2113,6 +2113,15 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
   const [localCovers, setLocalCovers] = useState<CoverOption[]>(availableCovers);
   const [fetchingImdbCover, setFetchingImdbCover] = useState(false);
 
+  // IMDB poster picker state
+  const [showPosterPicker, setShowPosterPicker] = useState(false);
+  const [posterPickerLoading, setPosterPickerLoading] = useState(false);
+  const [posterPickerError, setPosterPickerError] = useState<string | null>(null);
+  const [posterPickerResults, setPosterPickerResults] = useState<
+    { url: string; thumbnail: string; caption?: string }[]
+  >([]);
+  const [posterPickerSelected, setPosterPickerSelected] = useState<string | null>(null);
+
   // Log IMDB URL visibility for cover section
   useEffect(() => {
     console.log("[IMDB Cover][CoverSection] IMDB URL state changed:", {
@@ -2351,6 +2360,74 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
     }
   };
   
+  // Handle escape key to close poster picker modal (prevent parent modal from closing)
+  useEffect(() => {
+    if (!showPosterPicker) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation();
+        setShowPosterPicker(false);
+      }
+    };
+    // Use capture phase to intercept before the parent modal's handler
+    window.addEventListener("keydown", handleEscape, true);
+    return () => window.removeEventListener("keydown", handleEscape, true);
+  }, [showPosterPicker]);
+
+  // Open IMDB poster picker modal
+  const handleOpenPosterPicker = async () => {
+    if (!imdbUrlToUse) return;
+
+    // Extract IMDB ID from URL
+    const idMatch = imdbUrlToUse.match(/tt\d{7,8}/);
+    if (!idMatch) {
+      setError("Could not extract IMDB ID from URL");
+      return;
+    }
+
+    setShowPosterPicker(true);
+    setPosterPickerLoading(true);
+    setPosterPickerError(null);
+    setPosterPickerResults([]);
+    setPosterPickerSelected(null);
+
+    try {
+      const res = await fetch(`/api/media-metadata/imdb-posters?id=${idMatch[0]}`);
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || "Failed to fetch posters");
+
+      if (data.posters && data.posters.length > 0) {
+        setPosterPickerResults(data.posters);
+      } else {
+        setPosterPickerError("No poster images found for this title on IMDB.");
+      }
+    } catch (err) {
+      setPosterPickerError(err instanceof Error ? err.message : "Failed to fetch posters");
+    } finally {
+      setPosterPickerLoading(false);
+    }
+  };
+
+  // Confirm poster picker selection
+  const handlePosterPickerConfirm = () => {
+    if (!posterPickerSelected) return;
+
+    // Find the selected poster to get its full URL
+    const selected = posterPickerResults.find((p) => p.url === posterPickerSelected);
+    if (selected) {
+      // Use the original full-res URL as the cover
+      setCoverUrl(selected.url);
+      setCoverLocal("");
+      setCoverPath("");
+      setCoverMode("image");
+      setSuccess("Cover image selected from IMDB gallery");
+      setError(null);
+    }
+
+    setShowPosterPicker(false);
+  };
+
   // Switch between cover modes
   const handleModeSwitch = (mode: CoverMode) => {
     setCoverMode(mode);
@@ -2593,26 +2670,48 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
             )}
             {/* IMDB Cover Button - appears when imdbUrl is set (from saved metadata or current edit) */}
             {imdbUrlToUse && coverMode === "image" && (
-              <button
-                onClick={handleFetchImdbCover}
-                disabled={fetchingImdbCover}
-                className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 transition disabled:opacity-50 flex items-center gap-1.5"
-                title="Fetch cover image from IMDB"
-              >
-                {fetchingImdbCover ? (
-                  <>
-                    <div className="h-3 w-3 border border-amber-400 border-t-transparent rounded-full animate-spin" />
-                    Fetching...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM8 17v-2h2l3.6-3.6 2 2L12 17h-2v2H8v-2z"/>
-                    </svg>
-                    Use IMDB Cover
-                  </>
-                )}
-              </button>
+              <>
+                <button
+                  onClick={handleFetchImdbCover}
+                  disabled={fetchingImdbCover}
+                  className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 transition disabled:opacity-50 flex items-center gap-1.5"
+                  title="Fetch cover image from IMDB"
+                >
+                  {fetchingImdbCover ? (
+                    <>
+                      <div className="h-3 w-3 border border-amber-400 border-t-transparent rounded-full animate-spin" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM8 17v-2h2l3.6-3.6 2 2L12 17h-2v2H8v-2z"/>
+                      </svg>
+                      Use IMDB Cover
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleOpenPosterPicker}
+                  disabled={posterPickerLoading}
+                  className="rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 transition disabled:opacity-50 flex items-center gap-1.5"
+                  title="Browse alternative covers from IMDB"
+                >
+                  {posterPickerLoading ? (
+                    <>
+                      <div className="h-3 w-3 border border-blue-400 border-t-transparent rounded-full animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                      </svg>
+                      Choose Different Cover
+                    </>
+                  )}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -2719,6 +2818,130 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
               <button onClick={() => setShowBrowser(false)} className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10">
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IMDB Poster Picker Modal */}
+      {showPosterPicker && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPosterPicker(false); }}
+        >
+          <div className="relative w-full max-w-2xl mx-4 rounded-xl border border-white/15 bg-neutral-900 shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-neutral-100">Choose Cover from IMDB</h3>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Select an alternative poster or image from IMDB&apos;s gallery
+                </p>
+              </div>
+              <button
+                onClick={() => setShowPosterPicker(false)}
+                className="rounded-md p-1 text-neutral-400 transition hover:bg-white/10 hover:text-neutral-200"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
+              {posterPickerLoading && (
+                <div className="flex flex-col items-center gap-3 py-12">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+                  <p className="text-sm text-neutral-400">Loading images from IMDB...</p>
+                </div>
+              )}
+
+              {posterPickerError && !posterPickerLoading && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
+                  <p className="text-sm text-red-300">{posterPickerError}</p>
+                </div>
+              )}
+
+              {!posterPickerLoading && !posterPickerError && posterPickerResults.length > 0 && (
+                <div>
+                  <p className="text-xs text-neutral-500 mb-3">
+                    {posterPickerResults.length} image{posterPickerResults.length !== 1 ? "s" : ""} available. Click to select:
+                  </p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                    {posterPickerResults.map((poster, idx) => (
+                      <button
+                        key={poster.url}
+                        onClick={() => setPosterPickerSelected(poster.url)}
+                        className={`group relative rounded-lg border-2 overflow-hidden transition-all ${
+                          posterPickerSelected === poster.url
+                            ? "border-blue-400 ring-2 ring-blue-400/30 scale-[1.02]"
+                            : "border-white/10 hover:border-white/30 hover:scale-[1.01]"
+                        }`}
+                      >
+                        <div className="aspect-[2/3] bg-neutral-800">
+                          <img
+                            src={poster.thumbnail}
+                            alt={poster.caption || `Image ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                        </div>
+                        {/* Selection indicator */}
+                        {posterPickerSelected === poster.url && (
+                          <div className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
+                            <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                        )}
+                        {/* Caption tooltip */}
+                        {poster.caption && (
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 opacity-0 group-hover:opacity-100 transition">
+                            <p className="text-[10px] text-neutral-200 line-clamp-2">{poster.caption}</p>
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!posterPickerLoading && !posterPickerError && posterPickerResults.length === 0 && (
+                <div className="flex flex-col items-center gap-2 py-12 text-neutral-500">
+                  <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <p className="text-sm">No images found on IMDB for this title.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between border-t border-white/10 px-5 py-3">
+              <div className="text-xs text-neutral-500">
+                {posterPickerSelected && (
+                  <span className="text-blue-300">1 image selected</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowPosterPicker(false)}
+                  className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handlePosterPickerConfirm}
+                  disabled={!posterPickerSelected}
+                  className="rounded-md bg-blue-500 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Use Selected
+                </button>
+              </div>
             </div>
           </div>
         </div>
