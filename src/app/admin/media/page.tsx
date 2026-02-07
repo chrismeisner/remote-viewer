@@ -656,8 +656,9 @@ function MediaDetailModal({
       setMetadata(data.metadata);
       setEditingMetadata(false);
       setUseImdbCover(false);
-      // Notify parent to update the table
+      // Notify parent to update the table, then close the modal
       onMetadataUpdate?.(item.relPath, data.metadata);
+      onClose();
     } catch (err) {
       console.error("[IMDB Cover] Save FAILED:", err);
       setMetadataError(err instanceof Error ? err.message : "Failed to save");
