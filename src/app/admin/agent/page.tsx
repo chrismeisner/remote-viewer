@@ -46,11 +46,11 @@ const AVAILABLE_MODELS = [
 ];
 
 const TOKEN_OPTIONS = [
-  { value: 256, label: "Short (256)" },
-  { value: 512, label: "Medium (512)" },
-  { value: 1024, label: "Long (1K)" },
-  { value: 2048, label: "Very Long (2K)" },
-  { value: 4096, label: "Max (4K)" },
+  { value: 512, label: "Short (512)" },
+  { value: 1024, label: "Medium (1K)" },
+  { value: 2048, label: "Standard (2K)" },
+  { value: 4096, label: "Long (4K)" },
+  { value: 8192, label: "Max (8K)" },
 ];
 
 export default function AgentPage() {
@@ -60,7 +60,7 @@ export default function AgentPage() {
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState("gpt-4o");
-  const [maxTokens, setMaxTokens] = useState(1024);
+  const [maxTokens, setMaxTokens] = useState(4096);
   const [mediaSource, setMediaSource] = useState<MediaSource>("local");
   const [agentContext, setAgentContext] = useState<AgentContext | null>(null);
   const [loadingContext, setLoadingContext] = useState(false);

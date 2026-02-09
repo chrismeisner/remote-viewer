@@ -37,15 +37,14 @@ type ChannelContext = {
   };
 };
 
-type AgentContext = {
+type AgentContextResponse = {
   currentTime: string;
   currentTimeMs: number;
   timezone: string;
   source: MediaSource;
-  mediaFiles: MediaFileInfo[];
   mediaFilesTotal: number;
   totalMediaDurationSeconds: number;
-  channels: ChannelContext[];
+  channels: Pick<ChannelContext, "id" | "shortName" | "active" | "type" | "scheduledCount">[];
   formattedContext: string;
 };
 
@@ -168,15 +167,21 @@ export async function GET(request: NextRequest) {
       channels,
     });
 
-    const result: AgentContext = {
+    // Return only what the client needs (formattedContext has the full library for the AI)
+    const result: AgentContextResponse = {
       currentTime,
       currentTimeMs: now,
       timezone,
       source,
-      mediaFiles,
       mediaFilesTotal: mediaFiles.length,
       totalMediaDurationSeconds,
-      channels,
+      channels: channels.map((ch) => ({
+        id: ch.id,
+        shortName: ch.shortName,
+        active: ch.active,
+        type: ch.type,
+        scheduledCount: ch.scheduledCount,
+      })),
       formattedContext,
     };
 
@@ -233,21 +238,15 @@ function formatContext(data: {
     `## Media Library\n${data.mediaFiles.length} files, ${totalDur} total duration`
   );
 
-  // List media files (limit to avoid token overflow)
-  const maxFiles = 150;
-  const limitedFiles = data.mediaFiles.slice(0, maxFiles);
-  if (limitedFiles.length > 0) {
-    const fileList = limitedFiles
+  // List ALL media files — use compact format to keep token count manageable
+  if (data.mediaFiles.length > 0) {
+    const fileList = data.mediaFiles
       .map((f) => {
         const dur = formatDuration(f.durationSeconds);
-        const codec = [f.videoCodec, f.audioCodec].filter(Boolean).join("/") || "unknown";
-        return `- ${f.relPath} (${dur}, ${f.format || "?"}, ${codec})`;
+        return `- ${f.relPath} (${dur})`;
       })
       .join("\n");
-    parts.push(`### File List\n${fileList}`);
-    if (data.mediaFiles.length > maxFiles) {
-      parts.push(`... and ${data.mediaFiles.length - maxFiles} more files not shown.`);
-    }
+    parts.push(`### Complete File List (${data.mediaFiles.length} files)\n${fileList}`);
   }
 
   // Channels
