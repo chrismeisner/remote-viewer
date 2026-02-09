@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     });
 
     const body = await request.json();
-    const { messages, model = "gpt-4o", maxTokens = 1024, libraryContext } = body;
+    const { messages, model = "gpt-4o", maxTokens = 1024, fullContext } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
@@ -24,12 +24,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build system prompt, optionally including library context
-    let systemContent =
-      "You are a helpful assistant for the Remote Viewer application, a media scheduling and playback system. Be concise and helpful.";
+    // Build system prompt with full application context
+    let systemContent = `You are a helpful assistant for Remote Viewer, a media scheduling and playback system that creates TV-like channels from a video library.
 
-    if (libraryContext) {
-      systemContent += `\n\nThe user has loaded their media library. Here is the current library data:\n\n${libraryContext}`;
+You have deep knowledge of this application:
+- Users can configure a media source (local filesystem or remote FTP/CDN)
+- Media files are video files (mp4, mkv, etc.) that can be scheduled on channels
+- Channels can be "24hour" (time-slot based, like a TV schedule) or "looping" (continuous playlist loop)
+- Each channel can be active or inactive
+- 24-hour channels have time slots (start/end times mapped to files)
+- Looping channels have playlists that repeat continuously based on a global clock
+- The system resolves "now playing" based on the current time and schedule
+
+Be concise and helpful. When answering questions about the current state, reference the context data provided below. When the user asks about what's playing, what's available, or scheduling, use the real data.`;
+
+    if (fullContext) {
+      systemContent += `\n\n--- CURRENT APPLICATION STATE ---\n\n${fullContext}`;
     }
 
     const systemMessage = {
@@ -37,7 +47,7 @@ export async function POST(request: NextRequest) {
       content: systemContent,
     };
 
-    console.log(`[Agent] Request: model=${model}, maxTokens=${maxTokens}, messages=${messages.length}, hasLibrary=${!!libraryContext}`);
+    console.log(`[Agent] Request: model=${model}, maxTokens=${maxTokens}, messages=${messages.length}, hasContext=${!!fullContext}`);
     
     const completion = await openai.chat.completions.create({
       model,

@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
   MEDIA_SOURCE_KEY,
-  REMOTE_MEDIA_BASE,
   type MediaSource,
 } from "@/constants/media";
 
@@ -14,13 +13,22 @@ type Message = {
   timestamp: Date;
 };
 
-type MediaFile = {
-  relPath: string;
-  title?: string;
-  durationSeconds: number;
-  format: string;
-  supported: boolean;
-  audioCodec?: string;
+type AgentContext = {
+  currentTime: string;
+  currentTimeMs: number;
+  timezone: string;
+  source: string;
+  mediaFilesTotal: number;
+  totalMediaDurationSeconds: number;
+  channels: {
+    id: string;
+    shortName?: string;
+    active: boolean;
+    type: "24hour" | "looping";
+    scheduledCount: number;
+    nowPlaying: { title?: string; relPath: string } | null;
+  }[];
+  formattedContext: string;
 };
 
 const AVAILABLE_MODELS = [
@@ -54,8 +62,8 @@ export default function AgentPage() {
   const [selectedModel, setSelectedModel] = useState("gpt-4o");
   const [maxTokens, setMaxTokens] = useState(1024);
   const [mediaSource, setMediaSource] = useState<MediaSource>("local");
-  const [libraryData, setLibraryData] = useState<MediaFile[] | null>(null);
-  const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [agentContext, setAgentContext] = useState<AgentContext | null>(null);
+  const [loadingContext, setLoadingContext] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -88,67 +96,30 @@ export default function AgentPage() {
     }
   }, [isConfigured]);
 
-  // Load library data from current media source
-  const loadLibrary = useCallback(async () => {
-    setLoadingLibrary(true);
+  // Load full application context (media, channels, schedules, now-playing)
+  const loadContext = useCallback(async () => {
+    setLoadingContext(true);
     setError(null);
     try {
-      let files: MediaFile[] = [];
-      if (mediaSource === "remote") {
-        const res = await fetch(
-          `/api/media-index?base=${encodeURIComponent(REMOTE_MEDIA_BASE)}&t=${Date.now()}`
-        );
-        if (!res.ok) throw new Error("Failed to load remote media");
-        const data = await res.json();
-        files = data.items || [];
-      } else {
-        const res = await fetch(`/api/media-files?t=${Date.now()}`);
-        if (!res.ok) throw new Error("Failed to load local media");
-        const data = await res.json();
-        files = data.items || [];
-      }
-      setLibraryData(files);
+      const res = await fetch(
+        `/api/agent/context?source=${encodeURIComponent(mediaSource)}&t=${Date.now()}`
+      );
+      if (!res.ok) throw new Error("Failed to load context");
+      const data: AgentContext = await res.json();
+      setAgentContext(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load library");
+      setError(err instanceof Error ? err.message : "Failed to load context");
     } finally {
-      setLoadingLibrary(false);
+      setLoadingContext(false);
     }
   }, [mediaSource]);
 
-  // Auto-load library when page is ready
+  // Auto-load context when page is ready
   useEffect(() => {
-    if (isConfigured && !libraryData && !loadingLibrary) {
-      loadLibrary();
+    if (isConfigured && !agentContext && !loadingContext) {
+      loadContext();
     }
-  }, [isConfigured, libraryData, loadingLibrary, loadLibrary]);
-
-  // Format library data for AI context (limit to prevent token overflow)
-  const formatLibraryContext = (files: MediaFile[]): string => {
-    const totalSeconds = files.reduce((sum, f) => sum + (f.durationSeconds || 0), 0);
-    const totalHours = Math.floor(totalSeconds / 3600);
-    const totalMins = Math.floor((totalSeconds % 3600) / 60);
-    
-    // Limit to 150 files to avoid huge prompts
-    const maxFiles = 150;
-    const limitedFiles = files.slice(0, maxFiles);
-    const wasLimited = files.length > maxFiles;
-    
-    const fileList = limitedFiles
-      .map((f) => {
-        const mins = Math.round(f.durationSeconds / 60);
-        const duration = mins >= 60 
-          ? `${Math.floor(mins / 60)}h ${mins % 60}m` 
-          : `${mins}m`;
-        return `- ${f.relPath} (${duration}, ${f.format || "?"}, ${f.audioCodec || "?"})`;
-      })
-      .join("\n");
-
-    let result = `Media Library (${files.length} files, ${totalHours}h ${totalMins}m total):\n${fileList}`;
-    if (wasLimited) {
-      result += `\n... and ${files.length - maxFiles} more files not shown.`;
-    }
-    return result;
-  };
+  }, [isConfigured, agentContext, loadingContext, loadContext]);
 
   const sendMessage = useCallback(async () => {
     if (!input.trim() || isLoading) return;
@@ -182,8 +153,8 @@ export default function AgentPage() {
         content: m.content,
       }));
 
-      // Include library context if loaded
-      const libraryContext = libraryData ? formatLibraryContext(libraryData) : null;
+      // Include full application context if loaded
+      const fullContext = agentContext?.formattedContext || null;
 
       const response = await fetch("/api/agent", {
         method: "POST",
@@ -192,7 +163,7 @@ export default function AgentPage() {
           messages: apiMessages, 
           model: selectedModel,
           maxTokens,
-          libraryContext,
+          fullContext,
         }),
       });
 
@@ -243,7 +214,7 @@ export default function AgentPage() {
       setIsLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, isLoading, messages, selectedModel, maxTokens, libraryData]);
+  }, [input, isLoading, messages, selectedModel, maxTokens, agentContext]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -353,22 +324,29 @@ export default function AgentPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Library Load Button */}
+          {/* Context Load Button */}
           <button
-            onClick={loadLibrary}
-            disabled={loadingLibrary || isLoading}
+            onClick={loadContext}
+            disabled={loadingContext || isLoading}
+            title={agentContext ? `${agentContext.mediaFilesTotal} files, ${agentContext.channels.length} channels` : "Load application context"}
             className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
-              libraryData
+              agentContext
                 ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-200"
                 : "border-white/15 bg-white/5 text-neutral-300 hover:bg-white/10"
             }`}
           >
-            {loadingLibrary ? (
-              "Loading..."
-            ) : libraryData ? (
-              `${libraryData.length} files loaded`
+            {loadingContext ? (
+              "Loading context..."
+            ) : agentContext ? (
+              <span className="flex items-center gap-1.5">
+                <span>{agentContext.mediaFilesTotal} files</span>
+                <span className="text-emerald-400/50">|</span>
+                <span>{agentContext.channels.length} ch</span>
+                <span className="text-emerald-400/50">|</span>
+                <span>{agentContext.channels.filter(c => c.active).length} active</span>
+              </span>
             ) : (
-              `Load Library (${mediaSource})`
+              `Load Context (${mediaSource})`
             )}
           </button>
           {/* Model Selector */}
