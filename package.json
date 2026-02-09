@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "basic-ftp": "^5.1.0",
-    "ffprobe-static": "^3.1.0",
     "next": "16.1.1",
     "openai": "^6.16.0",
     "react": "19.2.3",

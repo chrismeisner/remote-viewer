@@ -3,7 +3,6 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import ffprobe from "ffprobe-static";
 import { REMOTE_MEDIA_BASE, type MediaSource } from "@/constants/media";
 import {
   ChannelSchedule,
@@ -1935,6 +1934,7 @@ export async function updateMediaItemMetadataBySource(
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function resolveFfprobePath(): Promise<string> {
+  // Priority 1: Environment variable (for explicit override)
   const envPath = process.env.FFPROBE_PATH;
   if (envPath) {
     try {
@@ -1945,17 +1945,13 @@ async function resolveFfprobePath(): Promise<string> {
     }
   }
 
-  const candidate = ffprobe?.path;
-  if (candidate) {
-    try {
-      await fs.access(candidate);
-      return candidate;
-    } catch {
-      console.warn("Bundled ffprobe not found at", candidate);
-    }
-  }
-
-  const common = ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"];
+  // Priority 2: Common system paths (Heroku buildpack installs to /app/vendor/ffmpeg/bin/ffprobe)
+  const common = [
+    "/app/vendor/ffmpeg/bin/ffprobe",  // Heroku buildpack location
+    "/usr/bin/ffprobe",                // Standard Linux location
+    "/usr/local/bin/ffprobe",          // Common install location
+    "/opt/homebrew/bin/ffprobe",       // macOS Homebrew (ARM)
+  ];
   for (const c of common) {
     try {
       await fs.access(c);
@@ -1965,6 +1961,7 @@ async function resolveFfprobePath(): Promise<string> {
     }
   }
 
+  // Priority 3: Try system PATH (fallback)
   return "ffprobe";
 }
 

@@ -5,7 +5,6 @@ import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { Client, FileInfo } from "basic-ftp";
 import fs from "node:fs/promises";
-import ffprobe from "ffprobe-static";
 
 const execFileAsync = promisify(execFile);
 
@@ -138,6 +137,7 @@ async function listMediaFilesRecursive(
 }
 
 async function resolveFfprobePath(): Promise<string> {
+  // Priority 1: Environment variable (for explicit override)
   const envPath = process.env.FFPROBE_PATH;
   if (envPath) {
     try {
@@ -148,21 +148,12 @@ async function resolveFfprobePath(): Promise<string> {
     }
   }
 
-  const candidate = ffprobe?.path;
-  if (candidate) {
-    try {
-      await fs.access(candidate);
-      return candidate;
-    } catch {
-      console.warn("Bundled ffprobe not found at", candidate);
-    }
-  }
-
+  // Priority 2: Common system paths (Heroku buildpack installs to /app/vendor/ffmpeg/bin/ffprobe)
   const common = [
-    "/opt/homebrew/bin/ffprobe",       // macOS Homebrew
-    "/usr/local/bin/ffprobe",          // macOS/Linux manual install
-    "/usr/bin/ffprobe",                // Linux system install
-    "/app/vendor/ffmpeg/ffprobe",      // Heroku buildpack location
+    "/app/vendor/ffmpeg/bin/ffprobe",  // Heroku buildpack location
+    "/usr/bin/ffprobe",                // Standard Linux location
+    "/usr/local/bin/ffprobe",          // Common install location
+    "/opt/homebrew/bin/ffprobe",       // macOS Homebrew (ARM)
   ];
   for (const c of common) {
     try {
@@ -173,6 +164,7 @@ async function resolveFfprobePath(): Promise<string> {
     }
   }
 
+  // Priority 3: Try system PATH (fallback)
   return "ffprobe";
 }
 
