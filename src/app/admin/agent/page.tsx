@@ -11,7 +11,12 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  isSearching?: boolean;
 };
+
+type StreamEvent =
+  | { type: "status"; status: string }
+  | { type: "text"; delta: string };
 
 type AgentContext = {
   currentTime: string;
@@ -36,13 +41,8 @@ const AVAILABLE_MODELS = [
   { id: "gpt-4o", name: "GPT-4o", description: "Recommended - stable & capable" },
   { id: "gpt-4o-mini", name: "GPT-4o Mini", description: "Fast & affordable" },
   // GPT-5 models (latest)
-  { id: "gpt-5", name: "GPT-5", description: "Latest flagship" },
-  { id: "gpt-5-pro", name: "GPT-5 Pro", description: "Most capable, complex tasks" },
+  { id: "gpt-5", name: "GPT-5", description: "Latest flagship + web search" },
   { id: "gpt-5-mini", name: "GPT-5 Mini", description: "Fast & cost-efficient" },
-  { id: "gpt-5-nano", name: "GPT-5 Nano", description: "Fastest, minimal reasoning" },
-  // Legacy
-  { id: "gpt-4-turbo", name: "GPT-4 Turbo", description: "Legacy GPT-4" },
-  { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo", description: "Legacy, cheapest" },
 ];
 
 const TOKEN_OPTIONS = [
@@ -172,7 +172,7 @@ export default function AgentPage() {
         throw new Error(errorData.error || "Failed to get response");
       }
 
-      // Handle streaming response
+      // Handle NDJSON streaming response
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
 
@@ -181,19 +181,39 @@ export default function AgentPage() {
       }
 
       let fullContent = "";
+      let buffer = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        fullContent += chunk;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // Keep incomplete line in buffer
 
-        // Update the assistant message with accumulated content
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, content: fullContent } : m
-          )
-        );
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event: StreamEvent = JSON.parse(line);
+            if (event.type === "status" && event.status === "searching") {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, isSearching: true } : m
+                )
+              );
+            } else if (event.type === "text") {
+              fullContent += event.delta;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: fullContent, isSearching: false }
+                    : m
+                )
+              );
+            }
+          } catch {
+            // Skip malformed lines
+          }
+        }
       }
 
       // Handle empty response
@@ -201,7 +221,7 @@ export default function AgentPage() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, content: "(No response received - try again or use a different model)" }
+              ? { ...m, content: "(No response received - try again or use a different model)", isSearching: false }
               : m
           )
         );
@@ -449,7 +469,13 @@ export default function AgentPage() {
                   }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                  {message.content === "" && isLoading && (
+                  {message.isSearching && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="w-4 h-4 border-2 border-neutral-600 border-t-emerald-400 rounded-full animate-spin" />
+                      <span className="text-xs text-emerald-300">Searching the web...</span>
+                    </div>
+                  )}
+                  {message.content === "" && isLoading && !message.isSearching && (
                     <div className="flex items-center gap-1">
                       <div className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" />
                       <div

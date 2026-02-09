@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
+/**
+ * Stream event protocol (NDJSON — one JSON object per line):
+ *   {"type":"status","status":"searching"}   — web search started
+ *   {"type":"text","delta":"..."}            — text content chunk
+ */
+function ndjson(obj: Record<string, unknown>): string {
+  return JSON.stringify(obj) + "\n";
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -24,8 +33,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build system prompt with full application context
-    let systemContent = `You are a helpful assistant for Remote Viewer, a media scheduling and playback system that creates TV-like channels from a video library.
+    // Build system instructions with full application context
+    let instructions = `You are a helpful assistant for Remote Viewer, a media scheduling and playback system that creates TV-like channels from a video library.
 
 You have deep knowledge of this application:
 - Users can configure a media source (local filesystem or remote FTP/CDN)
@@ -36,58 +45,80 @@ You have deep knowledge of this application:
 - Looping channels have playlists that repeat continuously based on a global clock
 - The system resolves "now playing" based on the current time and schedule
 
-Be concise and helpful. When answering questions about the current state, reference the context data provided below. When the user asks about what's playing, what's available, or scheduling, use the real data.`;
+The application context below includes media metadata when available (title, year, director, plot, tags/actors, IMDB URLs, etc.). ALWAYS check the metadata in the context FIRST before searching the web. Only use web search when the information is not already in the metadata — for example, if a file has no director listed, or the user asks for details beyond what's stored.
+
+You also have access to web search for questions the metadata can't answer — deeper plot details, reviews, related recommendations, box office data, or any factual information not in the context. When you use web search results, naturally cite your sources.
+
+Be concise and helpful. When answering questions about the current state of the application, reference the context data provided below. When the user asks about what's playing, what's available, or scheduling, use the real data.`;
 
     if (fullContext) {
-      systemContent += `\n\n--- CURRENT APPLICATION STATE ---\n\n${fullContext}`;
+      instructions += `\n\n--- CURRENT APPLICATION STATE ---\n\n${fullContext}`;
     }
-
-    const systemMessage = {
-      role: "system" as const,
-      content: systemContent,
-    };
 
     console.log(`[Agent] Request: model=${model}, maxTokens=${maxTokens}, messages=${messages.length}, hasContext=${!!fullContext}`);
     
-    const completion = await openai.chat.completions.create({
+    // Use the Responses API with web search tool
+    const stream = await openai.responses.create({
       model,
-      messages: [systemMessage, ...messages],
-      max_completion_tokens: maxTokens,
+      instructions,
+      input: messages.map((m: { role: string; content: string }) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
+      tools: [{ type: "web_search" as const }],
+      max_output_tokens: maxTokens,
       stream: true,
     });
 
-    // Create a streaming response
+    // Stream NDJSON events to the client
     const encoder = new TextEncoder();
-    const stream = new ReadableStream({
+    const readableStream = new ReadableStream({
       async start(controller) {
         try {
           let hasContent = false;
-          for await (const chunk of completion) {
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-              hasContent = true;
-              controller.enqueue(encoder.encode(content));
+          let searchSignalSent = false;
+
+          for await (const event of stream) {
+            const eventType = event.type;
+
+            // Detect web search events and signal the client
+            if (
+              !searchSignalSent &&
+              typeof eventType === "string" &&
+              eventType.includes("web_search_call")
+            ) {
+              searchSignalSent = true;
+              controller.enqueue(
+                encoder.encode(ndjson({ type: "status", status: "searching" }))
+              );
             }
-            // Check for finish reason
-            const finishReason = chunk.choices[0]?.finish_reason;
-            if (finishReason && finishReason !== "stop") {
-              console.log("Stream finished with reason:", finishReason);
+
+            // Stream text output deltas
+            if (eventType === "response.output_text.delta") {
+              const delta = (event as { type: string; delta?: string }).delta;
+              if (delta) {
+                hasContent = true;
+                controller.enqueue(
+                  encoder.encode(ndjson({ type: "text", delta }))
+                );
+              }
             }
           }
+
           if (!hasContent) {
-            console.log("Stream completed with no content");
+            console.log("[Agent] Stream completed with no content");
           }
           controller.close();
         } catch (err) {
-          console.error("Stream error:", err);
+          console.error("[Agent] Stream error:", err);
           controller.error(err);
         }
       },
     });
 
-    return new Response(stream, {
+    return new Response(readableStream, {
       headers: {
-        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Type": "application/x-ndjson; charset=utf-8",
         "Cache-Control": "no-cache",
         "X-Content-Type-Options": "nosniff",
       },

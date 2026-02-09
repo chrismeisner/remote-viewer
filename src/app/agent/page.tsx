@@ -13,7 +13,12 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  isSearching?: boolean;
 };
+
+type StreamEvent =
+  | { type: "status"; status: string }
+  | { type: "text"; delta: string };
 
 type AgentContext = {
   formattedContext: string;
@@ -139,6 +144,7 @@ export default function PublicAgentPage() {
         throw new Error(errorData.error || "Failed to get response");
       }
 
+      // Handle NDJSON streaming response
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
 
@@ -147,25 +153,47 @@ export default function PublicAgentPage() {
       }
 
       let fullContent = "";
+      let buffer = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        fullContent += chunk;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // Keep incomplete line in buffer
 
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, content: fullContent } : m
-          )
-        );
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event: StreamEvent = JSON.parse(line);
+            if (event.type === "status" && event.status === "searching") {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, isSearching: true } : m
+                )
+              );
+            } else if (event.type === "text") {
+              fullContent += event.delta;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: fullContent, isSearching: false }
+                    : m
+                )
+              );
+            }
+          } catch {
+            // Skip malformed lines
+          }
+        }
       }
 
+      // Handle empty response
       if (!fullContent.trim()) {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, content: "Sorry, I couldn't generate a response. Please try again." }
+              ? { ...m, content: "Sorry, I couldn't generate a response. Please try again.", isSearching: false }
               : m
           )
         );
@@ -334,7 +362,15 @@ export default function PublicAgentPage() {
                   <p className="text-sm font-normal leading-normal whitespace-pre-wrap">
                     {message.content}
                   </p>
-                  {message.content === "" && isLoading && (
+                  {message.isSearching && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="size-4 border-2 border-neutral-600 border-t-emerald-400 rounded-full animate-spin" />
+                      <span className="text-xs font-normal leading-normal text-emerald-400">
+                        Searching the web...
+                      </span>
+                    </div>
+                  )}
+                  {message.content === "" && isLoading && !message.isSearching && (
                     <div className="flex items-center gap-1 py-1">
                       <div className="size-2 bg-neutral-500 rounded-full animate-bounce" />
                       <div

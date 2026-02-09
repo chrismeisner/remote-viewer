@@ -4,8 +4,11 @@ import {
   loadFullSchedule,
   getNowPlaying,
   getScheduleItems,
+  loadMediaMetadataBySource,
   type ChannelInfo,
   type NowPlaying,
+  type MediaMetadataItem,
+  type MediaMetadataStore,
 } from "@/lib/media";
 import type { MediaSource } from "@/constants/media";
 import { REMOTE_MEDIA_BASE } from "@/constants/media";
@@ -20,6 +23,7 @@ type MediaFileInfo = {
   audioCodec?: string;
   videoCodec?: string;
   supported: boolean;
+  metadata?: MediaMetadataItem;
 };
 
 type ChannelContext = {
@@ -101,6 +105,21 @@ export async function GET(request: NextRequest) {
       }
     } catch (err) {
       console.error("[Agent Context] Failed to load media files:", err);
+    }
+
+    // Gather media metadata and attach to files
+    let metadataStore: MediaMetadataStore = { items: {} };
+    try {
+      metadataStore = await loadMediaMetadataBySource(source);
+      // Attach metadata to each file
+      for (const file of mediaFiles) {
+        const meta = metadataStore.items[file.relPath];
+        if (meta) {
+          file.metadata = meta;
+        }
+      }
+    } catch (err) {
+      console.error("[Agent Context] Failed to load media metadata:", err);
     }
 
     // Gather channels
@@ -193,6 +212,23 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+/** Returns true if the metadata has at least one useful field beyond dateAdded */
+function hasUsefulMetadata(m: MediaMetadataItem): boolean {
+  return !!(
+    m.title ||
+    m.year ||
+    m.director ||
+    m.plot ||
+    m.type ||
+    m.imdbUrl ||
+    (m.tags && m.tags.length > 0) ||
+    m.season != null ||
+    m.episode != null
+  );
+}
+
 // ─── Format context as human-readable text for the AI system prompt ───
 
 function formatDuration(seconds: number): string {
@@ -238,15 +274,47 @@ function formatContext(data: {
     `## Media Library\n${data.mediaFiles.length} files, ${totalDur} total duration`
   );
 
-  // List ALL media files — use compact format to keep token count manageable
+  // List ALL media files with available metadata
   if (data.mediaFiles.length > 0) {
-    const fileList = data.mediaFiles
-      .map((f) => {
-        const dur = formatDuration(f.durationSeconds);
-        return `- ${f.relPath} (${dur})`;
-      })
-      .join("\n");
-    parts.push(`### Complete File List (${data.mediaFiles.length} files)\n${fileList}`);
+    const filesWithMeta = data.mediaFiles.filter((f) => f.metadata && hasUsefulMetadata(f.metadata));
+    const filesWithoutMeta = data.mediaFiles.filter((f) => !f.metadata || !hasUsefulMetadata(f.metadata));
+
+    // Files with rich metadata — include all known details
+    if (filesWithMeta.length > 0) {
+      const richList = filesWithMeta
+        .map((f) => {
+          const m = f.metadata!;
+          const dur = formatDuration(f.durationSeconds);
+          const parts: string[] = [`- ${f.relPath} (${dur})`];
+          const details: string[] = [];
+          if (m.title) details.push(`Title: ${m.title}`);
+          if (m.year) details.push(`Year: ${m.year}`);
+          if (m.director) details.push(`Director: ${m.director}`);
+          if (m.type) details.push(`Type: ${m.type}`);
+          if (m.plot) details.push(`Plot: ${m.plot}`);
+          if (m.tags && m.tags.length > 0) details.push(`Tags: ${m.tags.join(", ")}`);
+          if (m.imdbUrl) details.push(`IMDB: ${m.imdbUrl}`);
+          if (m.season != null) details.push(`Season: ${m.season}`);
+          if (m.episode != null) details.push(`Episode: ${m.episode}`);
+          if (details.length > 0) {
+            parts.push(`  ${details.join(" | ")}`);
+          }
+          return parts.join("\n");
+        })
+        .join("\n");
+      parts.push(`### Media with Metadata (${filesWithMeta.length} files)\n${richList}`);
+    }
+
+    // Files without metadata — compact list
+    if (filesWithoutMeta.length > 0) {
+      const simpleList = filesWithoutMeta
+        .map((f) => {
+          const dur = formatDuration(f.durationSeconds);
+          return `- ${f.relPath} (${dur})`;
+        })
+        .join("\n");
+      parts.push(`### Media without Metadata (${filesWithoutMeta.length} files)\n${simpleList}`);
+    }
   }
 
   // Channels
