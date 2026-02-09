@@ -10,8 +10,10 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_BASE_URL || "https://www.remoteviewer.tv";
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://remote-viewer-e3c073898446.herokuapp.com"),
+  metadataBase: new URL(SITE_URL),
   title: "Remote Viewer",
   description: "Local channel-style playback for your video library",
   
@@ -34,7 +36,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Remote Viewer",
     description: "Local channel-style playback for your video library",
-    url: "https://remote-viewer-e3c073898446.herokuapp.com",
+    url: SITE_URL,
     siteName: "Remote Viewer",
     images: [
       {
