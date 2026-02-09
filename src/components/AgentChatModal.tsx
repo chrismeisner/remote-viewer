@@ -34,24 +34,26 @@ type AgentChatModalProps = {
 
 // ─── Component ───────────────────────────────────────────────────────
 
+const MAX_TOKENS = 8192;
+
 export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mediaSource, setMediaSource] = useState<MediaSource>("local");
+  const [mediaSource, setMediaSource] = useState<MediaSource>("remote");
   const [agentContext, setAgentContext] = useState<AgentContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Sync media source from localStorage
+  // Sync media source from localStorage (default "remote" matches rest of app)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
-    if (stored === "remote" || stored === "local") {
-      setMediaSource(stored);
+    if (stored === "local") {
+      setMediaSource("local");
     }
   }, []);
 
@@ -151,7 +153,7 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
         body: JSON.stringify({
           messages: apiMessages,
           model: "gpt-4o",
-          maxTokens: 4096,
+          maxTokens: MAX_TOKENS,
           fullContext,
         }),
       });
@@ -281,12 +283,18 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
               {agentContext && (
                 <p className="text-xs font-normal leading-normal text-neutral-500 mt-0.5 tabular-nums">
                   {agentContext.mediaFilesTotal} files &middot;{" "}
-                  {agentContext.channels.length} channels
+                  {agentContext.channels.length} channels &middot;{" "}
+                  {(MAX_TOKENS / 1024).toFixed(0)}K tokens
                 </p>
               )}
               {contextLoading && (
                 <p className="text-xs font-normal leading-normal text-neutral-500 mt-0.5">
                   Loading context...
+                </p>
+              )}
+              {!agentContext && !contextLoading && isConfigured && (
+                <p className="text-xs font-normal leading-normal text-neutral-500 mt-0.5 tabular-nums">
+                  {(MAX_TOKENS / 1024).toFixed(0)}K tokens
                 </p>
               )}
             </div>
