@@ -608,7 +608,17 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     
     // Called when video fails to load
     const handleError = () => {
-      console.error("[player] video error", video.error);
+      const errorDetails = {
+        code: video.error?.code,
+        message: video.error?.message,
+        relPath: nowPlaying.relPath,
+        src: nowPlaying.src,
+      };
+      console.error("[player] video error", errorDetails);
+      
+      // Clear loading state on error
+      setIsVideoLoading(false);
+      
       if (channel) {
         trackVideoError({
           videoPath: nowPlaying.relPath,
@@ -616,6 +626,17 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
           errorType: "load_failed",
           errorMessage: video.error?.message,
         });
+      }
+      
+      // MediaError codes:
+      // 1 = MEDIA_ERR_ABORTED - fetching process aborted by user
+      // 2 = MEDIA_ERR_NETWORK - network error
+      // 3 = MEDIA_ERR_DECODE - decoding error
+      // 4 = MEDIA_ERR_SRC_NOT_SUPPORTED - format not supported or source unavailable
+      
+      // For network errors or source not available, we could retry
+      if (video.error?.code === 2 || video.error?.code === 4) {
+        console.log("[player] network/source error detected, will retry on next schedule update");
       }
     };
     

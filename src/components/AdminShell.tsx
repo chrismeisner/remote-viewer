@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
+import { useSession, signOut } from "next-auth/react";
 
 const SIDEBAR_KEY = "adminSidebarOpen";
 
@@ -20,6 +21,7 @@ const navLinks = [
 ];
 
 export default function AdminShell({ children }: { children: ReactNode }) {
+  const { data: session } = useSession();
   const [open, setOpen] = useState(true);
   // avoid flash: read localStorage on mount
   const [mounted, setMounted] = useState(false);
@@ -84,7 +86,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
               </p>
             </div>
 
-            <nav className="flex flex-col gap-1 px-3 pb-6">
+            <nav className="flex flex-col gap-1 px-3 pb-4">
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
@@ -95,6 +97,30 @@ export default function AdminShell({ children }: { children: ReactNode }) {
                 </Link>
               ))}
             </nav>
+
+            {/* Signed-in user info */}
+            {session?.user && (
+              <div className="mt-auto border-t border-white/10 px-4 py-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  {session.user.image && (
+                    <img
+                      src={session.user.image}
+                      alt=""
+                      className="h-6 w-6 rounded-full"
+                    />
+                  )}
+                  <span className="text-xs text-neutral-400 truncate">
+                    {session.user.email}
+                  </span>
+                </div>
+                <button
+                  onClick={() => signOut({ callbackUrl: "/" })}
+                  className="text-xs text-neutral-500 hover:text-red-400 transition"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
           </>
         )}
       </aside>

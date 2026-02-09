@@ -12,7 +12,7 @@ import {
 } from "@/lib/media";
 import type { MediaSource } from "@/constants/media";
 import { REMOTE_MEDIA_BASE } from "@/constants/media";
-import type { ChannelSchedule, PlaylistItem, ScheduleSlot } from "@/lib/schedule";
+import { parseTimeToSeconds, type ChannelSchedule, type PlaylistItem, type ScheduleSlot } from "@/lib/schedule";
 
 export const runtime = "nodejs";
 
@@ -346,19 +346,61 @@ function formatContext(data: {
         chSection += `\n- NOW PLAYING: Nothing currently scheduled for this time`;
       }
 
-      // Schedule details
+      // Schedule details with next-airing times
       if (ch.type === "looping" && ch.schedule.playlist && ch.schedule.playlist.length > 0) {
-        const playlistLines = ch.schedule.playlist
-          .map((item, i) => `  ${i + 1}. ${item.title || item.file} (${formatDuration(item.durationSeconds)})`)
-          .join("\n");
-        chSection += `\n- Playlist:\n${playlistLines}`;
-        if (ch.schedule.epochOffsetHours) {
-          chSection += `\n- Epoch offset: ${ch.schedule.epochOffsetHours} hours`;
+        const playlist = ch.schedule.playlist;
+        const totalDuration = playlist.reduce((sum, item) => sum + item.durationSeconds, 0);
+
+        if (totalDuration > 0) {
+          const epochOffsetSeconds = (ch.schedule.epochOffsetHours || 0) * 3600;
+          const nowSeconds = Math.floor(Date.now() / 1000);
+          const adjustedSeconds = nowSeconds - epochOffsetSeconds;
+          const positionInLoop = ((adjustedSeconds % totalDuration) + totalDuration) % totalDuration;
+
+          // Calculate each item's start position in the loop and next air time
+          let accumulated = 0;
+          const playlistLines = playlist.map((item, i) => {
+            const itemStart = accumulated;
+            accumulated += item.durationSeconds;
+
+            let secondsUntilNext: number;
+            if (itemStart > positionInLoop) {
+              // Coming up later in the current loop
+              secondsUntilNext = itemStart - positionInLoop;
+            } else if (itemStart + item.durationSeconds > positionInLoop) {
+              // Currently playing — next full airing is next loop cycle
+              secondsUntilNext = 0; // airing right now
+            } else {
+              // Already passed in this loop — next airing is in the next cycle
+              secondsUntilNext = totalDuration - positionInLoop + itemStart;
+            }
+
+            const nextAirDate = new Date(Date.now() + secondsUntilNext * 1000);
+            const nextAirStr = secondsUntilNext === 0
+              ? "NOW"
+              : nextAirDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+            return `  ${i + 1}. ${item.title || item.file} (${formatDuration(item.durationSeconds)}) — next: ${nextAirStr}`;
+          }).join("\n");
+
+          chSection += `\n- Playlist (loop cycle: ${formatDuration(totalDuration)}):\n${playlistLines}`;
         }
       } else if (ch.type === "24hour" && ch.schedule.slots && ch.schedule.slots.length > 0) {
-        const slotLines = ch.schedule.slots
-          .map((slot) => `  ${slot.start}-${slot.end}: ${slot.title || slot.file}`)
-          .join("\n");
+        const nowDate = new Date();
+        const currentSecondsOfDay = nowDate.getHours() * 3600 + nowDate.getMinutes() * 60 + nowDate.getSeconds();
+
+        const slotLines = ch.schedule.slots.map((slot) => {
+          const startSec = parseTimeToSeconds(slot.start);
+          let nextLabel = "";
+          if (startSec !== null) {
+            if (startSec > currentSecondsOfDay) {
+              nextLabel = " — today";
+            } else {
+              nextLabel = " — tomorrow";
+            }
+          }
+          return `  ${slot.start}-${slot.end}: ${slot.title || slot.file}${nextLabel}`;
+        }).join("\n");
         chSection += `\n- Time Slots:\n${slotLines}`;
       }
 
