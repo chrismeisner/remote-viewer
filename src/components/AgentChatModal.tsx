@@ -45,8 +45,27 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
   const [mediaSource, setMediaSource] = useState<MediaSource>("remote");
   const [agentContext, setAgentContext] = useState<AgentContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
+  const [currentTime, setCurrentTime] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Live clock — updates every second with time + timezone
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const time = now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      const tz =
+        Intl.DateTimeFormat().resolvedOptions().timeZone.replace(/_/g, " ");
+      setCurrentTime(`${time} ${tz}`);
+    };
+    tick(); // set immediately so there's no empty flash
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Sync media source from localStorage (default "remote" matches rest of app)
   useEffect(() => {
@@ -147,7 +166,19 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
 
       const fullContext = agentContext?.formattedContext || null;
 
+      // Gather visitor timezone info to pass to the LLM
+      const visitorTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const visitorNow = new Date().toLocaleString([], {
+        dateStyle: "full",
+        timeStyle: "long",
+      });
+
       const systemNote = `You are speaking to a visitor on the Remote Viewer landing page. You are friendly, enthusiastic, and concise.
+
+VISITOR TIMEZONE: ${visitorTZ}
+VISITOR LOCAL TIME: ${visitorNow}
+
+IMPORTANT — All schedule data uses UTC timestamps. When you mention any time to the visitor, ALWAYS convert it to their local timezone (${visitorTZ}). Never show UTC times to the visitor. Format times in a friendly way, e.g. "today at 3:03 PM" or "tomorrow at 8:30 AM".
 
 When the visitor asks how this works, what Remote Viewer is, wants to see a demo, or expresses curiosity about the product, proactively offer a live demo by linking to the player page: [Try the live demo](/player)
 
@@ -157,7 +188,7 @@ IMPORTANT — When asked about a specific movie or show:
 1. Check the media library to confirm it exists and share its metadata (title, year, director, plot, etc.)
 2. Cross-reference the channel schedules to see if it's scheduled. Each playlist/slot item includes a "next:" timestamp showing when it airs next (or "NOW" if currently playing).
 3. If the movie is currently playing, tell them which channel and invite them to watch: [Watch it now on the player](/player)
-4. If it's scheduled later, tell them the channel and approximate time it airs next.
+4. If it's scheduled later, tell them the channel and approximate time it airs next — converted to the visitor's local timezone.
 5. If it's in the library but not scheduled on any channel, say so.
 
 Keep answers short and conversational — this is a chat widget, not a documentation page.`;
@@ -301,16 +332,31 @@ Keep answers short and conversational — this is a chat widget, not a documenta
                   {agentContext.mediaFilesTotal} files &middot;{" "}
                   {agentContext.channels.length} channels &middot;{" "}
                   {(MAX_TOKENS / 1024).toFixed(0)}K tokens
+                  {currentTime && (
+                    <>
+                      {" "}&middot; {currentTime}
+                    </>
+                  )}
                 </p>
               )}
               {contextLoading && (
-                <p className="text-xs font-normal leading-normal text-neutral-500 mt-0.5">
+                <p className="text-xs font-normal leading-normal text-neutral-500 mt-0.5 tabular-nums">
                   Loading context...
+                  {currentTime && (
+                    <>
+                      {" "}&middot; {currentTime}
+                    </>
+                  )}
                 </p>
               )}
               {!agentContext && !contextLoading && isConfigured && (
                 <p className="text-xs font-normal leading-normal text-neutral-500 mt-0.5 tabular-nums">
                   {(MAX_TOKENS / 1024).toFixed(0)}K tokens
+                  {currentTime && (
+                    <>
+                      {" "}&middot; {currentTime}
+                    </>
+                  )}
                 </p>
               )}
             </div>
