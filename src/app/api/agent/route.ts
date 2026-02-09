@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     });
 
     const body = await request.json();
-    const { messages, model = "gpt-4o", maxTokens = 4096, fullContext } = body;
+    const { messages, model = "gpt-4o", maxTokens = 4096, fullContext, systemNote } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
@@ -50,6 +50,10 @@ The application context below includes media metadata when available (title, yea
 You also have access to web search for questions the metadata can't answer — deeper plot details, reviews, related recommendations, box office data, or any factual information not in the context. When you use web search results, naturally cite your sources.
 
 Be concise and helpful. When answering questions about the current state of the application, reference the context data provided below. When the user asks about what's playing, what's available, or scheduling, use the real data.`;
+
+    if (systemNote) {
+      instructions += `\n\n--- ADDITIONAL INSTRUCTIONS ---\n\n${systemNote}`;
+    }
 
     if (fullContext) {
       instructions += `\n\n--- CURRENT APPLICATION STATE ---\n\n${fullContext}`;

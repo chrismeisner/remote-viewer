@@ -147,6 +147,16 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
 
       const fullContext = agentContext?.formattedContext || null;
 
+      const systemNote = `You are speaking to a visitor on the Remote Viewer landing page. You are friendly, enthusiastic, and concise.
+
+When the visitor asks how this works, what Remote Viewer is, wants to see a demo, or expresses curiosity about the product, proactively offer a live demo by linking to the player page: [Try the live demo](/player)
+
+You can also mention specific channels that are currently active and what's playing on them to make the demo feel tangible. For example: "We have X channels running right now — hop into the [live player](/player) to see what's on."
+
+If they ask about specific movies or shows in the library, feel free to answer and mention they can watch them live on the player.
+
+Keep answers short and conversational — this is a chat widget, not a documentation page.`;
+
       const response = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -155,6 +165,7 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
           model: "gpt-4o",
           maxTokens: MAX_TOKENS,
           fullContext,
+          systemNote,
         }),
       });
 
