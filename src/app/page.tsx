@@ -347,11 +347,11 @@ export default function CoverFlowPage() {
         {columns.map((column, colIndex) => (
           <div
             key={colIndex}
-            className="flex-1 overflow-hidden relative"
+            className="flex-1 overflow-hidden relative h-full"
             style={{ minWidth: 0 }}
           >
             <div
-              className="flex flex-col gap-2 sm:gap-3 animate-scroll"
+              className="flex flex-col gap-2 sm:gap-3 animate-scroll h-full"
               style={{
                 animationDuration: `${column.speed}s`,
                 animationDirection: column.reverse ? "reverse" : "normal",
@@ -364,12 +364,12 @@ export default function CoverFlowPage() {
                 return (
                   <div
                     key={`${cover.filename}-${idx}`}
-                    className="relative aspect-[2/3] rounded-lg overflow-hidden flex-shrink-0 bg-neutral-900"
+                    className="relative aspect-[2/3] rounded-lg overflow-hidden flex-shrink-0 bg-neutral-900 w-full"
                   >
                     <img
                       src={cover.url}
                       alt=""
-                      className={`w-full h-full object-cover transition-opacity duration-700 ${
+                      className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${
                         isLoaded ? "opacity-100" : "opacity-0"
                       }`}
                       loading="lazy"

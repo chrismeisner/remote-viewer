@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   MEDIA_SOURCE_KEY,
   type MediaSource,
@@ -468,7 +469,38 @@ export default function AgentPage() {
                       : "bg-white/5 text-neutral-100"
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <div className="prose prose-sm prose-invert max-w-none">
+                    <ReactMarkdown
+                      components={{
+                        // Style links to be clickable and distinct
+                        a: ({ node, ...props }) => (
+                          <a
+                            {...props}
+                            className="text-blue-400 hover:text-blue-300 underline"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          />
+                        ),
+                        // Keep list styling consistent
+                        ul: ({ node, ...props }) => (
+                          <ul {...props} className="list-disc list-inside my-2" />
+                        ),
+                        ol: ({ node, ...props }) => (
+                          <ol {...props} className="list-decimal list-inside my-2" />
+                        ),
+                        // Inline code styling
+                        code: ({ node, ...props }) => (
+                          <code {...props} className="bg-neutral-800 px-1 py-0.5 rounded text-xs" />
+                        ),
+                        // Paragraphs with spacing
+                        p: ({ node, ...props }) => (
+                          <p {...props} className="my-1" />
+                        ),
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
                   {message.isSearching && (
                     <div className="flex items-center gap-2 mt-1">
                       <div className="w-4 h-4 border-2 border-neutral-600 border-t-emerald-400 rounded-full animate-spin" />

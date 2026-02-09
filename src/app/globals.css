@@ -299,3 +299,43 @@ video:-moz-full-screen {
   background-size: 100% 3px;
   opacity: 0.6;
 }
+
+/* ── Watch page seek bar ─────────────────────────────────────────── */
+.watch-seek-bar {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
+  cursor: pointer;
+}
+.watch-seek-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #34d399;
+  border: 2px solid rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+.watch-seek-bar::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #34d399;
+  border: 2px solid rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+.watch-seek-bar::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+}
+.watch-seek-bar::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+}
