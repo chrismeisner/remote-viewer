@@ -685,6 +685,82 @@ function MediaDetailModal({
     setMetadataError(null);
   };
 
+  // Clear all metadata for the current item
+  const handleClearMetadata = async () => {
+    if (!confirm("Are you sure you want to clear all metadata for this item? This action cannot be undone.")) {
+      return;
+    }
+
+    setMetadataSaving(true);
+    setMetadataError(null);
+    try {
+      // Send all fields as null to clear them
+      const payload = {
+        file: item.relPath,
+        source: mediaSource,
+        title: null,
+        year: null,
+        releaseDate: null,
+        director: null,
+        category: null,
+        makingOf: null,
+        plot: null,
+        type: null,
+        season: null,
+        episode: null,
+        imdbUrl: null,
+        tags: null,
+        coverUrl: null,
+        coverLocal: null,
+        coverEmoji: null,
+      };
+
+      const res = await fetch("/api/media-metadata", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to clear metadata");
+      }
+
+      const data = await res.json();
+      
+      // Update local state to reflect cleared metadata
+      const clearedMetadata: MediaMetadata = {};
+      setMetadata(clearedMetadata);
+      setEditTitle("");
+      setEditYear("");
+      setEditReleaseDate("");
+      setEditDirector("");
+      setEditCategory("");
+      setEditMakingOf("");
+      setEditPlot("");
+      setEditType("");
+      setEditSeason("");
+      setEditEpisode("");
+      setEditImdbUrl("");
+      setEditTags([]);
+      setNewTagInput("");
+      setImdbPreview(null);
+      setSeriesPreview(null);
+      
+      // Notify parent component if callback provided
+      if (onMetadataUpdate) {
+        onMetadataUpdate(item.relPath, clearedMetadata);
+      }
+
+      // Exit edit mode
+      setEditingMetadata(false);
+    } catch (err) {
+      setMetadataError(err instanceof Error ? err.message : "Failed to clear metadata");
+    } finally {
+      setMetadataSaving(false);
+    }
+  };
+
   // IMDB search: trigger AI lookup for IMDB URL candidates
   const handleImdbSearch = async () => {
     console.log("[IMDB Cover] === MANUAL IMDB SEARCH START ===");
@@ -2077,6 +2153,17 @@ function MediaDetailModal({
                     Deep Search
                   </>
                 )}
+              </button>
+              <button
+                onClick={handleClearMetadata}
+                disabled={metadataSaving || aiLoading || deepSearchLoading}
+                className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-50 flex items-center gap-1.5"
+                title="Clear all metadata for this item"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Clear Metadata
               </button>
             </div>
           </div>
