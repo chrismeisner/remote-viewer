@@ -111,8 +111,9 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
   const loadContext = useCallback(async () => {
     setContextLoading(true);
     try {
+      const visitorTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const res = await fetch(
-        `/api/agent/context?source=${encodeURIComponent(mediaSource)}&t=${Date.now()}`
+        `/api/agent/context?source=${encodeURIComponent(mediaSource)}&tz=${encodeURIComponent(visitorTZ)}&t=${Date.now()}`
       );
       if (res.ok) {
         const data: AgentContext = await res.json();
@@ -166,29 +167,21 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
 
       const fullContext = agentContext?.formattedContext || null;
 
-      // Gather visitor timezone info to pass to the LLM
-      const visitorTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const visitorNow = new Date().toLocaleString([], {
-        dateStyle: "full",
-        timeStyle: "long",
-      });
-
       const systemNote = `You are speaking to a visitor on the Remote Viewer landing page. You are friendly, enthusiastic, and concise.
 
-VISITOR TIMEZONE: ${visitorTZ}
-VISITOR LOCAL TIME: ${visitorNow}
+IMPORTANT — All times in the context data are ALREADY in the visitor's local timezone. Report them exactly as shown — do NOT convert, adjust, or add any UTC offset. Use friendly phrasing like "today at 3:03 PM" or "tomorrow at 8:30 AM".
 
-IMPORTANT — All schedule data uses UTC timestamps. When you mention any time to the visitor, ALWAYS convert it to their local timezone (${visitorTZ}). Never show UTC times to the visitor. Format times in a friendly way, e.g. "today at 3:03 PM" or "tomorrow at 8:30 AM".
+CHANNEL DEEP LINKS — Each channel has a direct link in the format /player?channel=ID (e.g. /player?channel=02). When referring to a specific channel, ALWAYS link directly to it instead of the generic /player page. Use the channel's "Link" field from the context data.
 
 When the visitor asks how this works, what Remote Viewer is, wants to see a demo, or expresses curiosity about the product, proactively offer a live demo by linking to the player page: [Try the live demo](/player)
 
-You can also mention specific channels that are currently active and what's playing on them to make the demo feel tangible. For example: "We have X channels running right now — hop into the [live player](/player) to see what's on."
+You can also mention specific channels that are currently active and what's playing on them to make the demo feel tangible. For example: "We have X channels running right now — hop into the [live player](/player) to see what's on." When mentioning a specific channel, link to it directly, e.g. [DRMA channel](/player?channel=02).
 
 IMPORTANT — When asked about a specific movie or show:
 1. Check the media library to confirm it exists and share its metadata (title, year, director, plot, etc.)
 2. Cross-reference the channel schedules to see if it's scheduled. Each playlist/slot item includes a "next:" timestamp showing when it airs next (or "NOW" if currently playing).
-3. If the movie is currently playing, tell them which channel and invite them to watch: [Watch it now on the player](/player)
-4. If it's scheduled later, tell them the channel and approximate time it airs next — converted to the visitor's local timezone.
+3. If the movie is currently playing, tell them which channel and invite them to watch with a direct link: [Watch it now on DRMA](/player?channel=02)
+4. If it's scheduled later, tell them the channel (with a direct link) and the time shown in the schedule data.
 5. If it's in the library but not scheduled on any channel, say so.
 
 Keep answers short and conversational — this is a chat widget, not a documentation page.`;

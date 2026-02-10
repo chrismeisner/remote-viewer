@@ -67,10 +67,14 @@ export async function GET(request: NextRequest) {
   const source: MediaSource =
     sourceParam === "remote" || sourceParam === "local" ? sourceParam : "local";
 
+  // Accept the visitor's IANA timezone from the client; fall back to server TZ
+  const tzParam = request.nextUrl.searchParams.get("tz");
+  const visitorTimezone = tzParam || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   try {
     const now = Date.now();
     const currentTime = new Date(now).toISOString();
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezone = visitorTimezone;
 
     // Gather media files
     let mediaFiles: MediaFileInfo[] = [];
@@ -247,23 +251,26 @@ function formatContext(data: {
   totalMediaDurationSeconds: number;
   channels: ChannelContext[];
 }): string {
+  const tz = data.timezone; // visitor's IANA timezone, e.g. "America/New_York"
   const parts: string[] = [];
 
-  // Current time
+  // Current time — formatted in visitor's timezone
   const date = new Date(data.currentTime);
   const timeStr = date.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: true,
+    timeZone: tz,
   });
   const dateStr = date.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
+    timeZone: tz,
   });
-  parts.push(`## Current Time\n${dateStr} at ${timeStr} (${data.timezone})`);
+  parts.push(`## Current Time\n${dateStr} at ${timeStr} (${tz})\nIMPORTANT: All times below are already converted to the visitor's local timezone (${tz}). Report them as-is — do NOT add or subtract any offset.`);
 
   // Source
   parts.push(`## Media Source\n${data.source === "remote" ? "Remote (FTP/CDN)" : "Local filesystem"}`);
@@ -331,7 +338,7 @@ function formatContext(data: {
       const status = ch.active ? "ACTIVE" : "INACTIVE";
       const type = ch.type === "looping" ? "Looping Playlist" : "24-Hour Schedule";
 
-      let chSection = `### ${name}\n- Status: ${status}\n- Type: ${type}\n- Scheduled items: ${ch.scheduledCount}`;
+      let chSection = `### ${name}\n- Status: ${status}\n- Type: ${type}\n- Scheduled items: ${ch.scheduledCount}\n- Link: /player?channel=${ch.id}`;
 
       if (ch.totalDurationSeconds > 0) {
         chSection += `\n- Total duration: ${formatDuration(ch.totalDurationSeconds)}`;
@@ -378,7 +385,7 @@ function formatContext(data: {
             const nextAirDate = new Date(Date.now() + secondsUntilNext * 1000);
             const nextAirStr = secondsUntilNext === 0
               ? "NOW"
-              : nextAirDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+              : nextAirDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: tz });
 
             return `  ${i + 1}. ${item.title || item.file} (${formatDuration(item.durationSeconds)}) — next: ${nextAirStr}`;
           }).join("\n");
@@ -386,8 +393,12 @@ function formatContext(data: {
           chSection += `\n- Playlist (loop cycle: ${formatDuration(totalDuration)}):\n${playlistLines}`;
         }
       } else if (ch.type === "24hour" && ch.schedule.slots && ch.schedule.slots.length > 0) {
-        const nowDate = new Date();
-        const currentSecondsOfDay = nowDate.getHours() * 3600 + nowDate.getMinutes() * 60 + nowDate.getSeconds();
+        // Get current time of day in visitor's timezone
+        const nowInVisitorTZ = new Date().toLocaleTimeString("en-US", {
+          hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: tz,
+        });
+        const [hh, mm, ss] = nowInVisitorTZ.split(":").map(Number);
+        const currentSecondsOfDay = hh * 3600 + mm * 60 + ss;
 
         const slotLines = ch.schedule.slots.map((slot) => {
           const startSec = parseTimeToSeconds(slot.start);

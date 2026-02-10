@@ -109,6 +109,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const [infoLoading, setInfoLoading] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   const [shareCopied, setShareCopied] = useState(false);
+  const [isMobile] = useState(() => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
   
   // Stream stats for info modal (simplified - just buffer health)
   const [streamStats, setStreamStats] = useState<{
@@ -1202,7 +1203,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     const shareUrl = url.toString();
     
     // Use native share sheet on mobile if available
-    if (navigator.share) {
+    if (isMobile && navigator.share) {
       try {
         await navigator.share({
           title: `Watch ${channel}`,
@@ -1216,7 +1217,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       }
     }
     
-    // Fallback: copy to clipboard (desktop or if share API unavailable)
+    // Desktop or fallback: copy to clipboard
     try {
       await navigator.clipboard.writeText(shareUrl);
       setShareCopied(true);
@@ -1737,7 +1738,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
             onClick={handleShareChannel}
             disabled={!channel}
           >
-            {shareCopied ? 'Copied!' : 'Share Channel'}
+            {shareCopied ? 'Copied!' : isMobile ? 'Share Channel' : 'Copy Channel URL'}
           </ModalButton>
           <ModalButton onClick={closeInfoModal}>Close</ModalButton>
         </ModalFooter>
