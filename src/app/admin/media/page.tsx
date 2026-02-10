@@ -2583,6 +2583,8 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
         setCoverLocal("");
         setCoverPath("");
         setCoverMode("image");
+        // Notify parent to uncheck "Use IMDB cover" checkbox since we manually fetched a cover
+        onCoverUploaded?.();
         
         // Check if the IMDB title matches our metadata title
         const imdbTitle = data.title?.toLowerCase()?.replace(/\s*\(\d{4}\)\s*/g, "").trim() || "";
@@ -2684,6 +2686,8 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
       setCoverMode("image");
       setSuccess("Cover image selected from IMDB gallery");
       setError(null);
+      // Notify parent to uncheck "Use IMDB cover" checkbox since we manually selected a different cover
+      onCoverUploaded?.();
     }
 
     setShowPosterPicker(false);
