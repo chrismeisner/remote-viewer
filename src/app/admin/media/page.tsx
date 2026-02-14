@@ -491,7 +491,43 @@ function MediaDetailModal({
           console.warn("[IMDB Cover] IMDB auto-search failed, skipping:", searchErr);
         }
       } else if (aiLookupMode === "sports") {
-        console.log("[AI Lookup] Sports mode — skipping IMDB auto-search");
+        // In sports mode, search for a real event URL using the date + teams from AI
+        console.log("[AI Lookup] Sports mode — searching for verified event URL");
+        const gameDate = data.releaseDate;
+        const gameTitle = data.title || "";
+        const gameSport = data.category || "Basketball";
+        if (gameDate && /^\d{4}-\d{2}-\d{2}$/.test(gameDate)) {
+          try {
+            // Parse team names from title (e.g., "Bulls vs Lakers" or "Bulls @ Lakers")
+            const titleParts = gameTitle.split(/\s+(?:vs\.?|@|at|versus)\s+/i);
+            const team1 = titleParts[0]?.trim() || undefined;
+            const team2 = titleParts[1]?.trim() || undefined;
+            console.log("[Event Search] Searching:", { date: gameDate, sport: gameSport, team1, team2 });
+            const eventRes = await fetch("/api/media-metadata/event-search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sport: gameSport,
+                date: gameDate,
+                team1,
+                team2,
+              }),
+            });
+            if (eventRes.ok) {
+              const eventData = await eventRes.json();
+              if (eventData.bestMatch?.boxScoreUrl) {
+                console.log("[Event Search] Found verified URL:", eventData.bestMatch.boxScoreUrl);
+                setEditEventUrl(eventData.bestMatch.boxScoreUrl);
+              } else {
+                console.log("[Event Search] No matching game found in", eventData.games?.length || 0, "games on", gameDate);
+              }
+            }
+          } catch (eventErr) {
+            console.warn("[Event Search] Event search failed, keeping AI URL:", eventErr);
+          }
+        } else {
+          console.log("[AI Lookup] No valid date for event search, keeping AI URL");
+        }
       } else if (data.imdbUrl) {
         console.log("[AI Lookup] AI already returned IMDB URL, skipping auto-search");
       } else {
@@ -535,6 +571,9 @@ function MediaDetailModal({
         season: currentMetadata.season,
         episode: currentMetadata.episode,
         imdbUrl: currentMetadata.imdbUrl,
+        eventUrl: currentMetadata.eventUrl,
+        lookupMode: aiLookupMode,
+        userContext: aiContextEnabled && aiContextText.trim() ? aiContextText.trim() : "(none)",
       });
 
       const res = await fetch("/api/media-metadata/deep-search", {
@@ -544,6 +583,7 @@ function MediaDetailModal({
           filename: item.relPath,
           existingMetadata: currentMetadata,
           lookupMode: aiLookupMode,
+          userContext: aiContextEnabled && aiContextText.trim() ? aiContextText.trim() : undefined,
         }),
       });
       const data = await res.json();
@@ -556,6 +596,7 @@ function MediaDetailModal({
       console.log("[Deep Search] Response:", {
         title: data.title,
         type: data.type,
+        eventUrl: data.eventUrl || "(none)",
         plotLength: data.plot?.length || 0,
         makingOfLength: data.makingOf?.length || 0,
         tagsCount: data.tags?.length || 0,
@@ -578,6 +619,41 @@ function MediaDetailModal({
 
       // Switch to edit mode to show the filled fields
       setEditingMetadata(true);
+
+      // For sports content, search for a verified event URL using the date + teams
+      const deepType = data.type || currentMetadata.type;
+      const deepDate = data.releaseDate || currentMetadata.releaseDate;
+      const deepTitle = data.title || currentMetadata.title || "";
+      const deepSport = data.category || currentMetadata.category || "Basketball";
+      if ((aiLookupMode === "sports" || deepType === "sports") && deepDate && /^\d{4}-\d{2}-\d{2}$/.test(deepDate)) {
+        console.log("[Deep Search] Searching for verified event URL...");
+        try {
+          const titleParts = deepTitle.split(/\s+(?:vs\.?|@|at|versus)\s+/i);
+          const team1 = titleParts[0]?.trim() || undefined;
+          const team2 = titleParts[1]?.trim() || undefined;
+          const eventRes = await fetch("/api/media-metadata/event-search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sport: deepSport,
+              date: deepDate,
+              team1,
+              team2,
+            }),
+          });
+          if (eventRes.ok) {
+            const eventData = await eventRes.json();
+            if (eventData.bestMatch?.boxScoreUrl) {
+              console.log("[Deep Search] Found verified event URL:", eventData.bestMatch.boxScoreUrl);
+              setEditEventUrl(eventData.bestMatch.boxScoreUrl);
+            } else {
+              console.log("[Deep Search] No matching game found — keeping AI URL");
+            }
+          }
+        } catch (eventErr) {
+          console.warn("[Deep Search] Event search failed:", eventErr);
+        }
+      }
 
       console.log("[Deep Search] === DEEP SEARCH COMPLETE ===");
     } catch (err) {
@@ -4065,6 +4141,33 @@ export default function MediaAdminPage() {
           }
         }
 
+        // --- Event URL search for sports content ---
+        let finalEventUrl: string | null = aiData.eventUrl || null;
+        if (isBulkSports && aiData.releaseDate && /^\d{4}-\d{2}-\d{2}$/.test(aiData.releaseDate)) {
+          try {
+            const bulkTitle = aiData.title || "";
+            const bulkTitleParts = bulkTitle.split(/\s+(?:vs\.?|@|at|versus)\s+/i);
+            const eventRes = await fetch("/api/media-metadata/event-search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sport: aiData.category || "Basketball",
+                date: aiData.releaseDate,
+                team1: bulkTitleParts[0]?.trim() || undefined,
+                team2: bulkTitleParts[1]?.trim() || undefined,
+              }),
+            });
+            if (eventRes.ok) {
+              const eventData = await eventRes.json();
+              if (eventData.bestMatch?.boxScoreUrl) {
+                finalEventUrl = eventData.bestMatch.boxScoreUrl;
+              }
+            }
+          } catch {
+            // Event search is best-effort
+          }
+        }
+
         if (bulkFillAbortRef.current) break;
 
         // --- Fetch IMDB cover image if we have an IMDB URL ---
@@ -4139,7 +4242,7 @@ export default function MediaAdminPage() {
           season: aiData.season || null,
           episode: aiData.episode || null,
           imdbUrl: finalImdbUrl,
-          eventUrl: aiData.eventUrl || null,
+          eventUrl: finalEventUrl,
         };
 
         // Include cover image from IMDB if found

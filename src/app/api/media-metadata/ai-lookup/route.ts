@@ -391,14 +391,8 @@ Rules:
   * Momentum shifts and turning points
   * Post-game significance (playoff implications, records, etc.)
 - "imdbUrl" should be null for sporting events (unless it's a well-known documentary/broadcast that happens to be on IMDB)
-- "eventUrl" is CRITICAL — provide a URL to the box score or game page on a sports reference site:
-  * Basketball (NBA): Basketball Reference — https://www.basketball-reference.com/boxscores/YYYYMMDD0[HOME_TEAM_ABBR].html
-    Common abbreviations: CHI (Bulls), LAL (Lakers), BOS (Celtics), NYK (Knicks), MIA (Heat), GSW (Warriors), SAS (Spurs), PHI (76ers), DAL (Mavericks), HOU (Rockets), DET (Pistons), etc.
-  * Football (NFL): Pro Football Reference — https://www.pro-football-reference.com/boxscores/YYYYMMDD0[abbr].htm
-  * Baseball (MLB): Baseball Reference — https://www.baseball-reference.com/boxes/[TEAM]/[TEAM]YYYYMMDD0.shtml
-  * Hockey (NHL): Hockey Reference — https://www.hockey-reference.com/boxscores/YYYYMMDD0[TEAM].html
-  * Other sports: ESPN game page or official league site
-  Only provide if you are confident the URL is correct for this specific game.
+- "eventUrl" — set to null. The system will automatically search for the correct box score URL based on the date, teams, and sport you provide. Your job is to get the date, teams, and sport RIGHT so the URL search works.
+  CRITICAL: Getting "releaseDate" correct is the #1 priority for sports content — the automated URL search depends on it!
 - "season" and "episode" should be null (not applicable for sports)
 
 CRITICAL — Finding the Exact Game Date:
@@ -448,16 +442,7 @@ Rules:
 - "season" should be the season number as an integer for TV shows, or null for non-TV content
 - "episode" should be the episode number as an integer for TV shows, or null for non-TV content
 - "imdbUrl" should be the full IMDB URL for the content. The format is always "https://www.imdb.com/title/tt" followed by a 7-8 digit number. For movies, use the movie's IMDB URL. For TV shows, use the IMDB URL for the SPECIFIC EPISODE if possible (e.g., "https://www.imdb.com/title/tt0701059/" for The Simpsons S02E01 "Bart Gets an F"), or the series URL if the episode ID is unknown. Return null if you cannot determine the IMDB ID with confidence. IMPORTANT: Do not guess or hallucinate IMDB IDs - only provide one if you are confident it is correct.
-- "eventUrl" should be a URL to an external reference page for sporting events. This is ONLY for sports content (type="sports"). Use authoritative sports reference sites:
-  * Basketball: Basketball Reference (e.g., "https://www.basketball-reference.com/boxscores/199702020CHI.html") or ESPN game page
-  * Football (NFL): Pro Football Reference (e.g., "https://www.pro-football-reference.com/boxscores/199801250.htm") or ESPN
-  * Baseball: Baseball Reference (e.g., "https://www.baseball-reference.com/boxes/NYA/NYA199810210.shtml") or ESPN
-  * Hockey: Hockey Reference (e.g., "https://www.hockey-reference.com/boxscores/199906190DAL.html") or ESPN
-  * Soccer: FBRef or ESPN
-  * Other sports: ESPN, official league sites, or other authoritative sources
-  The URL format for Basketball Reference box scores is typically: https://www.basketball-reference.com/boxscores/YYYYMMDD0[HOME_TEAM_ABBR].html
-  The URL format for Pro Football Reference is typically: https://www.pro-football-reference.com/boxscores/YYYYMMDD0[abbr].htm
-  IMPORTANT: Only provide an eventUrl if you are confident the URL is correct for this specific game/event. For non-sports content, set to null.
+- "eventUrl" — set to null. For sports content, the system will automatically search for the correct box score URL. Your job is to identify the correct date, teams, and sport. For non-sports content, always set to null.
 
 TV Episode Detection:
 - Look for patterns like "S01E01", "S02E08", "s1e5", "S03E12" in filenames - these indicate Season and Episode numbers
@@ -573,10 +558,20 @@ Filename: ${filename}`;
 
     // Add user-provided context if available
     if (userContext && typeof userContext === "string" && userContext.trim()) {
-      userPrompt += `
+      if (isSportsMode) {
+        userPrompt += `
+
+USER-PROVIDED CONTEXT — THIS IS CRITICAL INFORMATION from the admin user. It may contain the EXACT DATE, teams, venue, or other key details. USE THIS to identify the specific game and construct an accurate eventUrl:
+${userContext.trim()}
+
+If the user provided a date (e.g., "February 2, 1997" or "02/02/1997"), use it as the releaseDate and to construct the eventUrl.
+If the user provided team info (e.g., "Bulls at Lakers"), use it to determine home/away for the eventUrl.`;
+      } else {
+        userPrompt += `
 
 USER-PROVIDED CONTEXT (use this information to help identify the media):
 ${userContext.trim()}`;
+      }
     }
 
     // Try to detect and highlight date patterns for sports content
@@ -814,12 +809,12 @@ RESEARCH STRATEGY:
 4. Get details about that specific game
 
 REQUIRED FIELDS:
-- "title": Format as "Team A vs Team B" (e.g., "Bulls vs Lakers")
-- "releaseDate": The EXACT date of the game in YYYY-MM-DD format (THIS IS CRITICAL - research to find it!)
+- "title": Format as "Team A vs Team B" (e.g., "Bulls vs Lakers") — use full team names so the system can match the game
+- "releaseDate": The EXACT date of the game in YYYY-MM-DD format (THIS IS THE MOST CRITICAL FIELD — the system uses it to automatically look up the real box score URL)
 - "year": The year extracted from the filename
 - "category": The sport type (Basketball, Football, Baseball, Hockey, etc.)
 - "type": Must be "sports"
-- "eventUrl": A URL to the box score or game page on a sports reference site. For NBA games use Basketball Reference (https://www.basketball-reference.com/boxscores/YYYYMMDD0[HOME_TEAM_ABBR].html), for NFL use Pro Football Reference, for MLB use Baseball Reference, etc. This is CRITICAL for sports content - always try to provide one!
+- "eventUrl": Set to null — the system will automatically search for the correct URL
 - "plot": Comprehensive game details including:
   * EXACT FINAL SCORE
   * Standout player performances WITH STATS (points, rebounds, assists, yards, TDs, etc.)

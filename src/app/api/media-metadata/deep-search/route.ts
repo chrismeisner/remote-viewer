@@ -21,6 +21,7 @@ type DeepSearchRequest = {
     tags?: string[] | null;
   };
   lookupMode?: "entertainment" | "sports";
+  userContext?: string;
 };
 
 type DeepSearchResponse = {
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: DeepSearchRequest = await request.json();
-    const { filename, existingMetadata, lookupMode } = body;
+    const { filename, existingMetadata, lookupMode, userContext } = body;
     const isSportsMode = lookupMode === "sports";
 
     if (!filename || typeof filename !== "string") {
@@ -129,14 +130,40 @@ DEEP SEARCH REQUIREMENTS FOR THIS TV EPISODE:
 7. "title" — Keep the show title as-is: "${existingMetadata.title}".
 8. "year" — The year THIS SPECIFIC EPISODE aired (which may differ from the show's premiere year).`;
     } else if (isSports) {
-      typeSpecificInstructions = `
-THIS IS A SPORTING EVENT.
-${existingMetadata.title ? `- Event: "${existingMetadata.title}"` : ""}
-${existingMetadata.releaseDate ? `- Date: ${existingMetadata.releaseDate}` : ""}
-${existingMetadata.category ? `- Sport: ${existingMetadata.category}` : ""}
+      // Build a focused research query for sports events
+      const teamsFromTitle = existingMetadata.title || "";
+      const dateFromMeta = existingMetadata.releaseDate || "";
+      const sportFromMeta = existingMetadata.category || "";
 
-DEEP SEARCH REQUIREMENTS FOR THIS SPORTING EVENT:
-1. "plot" — Write a DETAILED game/match summary with:
+      typeSpecificInstructions = `
+THIS IS A SPORTING EVENT. Your #1 priority is identifying the EXACT game — getting the date and teams right.
+${existingMetadata.title ? `- Event: "${existingMetadata.title}"` : ""}
+${dateFromMeta ? `- Date: ${dateFromMeta}` : "- Date: UNKNOWN — you MUST research to find the exact date!"}
+${sportFromMeta ? `- Sport: ${sportFromMeta}` : ""}
+
+=== IDENTIFYING THE EXACT GAME ===
+
+Use ALL available clues to pin down the exact game:
+- Team names from the title (e.g., "Bulls vs Lakers")
+- Date from releaseDate field (if present)
+- Date clues from the filename (look for dates like "02-01-1998", month-year like "february-1997")
+- Player names mentioned in filename or tags (e.g., "kobe-bryant" helps confirm the era)
+- Broadcast network clues (e.g., "nba-on-tbs" confirms NBA)
+- "@" symbol indicates away team @ home team (e.g., "Bulls @ Lakers" means game was at Lakers' arena)
+- User-provided context may contain the exact date — USE IT!
+
+If you only have a month and year (e.g., "February 1997"):
+1. Research: "When did ${teamsFromTitle || '[Team A] and [Team B]'} play in ${dateFromMeta || 'the specified time period'}?"
+2. Check the teams' schedules for that month
+3. Consider home/away indicators: "@" or "at" means the second team is the home team
+4. Narrow down to the exact date
+
+=== DEEP SEARCH REQUIREMENTS ===
+
+1. "releaseDate" — The EXACT date of the game in YYYY-MM-DD format. THIS IS THE MOST CRITICAL FIELD — the system uses it to automatically look up the real box score URL. Get this right!
+2. "title" — Format as "Team A vs Team B" with the full team names (e.g., "Bulls vs Lakers"). The system uses this to match the correct game.
+3. "eventUrl" — Set to null. The system will automatically search sports reference sites for the correct box score URL using the date and teams you provide.
+4. "plot" — Write a DETAILED game/match summary with:
    - Final score
    - Quarter-by-quarter / period-by-period / inning-by-inning breakdown
    - Standout player performances WITH DETAILED STATS (points, rebounds, assists, yards, TDs, goals, saves, etc.)
@@ -144,17 +171,9 @@ DEEP SEARCH REQUIREMENTS FOR THIS SPORTING EVENT:
    - Records broken or milestones reached
    - How the game ended (dramatic finish? blowout?)
    - Post-game significance (playoff implications, standings impact)
-2. "makingOf" — Include: full rosters/starters for both teams, head coaches, venue name and location, attendance, broadcast network and commentators, significance of the matchup (rivalry, playoff seeding, streaks), any pre-game storylines.
-3. "releaseDate" — The EXACT date of the game in YYYY-MM-DD format.
-4. "eventUrl" — A URL to the box score or game page on a sports reference site. THIS IS CRITICAL for sports content:
-   - Basketball (NBA): Use Basketball Reference, format: https://www.basketball-reference.com/boxscores/YYYYMMDD0[HOME_TEAM_ABBR].html (e.g., https://www.basketball-reference.com/boxscores/199702020CHI.html for a game at Chicago on Feb 2, 1997)
-   - Football (NFL): Use Pro Football Reference, format: https://www.pro-football-reference.com/boxscores/YYYYMMDD0[abbr].htm
-   - Baseball (MLB): Use Baseball Reference, format: https://www.baseball-reference.com/boxes/[TEAM]/[TEAM]YYYYMMDD0.shtml
-   - Hockey (NHL): Use Hockey Reference, format: https://www.hockey-reference.com/boxscores/YYYYMMDD0[TEAM].html
-   - Other sports: Use ESPN game page or official league site
-   If the existing Event URL is already provided and correct, keep it. Otherwise, construct the correct URL based on the game date, teams, and sport.
-5. "tags" — Include: key player names (both teams), coach names, venue name, league name, broadcast network, any special designations (playoff, finals, all-star, etc.).
-6. "director" — The lead broadcaster/commentator(s) if known.`;
+5. "makingOf" — Include: full rosters/starters for both teams, head coaches, venue name and location, attendance, broadcast network and commentators, significance of the matchup (rivalry, playoff seeding, streaks), any pre-game storylines.
+6. "tags" — Include: key player names (both teams), coach names, venue name, league name, broadcast network, any special designations (playoff, finals, all-star, etc.).
+7. "director" — The lead broadcaster/commentator(s) if known.`;
     } else if (isConcert) {
       typeSpecificInstructions = `
 THIS IS A CONCERT/LIVE PERFORMANCE.
@@ -238,13 +257,20 @@ Rules:
 - "type" MUST be one of: "film", "tv", "documentary", "sports", "concert", "other"
 - "tags" should be an array of strings — include actor/player names, themes, keywords, locations
 - "imdbUrl" — keep the existing one if provided and correct, or provide the correct one. Format: "https://www.imdb.com/title/ttXXXXXXX/"
-- "eventUrl" — for sports content ONLY: a URL to the box score or game page on a sports reference site (Basketball Reference, Pro Football Reference, Baseball Reference, Hockey Reference, ESPN, etc.). For non-sports content, set to null. If already provided and correct, keep it.
+- "eventUrl" — set to null. For sports content, the system will automatically search sports reference sites for the correct box score URL using the date and teams you provide. Focus on getting "releaseDate" and "title" (team names) accurate. For non-sports content, always set to null.
 - "releaseDate" must be YYYY-MM-DD format
 - Always return valid JSON, nothing else
 - Be THOROUGH — this is a deep search, not a quick lookup`;
 
+    // Build user context section
+    let userContextSection = "";
+    if (userContext && typeof userContext === "string" && userContext.trim()) {
+      userContextSection = `\nUSER-PROVIDED CONTEXT (use this information as a strong hint — the user may have provided the exact date, teams, or other key details):
+${userContext.trim()}\n`;
+    }
+
     const userPrompt = `Perform a DEEP SEARCH for this media. Use all the existing metadata below to identify the EXACT content and research it thoroughly.
-${isSportsMode ? "\nIMPORTANT: The user has explicitly indicated this is a SPORTING EVENT. Treat it as such — set type to \"sports\" and focus on finding game details, scores, stats, and an eventUrl (box score URL from a sports reference site).\n" : ""}
+${isSportsMode ? "\nIMPORTANT: The user has explicitly indicated this is a SPORTING EVENT. Treat it as such — set type to \"sports\" and focus on finding game details, scores, stats, and an eventUrl (box score URL from a sports reference site).\n" : ""}${userContextSection}
 Filename: ${filename}
 
 EXISTING METADATA:
@@ -371,6 +397,8 @@ Return enriched metadata as JSON. Be thorough and specific.`;
       title: result.title,
       year: result.year,
       type: result.type,
+      releaseDate: result.releaseDate,
+      eventUrl: result.eventUrl || "(none)",
       plotLength: result.plot?.length || 0,
       makingOfLength: result.makingOf?.length || 0,
       tagsCount: result.tags?.length || 0,
