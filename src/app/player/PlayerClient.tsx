@@ -563,19 +563,28 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         return true;
       } catch (err) {
         console.warn("Autoplay failed", err);
+        // Try muted autoplay without changing user's saved preference
         if (allowFallback && !video.muted) {
-          console.log("[player] retrying autoplay muted");
+          console.log("[player] retrying autoplay muted (temporary for browser policy)");
           video.muted = true;
-          setMuted(true);
-          return attemptPlay(false);
+          try {
+            await video.play();
+            console.log("[player] autoplay succeeded when muted");
+            // Restore user's actual mute preference after successful play
+            video.muted = mutedRef.current;
+            return true;
+          } catch (retryErr) {
+            console.warn("[player] autoplay failed even when muted", retryErr);
+            video.muted = mutedRef.current;
+            return false;
+          }
         }
         return false;
       }
     };
 
     const handleLoaded = () => {
-      // Ensure newly-loaded media respects the latest mute state without
-      // forcing the whole player wiring effect to re-run on every mute toggle.
+      // Always sync user preferences to new media
       video.muted = mutedRef.current;
       video.volume = volumeRef.current;
       const desiredTime = seekToDesired();

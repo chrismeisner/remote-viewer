@@ -251,15 +251,19 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
           })
           .catch((err) => {
             console.warn("[watch] autoplay failed, retrying muted", err);
+            // Try muted autoplay without changing user's saved preference
             video.muted = true;
-            setMuted(true);
             video
               .play()
               .then(() => {
                 setHasStarted(true);
                 setIsPlaying(true);
+                // Restore user's actual mute preference after successful play
+                video.muted = mutedRef.current;
               })
               .catch(() => {
+                // Restore mute preference even on failure
+                video.muted = mutedRef.current;
                 // User will need to click play
                 setIsPlaying(false);
               });

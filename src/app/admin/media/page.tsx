@@ -3705,6 +3705,7 @@ export default function MediaAdminPage() {
   // Bulk conversion command state
   const [selectedForConversion, setSelectedForConversion] = useState<Set<string>>(new Set());
   const [copiedBulkCommand, setCopiedBulkCommand] = useState(false);
+  const [bulkTargetResolution, setBulkTargetResolution] = useState<TargetResolution>("original");
 
   // Bulk AI fill state
   const [bulkFillOpen, setBulkFillOpen] = useState(false);
@@ -3841,8 +3842,8 @@ export default function MediaAdminPage() {
     const selectedFiles = filteredFiles.filter((f) => selectedForConversion.has(f.relPath));
     if (selectedFiles.length === 0) return;
 
-    // Build individual commands for each file
-    const commands = selectedFiles.map((file) => buildConvertCommand(file, mediaRoot));
+    // Build individual commands for each file with the target resolution
+    const commands = selectedFiles.map((file) => buildConvertCommand(file, mediaRoot, bulkTargetResolution));
 
     // Join with && to run sequentially (stops on error)
     const bulkCommand = commands.join(" && ");
@@ -4453,6 +4454,40 @@ export default function MediaAdminPage() {
               <span className="text-sm font-semibold text-emerald-200">
                 {selectedForConversion.size} file{selectedForConversion.size === 1 ? "" : "s"} selected
               </span>
+              
+              {/* Resolution selector for bulk operations */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-neutral-400">Output:</span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      setBulkTargetResolution("original");
+                      setCopiedBulkCommand(false);
+                    }}
+                    className={`px-2.5 py-1 text-xs rounded-md transition ${
+                      bulkTargetResolution === "original"
+                        ? "bg-blue-500/30 text-blue-100 border border-blue-400/50"
+                        : "bg-white/5 text-neutral-400 border border-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    Keep Original
+                  </button>
+                  <button
+                    onClick={() => {
+                      setBulkTargetResolution("720");
+                      setCopiedBulkCommand(false);
+                    }}
+                    className={`px-2.5 py-1 text-xs rounded-md transition ${
+                      bulkTargetResolution === "720"
+                        ? "bg-emerald-500/30 text-emerald-100 border border-emerald-400/50"
+                        : "bg-white/5 text-neutral-400 border border-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    720p (smaller)
+                  </button>
+                </div>
+              </div>
+              
               <button
                 onClick={copyBulkConversionCommand}
                 className="rounded-md border border-emerald-300/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30"

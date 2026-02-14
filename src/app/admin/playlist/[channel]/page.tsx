@@ -583,6 +583,12 @@ export default function ChannelPlaylistPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href={`/player?channel=${encodeURIComponent(channelId)}`}
+          className="rounded-md border border-emerald-400/60 bg-emerald-500/20 px-3 py-1 text-sm font-semibold text-emerald-50 transition hover:border-emerald-300 hover:bg-emerald-500/30"
+        >
+          ▶ View channel
+        </Link>
         <button
           onClick={openAddModal}
           className="rounded-md border border-purple-400/60 bg-purple-500/20 px-3 py-1 text-sm font-semibold text-purple-50 transition hover:border-purple-300 hover:bg-purple-500/30"
