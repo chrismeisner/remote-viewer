@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
  *   - season?: number | null
  *   - episode?: number | null
  *   - imdbUrl?: string | null - URL to IMDB page for the media
+ *   - eventUrl?: string | null - URL to external event page (e.g. Basketball Reference, ESPN) for sporting events
  *   - coverUrl?: string | null - URL to external cover image
  *   - coverLocal?: string | null - filename of local cover in covers folder
  *   - coverPath?: string | null - full filesystem path for local mode
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { file, source: sourceParam, title, year, releaseDate, director, category, makingOf, plot, type, season, episode, imdbUrl, coverUrl, coverLocal, coverPath, coverEmoji, tags } = body;
+    const { file, source: sourceParam, title, year, releaseDate, director, category, makingOf, plot, type, season, episode, imdbUrl, eventUrl, coverUrl, coverLocal, coverPath, coverEmoji, tags } = body;
     const source: MediaSource = sourceParam === "remote" ? "remote" : "local";
     
     if (!file || typeof file !== "string") {
@@ -167,6 +168,18 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Validate eventUrl if provided (should be a valid URL)
+    if (eventUrl !== undefined && eventUrl !== null && eventUrl !== "") {
+      try {
+        new URL(eventUrl);
+      } catch {
+        return NextResponse.json(
+          { error: "eventUrl must be a valid URL" },
+          { status: 400 },
+        );
+      }
+    }
+
     // Validate coverUrl if provided (should be a valid URL)
     if (coverUrl !== undefined && coverUrl !== null && coverUrl !== "") {
       try {
@@ -201,6 +214,7 @@ export async function PUT(request: NextRequest) {
     if (season !== undefined) updates.season = season === null || season === "" ? null : Number(season);
     if (episode !== undefined) updates.episode = episode === null || episode === "" ? null : Number(episode);
     if (imdbUrl !== undefined) updates.imdbUrl = imdbUrl === "" ? null : imdbUrl;
+    if (eventUrl !== undefined) updates.eventUrl = eventUrl === "" ? null : eventUrl;
     if (coverUrl !== undefined) updates.coverUrl = coverUrl === "" ? null : coverUrl;
     if (coverLocal !== undefined) updates.coverLocal = coverLocal === "" ? null : coverLocal;
     if (coverPath !== undefined) updates.coverPath = coverPath === "" ? null : coverPath;

@@ -306,6 +306,7 @@ type AiLookupResponse = {
   season?: number | null;
   episode?: number | null;
   imdbUrl?: string | null;
+  eventUrl?: string | null; // URL to external event page (e.g. Basketball Reference, ESPN) for sporting events
 };
 
 /**
@@ -368,7 +369,8 @@ Your response MUST be valid JSON with exactly these fields:
   "type": "film",
   "season": null,
   "episode": null,
-  "imdbUrl": "https://www.imdb.com/title/tt0133093/"
+  "imdbUrl": "https://www.imdb.com/title/tt0133093/",
+  "eventUrl": null
 }
 
 Rules:
@@ -383,6 +385,16 @@ Rules:
 - "season" should be the season number as an integer for TV shows, or null for non-TV content
 - "episode" should be the episode number as an integer for TV shows, or null for non-TV content
 - "imdbUrl" should be the full IMDB URL for the content. The format is always "https://www.imdb.com/title/tt" followed by a 7-8 digit number. For movies, use the movie's IMDB URL. For TV shows, use the IMDB URL for the SPECIFIC EPISODE if possible (e.g., "https://www.imdb.com/title/tt0701059/" for The Simpsons S02E01 "Bart Gets an F"), or the series URL if the episode ID is unknown. Return null if you cannot determine the IMDB ID with confidence. IMPORTANT: Do not guess or hallucinate IMDB IDs - only provide one if you are confident it is correct.
+- "eventUrl" should be a URL to an external reference page for sporting events. This is ONLY for sports content (type="sports"). Use authoritative sports reference sites:
+  * Basketball: Basketball Reference (e.g., "https://www.basketball-reference.com/boxscores/199702020CHI.html") or ESPN game page
+  * Football (NFL): Pro Football Reference (e.g., "https://www.pro-football-reference.com/boxscores/199801250.htm") or ESPN
+  * Baseball: Baseball Reference (e.g., "https://www.baseball-reference.com/boxes/NYA/NYA199810210.shtml") or ESPN
+  * Hockey: Hockey Reference (e.g., "https://www.hockey-reference.com/boxscores/199906190DAL.html") or ESPN
+  * Soccer: FBRef or ESPN
+  * Other sports: ESPN, official league sites, or other authoritative sources
+  The URL format for Basketball Reference box scores is typically: https://www.basketball-reference.com/boxscores/YYYYMMDD0[HOME_TEAM_ABBR].html
+  The URL format for Pro Football Reference is typically: https://www.pro-football-reference.com/boxscores/YYYYMMDD0[abbr].htm
+  IMPORTANT: Only provide an eventUrl if you are confident the URL is correct for this specific game/event. For non-sports content, set to null.
 
 TV Episode Detection:
 - Look for patterns like "S01E01", "S02E08", "s1e5", "S03E12" in filenames - these indicate Season and Episode numbers
@@ -740,6 +752,7 @@ REQUIRED FIELDS:
 - "year": The year extracted from the filename
 - "category": The sport type (Basketball, Football, Baseball, Hockey, etc.)
 - "type": Must be "sports"
+- "eventUrl": A URL to the box score or game page on a sports reference site. For NBA games use Basketball Reference (https://www.basketball-reference.com/boxscores/YYYYMMDD0[HOME_TEAM_ABBR].html), for NFL use Pro Football Reference, for MLB use Baseball Reference, etc. This is CRITICAL for sports content - always try to provide one!
 - "plot": Comprehensive game details including:
   * EXACT FINAL SCORE
   * Standout player performances WITH STATS (points, rebounds, assists, yards, TDs, etc.)
@@ -849,6 +862,7 @@ If this is a concert recording, set type to "concert" and try to determine the e
       if (existingMetadata.season) existingFields.push(`Season: ${existingMetadata.season}`);
       if (existingMetadata.episode) existingFields.push(`Episode: ${existingMetadata.episode}`);
       if (existingMetadata.imdbUrl) existingFields.push(`IMDB URL: ${existingMetadata.imdbUrl}`);
+      if (existingMetadata.eventUrl) existingFields.push(`Event URL: ${existingMetadata.eventUrl}`);
     }
     
     if (existingFields.length > 0) {
@@ -987,6 +1001,36 @@ ${existingFields.join("\n")}`;
       }
     }
 
+    // Validate eventUrl if provided (only for sports content)
+    let validatedEventUrl: string | null = null;
+    if (typeof parsed.eventUrl === "string" && parsed.eventUrl.trim()) {
+      try {
+        const eventUrlObj = new URL(parsed.eventUrl.trim());
+        // Accept URLs from known sports reference sites and ESPN
+        const validHosts = [
+          "basketball-reference.com",
+          "pro-football-reference.com",
+          "baseball-reference.com",
+          "hockey-reference.com",
+          "fbref.com",
+          "espn.com",
+          "nba.com",
+          "nfl.com",
+          "mlb.com",
+          "nhl.com",
+        ];
+        if (validHosts.some(h => eventUrlObj.hostname.includes(h))) {
+          validatedEventUrl = parsed.eventUrl.trim();
+        } else {
+          // Accept any valid URL but log a warning
+          console.log(`[AI Lookup] eventUrl from unknown host: ${eventUrlObj.hostname} — accepting anyway`);
+          validatedEventUrl = parsed.eventUrl.trim();
+        }
+      } catch {
+        console.log(`[AI Lookup] Invalid eventUrl: ${parsed.eventUrl}`);
+      }
+    }
+
     const result = {
       title: parsedTitle,
       year: parsedYear,
@@ -1007,6 +1051,7 @@ ${existingFields.join("\n")}`;
       season: parsedSeason,
       episode: parsedEpisode,
       imdbUrl: validatedImdbUrl,
+      eventUrl: validatedEventUrl,
       // For TV content, also include the series IMDB URL for cover image options
       ...(seriesImdbUrl ? { seriesImdbUrl } : {}),
     };

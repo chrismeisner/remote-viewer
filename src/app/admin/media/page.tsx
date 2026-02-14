@@ -44,6 +44,7 @@ type MediaMetadata = {
   season?: number | null;
   episode?: number | null;
   imdbUrl?: string | null; // URL to IMDB page for the media
+  eventUrl?: string | null; // URL to external event page for sporting events
   dateAdded?: string | null;
   lastUpdated?: string | null;
   coverUrl?: string | null;
@@ -149,6 +150,7 @@ function MediaDetailModal({
   const [editTags, setEditTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState<string>("");
   const [editImdbUrl, setEditImdbUrl] = useState<string>("");
+  const [editEventUrl, setEditEventUrl] = useState<string>("");
   const [availableCovers, setAvailableCovers] = useState<CoverOption[]>([]);
   
   // AI lookup state
@@ -286,6 +288,7 @@ function MediaDetailModal({
             setEditSeason(metaData.metadata.season?.toString() ?? "");
             setEditEpisode(metaData.metadata.episode?.toString() ?? "");
             setEditImdbUrl(metaData.metadata.imdbUrl ?? "");
+            setEditEventUrl(metaData.metadata.eventUrl ?? "");
             setEditTags(metaData.metadata.tags ?? []);
 
             // If the item already has a cover set (custom upload, local path, URL, or emoji),
@@ -383,6 +386,7 @@ function MediaDetailModal({
       if (metadata.season) existingMetadata.season = metadata.season;
       if (metadata.episode) existingMetadata.episode = metadata.episode;
       if (metadata.imdbUrl) existingMetadata.imdbUrl = metadata.imdbUrl;
+      if (metadata.eventUrl) existingMetadata.eventUrl = metadata.eventUrl;
 
       const maxTokens = aiMaxTokens;
 
@@ -426,6 +430,10 @@ function MediaDetailModal({
       if (data.imdbUrl) {
         console.log("[IMDB Cover] Setting editImdbUrl from AI:", data.imdbUrl);
         setEditImdbUrl(data.imdbUrl);
+      }
+      if (data.eventUrl) {
+        console.log("[AI Lookup] Setting editEventUrl from AI:", data.eventUrl);
+        setEditEventUrl(data.eventUrl);
       }
       if (data.seriesImdbUrl) {
         console.log("[IMDB Cover] Setting seriesImdbUrl from AI:", data.seriesImdbUrl);
@@ -506,6 +514,7 @@ function MediaDetailModal({
         season: editingMetadata ? (editSeason ? parseInt(editSeason, 10) : null) : metadata.season,
         episode: editingMetadata ? (editEpisode ? parseInt(editEpisode, 10) : null) : metadata.episode,
         imdbUrl: editingMetadata ? editImdbUrl.trim() : metadata.imdbUrl,
+        eventUrl: editingMetadata ? editEventUrl.trim() : metadata.eventUrl,
         tags: editingMetadata ? editTags : metadata.tags,
       };
 
@@ -552,6 +561,7 @@ function MediaDetailModal({
       if (data.season) setEditSeason(data.season.toString());
       if (data.episode) setEditEpisode(data.episode.toString());
       if (data.imdbUrl) setEditImdbUrl(data.imdbUrl);
+      if (data.eventUrl) setEditEventUrl(data.eventUrl);
       if (data.tags && Array.isArray(data.tags)) setEditTags(data.tags);
 
       // Switch to edit mode to show the filled fields
@@ -596,6 +606,7 @@ function MediaDetailModal({
         season: editSeason ? parseInt(editSeason, 10) : null,
         episode: editEpisode ? parseInt(editEpisode, 10) : null,
         imdbUrl: editImdbUrl.trim() || null,
+        eventUrl: editEventUrl.trim() || null,
         tags: editTags.length > 0 ? editTags : null,
       };
 
@@ -679,6 +690,7 @@ function MediaDetailModal({
     setEditSeason(metadata.season?.toString() ?? "");
     setEditEpisode(metadata.episode?.toString() ?? "");
     setEditImdbUrl(metadata.imdbUrl ?? "");
+    setEditEventUrl(metadata.eventUrl ?? "");
     setEditTags(metadata.tags ?? []);
     setNewTagInput("");
     setEditingMetadata(false);
@@ -709,6 +721,7 @@ function MediaDetailModal({
         season: null,
         episode: null,
         imdbUrl: null,
+        eventUrl: null,
         tags: null,
         coverUrl: null,
         coverLocal: null,
@@ -742,6 +755,7 @@ function MediaDetailModal({
       setEditSeason("");
       setEditEpisode("");
       setEditImdbUrl("");
+      setEditEventUrl("");
       setEditTags([]);
       setNewTagInput("");
       setImdbPreview(null);
@@ -1875,6 +1889,34 @@ function MediaDetailModal({
                   </div>
                 )}
               </div>
+              {/* Event URL — shown for sports content or when a value exists */}
+              {(editType === "sports" || editEventUrl.trim()) && (
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1">
+                    Event URL <span className="text-neutral-600">(Basketball Reference, ESPN, etc.)</span>
+                  </label>
+                  <input
+                    type="url"
+                    value={editEventUrl}
+                    onChange={(e) => setEditEventUrl(e.target.value)}
+                    onKeyDown={handleMetadataKeyDown}
+                    placeholder="e.g. https://www.basketball-reference.com/boxscores/199702020CHI.html"
+                    className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-emerald-300 focus:bg-white/10"
+                  />
+                  {editEventUrl.trim() && (
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <a
+                        href={editEventUrl.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-sky-400 hover:text-sky-300 underline underline-offset-2"
+                      >
+                        Open event page ↗
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="block text-xs text-neutral-500 mb-1">Making Of <span className="text-neutral-600">(cast, crew, production facts)</span></label>
                 <textarea
@@ -2033,6 +2075,24 @@ function MediaDetailModal({
                   <p className="text-sm text-neutral-500">—</p>
                 )}
               </div>
+              {/* Event URL — shown for sports content or when a value exists */}
+              {(metadata.type === "sports" || metadata.eventUrl) && (
+                <div>
+                  <p className="text-xs text-neutral-500 mb-1">Event URL</p>
+                  {metadata.eventUrl ? (
+                    <a
+                      href={metadata.eventUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-sky-400 hover:text-sky-300 underline underline-offset-2"
+                    >
+                      View event page ↗
+                    </a>
+                  ) : (
+                    <p className="text-sm text-neutral-500">—</p>
+                  )}
+                </div>
+              )}
               <div>
                 <p className="text-xs text-neutral-500 mb-1">Making Of <span className="text-neutral-600">(cast, crew, production)</span></p>
                 <p className="text-sm text-neutral-300">
@@ -3901,6 +3961,7 @@ export default function MediaAdminPage() {
         if (existingMeta.season) existingMetadata.season = existingMeta.season;
         if (existingMeta.episode) existingMetadata.episode = existingMeta.episode;
         if (existingMeta.imdbUrl) existingMetadata.imdbUrl = existingMeta.imdbUrl;
+        if (existingMeta.eventUrl) existingMetadata.eventUrl = existingMeta.eventUrl;
 
         // Call AI lookup (balanced: 512 tokens)
         const aiRes = await fetch("/api/media-metadata/ai-lookup", {
@@ -4034,6 +4095,7 @@ export default function MediaAdminPage() {
           season: aiData.season || null,
           episode: aiData.episode || null,
           imdbUrl: finalImdbUrl,
+          eventUrl: aiData.eventUrl || null,
         };
 
         // Include cover image from IMDB if found
@@ -4312,6 +4374,7 @@ export default function MediaAdminPage() {
           meta.season?.toString() || "",
           meta.episode?.toString() || "",
           meta.imdbUrl || "",
+          meta.eventUrl || "",
           tagsStr,
         ].join(" ").toLowerCase();
         if (!terms.every((term) => haystack.includes(term))) {

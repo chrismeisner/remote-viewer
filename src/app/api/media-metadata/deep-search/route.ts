@@ -17,6 +17,7 @@ type DeepSearchRequest = {
     season?: number | null;
     episode?: number | null;
     imdbUrl?: string | null;
+    eventUrl?: string | null;
     tags?: string[] | null;
   };
 };
@@ -33,6 +34,7 @@ type DeepSearchResponse = {
   season?: number | null;
   episode?: number | null;
   imdbUrl?: string | null;
+  eventUrl?: string | null;
   tags?: string[] | null;
 };
 
@@ -92,6 +94,7 @@ export async function POST(request: NextRequest) {
     if (existingMetadata.season) contextLines.push(`Season: ${existingMetadata.season}`);
     if (existingMetadata.episode) contextLines.push(`Episode: ${existingMetadata.episode}`);
     if (existingMetadata.imdbUrl) contextLines.push(`IMDB URL: ${existingMetadata.imdbUrl}`);
+    if (existingMetadata.eventUrl) contextLines.push(`Event URL: ${existingMetadata.eventUrl}`);
     if (existingMetadata.makingOf) contextLines.push(`Current Making-Of: ${existingMetadata.makingOf}`);
     if (existingMetadata.plot) contextLines.push(`Current Plot: ${existingMetadata.plot}`);
     if (existingMetadata.tags?.length) contextLines.push(`Tags: ${existingMetadata.tags.join(", ")}`);
@@ -140,8 +143,15 @@ DEEP SEARCH REQUIREMENTS FOR THIS SPORTING EVENT:
    - Post-game significance (playoff implications, standings impact)
 2. "makingOf" — Include: full rosters/starters for both teams, head coaches, venue name and location, attendance, broadcast network and commentators, significance of the matchup (rivalry, playoff seeding, streaks), any pre-game storylines.
 3. "releaseDate" — The EXACT date of the game in YYYY-MM-DD format.
-4. "tags" — Include: key player names (both teams), coach names, venue name, league name, broadcast network, any special designations (playoff, finals, all-star, etc.).
-5. "director" — The lead broadcaster/commentator(s) if known.`;
+4. "eventUrl" — A URL to the box score or game page on a sports reference site. THIS IS CRITICAL for sports content:
+   - Basketball (NBA): Use Basketball Reference, format: https://www.basketball-reference.com/boxscores/YYYYMMDD0[HOME_TEAM_ABBR].html (e.g., https://www.basketball-reference.com/boxscores/199702020CHI.html for a game at Chicago on Feb 2, 1997)
+   - Football (NFL): Use Pro Football Reference, format: https://www.pro-football-reference.com/boxscores/YYYYMMDD0[abbr].htm
+   - Baseball (MLB): Use Baseball Reference, format: https://www.baseball-reference.com/boxes/[TEAM]/[TEAM]YYYYMMDD0.shtml
+   - Hockey (NHL): Use Hockey Reference, format: https://www.hockey-reference.com/boxscores/YYYYMMDD0[TEAM].html
+   - Other sports: Use ESPN game page or official league site
+   If the existing Event URL is already provided and correct, keep it. Otherwise, construct the correct URL based on the game date, teams, and sport.
+5. "tags" — Include: key player names (both teams), coach names, venue name, league name, broadcast network, any special designations (playoff, finals, all-star, etc.).
+6. "director" — The lead broadcaster/commentator(s) if known.`;
     } else if (isConcert) {
       typeSpecificInstructions = `
 THIS IS A CONCERT/LIVE PERFORMANCE.
@@ -217,6 +227,7 @@ Your response MUST be valid JSON with these fields:
   "season": null,
   "episode": null,
   "imdbUrl": "https://www.imdb.com/title/tt0133093/",
+  "eventUrl": null,
   "tags": ["actor1", "actor2", "theme1", "keyword1"]
 }
 
@@ -224,6 +235,7 @@ Rules:
 - "type" MUST be one of: "film", "tv", "documentary", "sports", "concert", "other"
 - "tags" should be an array of strings — include actor/player names, themes, keywords, locations
 - "imdbUrl" — keep the existing one if provided and correct, or provide the correct one. Format: "https://www.imdb.com/title/ttXXXXXXX/"
+- "eventUrl" — for sports content ONLY: a URL to the box score or game page on a sports reference site (Basketball Reference, Pro Football Reference, Baseball Reference, Hockey Reference, ESPN, etc.). For non-sports content, set to null. If already provided and correct, keep it.
 - "releaseDate" must be YYYY-MM-DD format
 - Always return valid JSON, nothing else
 - Be THOROUGH — this is a deep search, not a quick lookup`;
@@ -338,6 +350,17 @@ Return enriched metadata as JSON. Be thorough and specific.`;
       imdbUrl: typeof parsed.imdbUrl === "string" && /^https?:\/\/(www\.)?imdb\.com\/title\/tt\d{7,8}\/?$/i.test(parsed.imdbUrl.trim())
         ? parsed.imdbUrl.trim()
         : existingMetadata.imdbUrl || null,
+      eventUrl: (() => {
+        if (typeof parsed.eventUrl === "string" && parsed.eventUrl.trim()) {
+          try {
+            new URL(parsed.eventUrl.trim());
+            return parsed.eventUrl.trim();
+          } catch {
+            return existingMetadata.eventUrl || null;
+          }
+        }
+        return existingMetadata.eventUrl || null;
+      })(),
       tags: parsedTags || existingMetadata.tags || null,
     };
 

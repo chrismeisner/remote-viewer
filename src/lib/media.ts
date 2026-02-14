@@ -186,6 +186,7 @@ export type MediaMetadataItem = {
   season?: number | null;
   episode?: number | null;
   imdbUrl?: string | null; // URL to IMDB page for the media
+  eventUrl?: string | null; // URL to external event page (e.g. Basketball Reference, ESPN, Pro Football Reference) for sporting events
   dateAdded?: string | null; // ISO date string when file was first added to library
   lastUpdated?: string | null; // ISO date string when metadata was last updated
   coverUrl?: string | null; // URL to external/uploaded cover image
