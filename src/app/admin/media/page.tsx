@@ -157,6 +157,7 @@ function MediaDetailModal({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiConfigured, setAiConfigured] = useState(false);
   const [aiMaxTokens, setAiMaxTokens] = useState<number>(512);
+  const [aiLookupMode, setAiLookupMode] = useState<"entertainment" | "sports">("entertainment");
   const [aiContextEnabled, setAiContextEnabled] = useState(false);
   const [aiContextText, setAiContextText] = useState("");
 
@@ -291,6 +292,13 @@ function MediaDetailModal({
             setEditEventUrl(metaData.metadata.eventUrl ?? "");
             setEditTags(metaData.metadata.tags ?? []);
 
+            // Auto-set lookup mode based on existing metadata type
+            if (metaData.metadata.type === "sports") {
+              setAiLookupMode("sports");
+            } else {
+              setAiLookupMode("entertainment");
+            }
+
             // If the item already has a cover set (custom upload, local path, URL, or emoji),
             // default "Use IMDB cover" to unchecked so the auto-load effect doesn't
             // overwrite the existing cover with the IMDB poster.
@@ -390,7 +398,7 @@ function MediaDetailModal({
 
       const maxTokens = aiMaxTokens;
 
-      console.log("[IMDB Cover] Calling AI lookup API...", { maxTokens, existingMetadata });
+      console.log("[AI Lookup] Calling AI lookup API...", { maxTokens, lookupMode: aiLookupMode, existingMetadata });
       const res = await fetch("/api/media-metadata/ai-lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -399,6 +407,7 @@ function MediaDetailModal({
           existingMetadata: Object.keys(existingMetadata).length > 0 ? existingMetadata : undefined,
           maxTokens,
           userContext: aiContextEnabled && aiContextText.trim() ? aiContextText.trim() : undefined,
+          lookupMode: aiLookupMode,
         }),
       });
       const data = await res.json();
@@ -444,9 +453,9 @@ function MediaDetailModal({
       setEditingMetadata(true);
 
       // Also run IMDB search to find/verify the best IMDB URL
-      // Use the AI-returned title (freshest data) for the search
+      // Skip IMDB search in sports mode — sports content uses eventUrl instead
       const searchTitle = data.title || metadata.title;
-      if (searchTitle && !data.imdbUrl) {
+      if (aiLookupMode !== "sports" && searchTitle && !data.imdbUrl) {
         // Only auto-search if AI didn't already return an IMDB URL
         console.log("[IMDB Cover] AI returned no IMDB URL, running auto-search for:", searchTitle);
         try {
@@ -481,12 +490,14 @@ function MediaDetailModal({
           // IMDB search is best-effort — don't block the AI fill
           console.warn("[IMDB Cover] IMDB auto-search failed, skipping:", searchErr);
         }
+      } else if (aiLookupMode === "sports") {
+        console.log("[AI Lookup] Sports mode — skipping IMDB auto-search");
       } else if (data.imdbUrl) {
-        console.log("[IMDB Cover] AI already returned IMDB URL, skipping auto-search");
+        console.log("[AI Lookup] AI already returned IMDB URL, skipping auto-search");
       } else {
-        console.log("[IMDB Cover] No title available for IMDB auto-search");
+        console.log("[AI Lookup] No title available for IMDB auto-search");
       }
-      console.log("[IMDB Cover] === AI LOOKUP COMPLETE ===");
+      console.log("[AI Lookup] === AI LOOKUP COMPLETE ===");
     } catch (err) {
       console.error("[IMDB Cover] AI lookup failed:", err);
       setMetadataError(err instanceof Error ? err.message : "AI lookup failed");
@@ -532,6 +543,7 @@ function MediaDetailModal({
         body: JSON.stringify({
           filename: item.relPath,
           existingMetadata: currentMetadata,
+          lookupMode: aiLookupMode,
         }),
       });
       const data = await res.json();
@@ -1644,7 +1656,34 @@ function MediaDetailModal({
             {!metadataLoading && (
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-2">
+                  {/* Lookup mode toggle */}
                   <div className="flex items-center gap-2">
+                    <div className="inline-flex rounded-md border border-white/15 overflow-hidden" role="group">
+                      <button
+                        type="button"
+                        onClick={() => setAiLookupMode("entertainment")}
+                        disabled={aiLoading}
+                        className={`px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 ${
+                          aiLookupMode === "entertainment"
+                            ? "bg-amber-500/20 text-amber-300 border-r border-white/15"
+                            : "bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-neutral-300 border-r border-white/15"
+                        }`}
+                      >
+                        Film / TV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAiLookupMode("sports")}
+                        disabled={aiLoading}
+                        className={`px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 ${
+                          aiLookupMode === "sports"
+                            ? "bg-sky-500/20 text-sky-300"
+                            : "bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-neutral-300"
+                        }`}
+                      >
+                        Sporting Event
+                      </button>
+                    </div>
                     <select
                       value={aiMaxTokens}
                       onChange={(e) => setAiMaxTokens(Number(e.target.value))}
@@ -1695,7 +1734,7 @@ function MediaDetailModal({
                       value={aiContextText}
                       onChange={(e) => setAiContextText(e.target.value)}
                       disabled={aiLoading}
-                      placeholder="e.g. This is a 1980s horror film..."
+                      placeholder={aiLookupMode === "sports" ? "e.g. NBA game, Chicago Bulls home game..." : "e.g. This is a 1980s horror film..."}
                       className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-blue-300 disabled:opacity-50"
                     />
                   )}
@@ -3770,6 +3809,7 @@ export default function MediaAdminPage() {
   // Bulk AI fill state
   const [bulkFillOpen, setBulkFillOpen] = useState(false);
   const [bulkFillRunning, setBulkFillRunning] = useState(false);
+  const [bulkFillLookupMode, setBulkFillLookupMode] = useState<"entertainment" | "sports">("entertainment");
   const bulkFillAbortRef = useRef(false);
   const [bulkFillItems, setBulkFillItems] = useState<Array<{
     relPath: string;
@@ -3964,6 +4004,7 @@ export default function MediaAdminPage() {
         if (existingMeta.eventUrl) existingMetadata.eventUrl = existingMeta.eventUrl;
 
         // Call AI lookup (balanced: 512 tokens)
+        const isBulkSports = bulkFillLookupMode === "sports";
         const aiRes = await fetch("/api/media-metadata/ai-lookup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3974,6 +4015,7 @@ export default function MediaAdminPage() {
                 ? existingMetadata
                 : undefined,
             maxTokens: 512,
+            lookupMode: bulkFillLookupMode,
           }),
         });
 
@@ -3987,10 +4029,11 @@ export default function MediaAdminPage() {
         if (bulkFillAbortRef.current) break;
 
         // --- IMDB URL lookup (if AI didn't return one) ---
+        // Skip IMDB search in sports mode — sports content uses eventUrl instead
         let finalImdbUrl: string | null = aiData.imdbUrl || null;
 
         const searchTitle = aiData.title || existingMeta.title;
-        if (searchTitle && !finalImdbUrl) {
+        if (!isBulkSports && searchTitle && !finalImdbUrl) {
           setBulkFillItems((prev) =>
             prev.map((item, idx) =>
               idx === i ? { ...item, status: "imdb-lookup" } : item,
@@ -4025,12 +4068,13 @@ export default function MediaAdminPage() {
         if (bulkFillAbortRef.current) break;
 
         // --- Fetch IMDB cover image if we have an IMDB URL ---
+        // Skip IMDB cover fetch in sports mode
         let coverUrl: string | null = null;
 
         // For TV content, prefer the series poster (portrait format, better as cover art)
         // Fall back to episode still if series poster is not available
         const bulkSeriesImdbUrl = aiData.seriesImdbUrl || null;
-        if (bulkSeriesImdbUrl && aiData.type === "tv") {
+        if (!isBulkSports && bulkSeriesImdbUrl && aiData.type === "tv") {
           const seriesIdMatch = bulkSeriesImdbUrl.match(/\/title\/(tt\d{7,8})/);
           if (seriesIdMatch) {
             try {
@@ -4051,7 +4095,7 @@ export default function MediaAdminPage() {
         }
 
         // Fall back to the episode/title image if no series poster found
-        if (!coverUrl && finalImdbUrl) {
+        if (!isBulkSports && !coverUrl && finalImdbUrl) {
           const imdbIdMatch = finalImdbUrl.match(/\/title\/(tt\d{7,8})/);
           if (imdbIdMatch) {
             try {
@@ -4557,6 +4601,30 @@ export default function MediaAdminPage() {
               >
                 {copiedBulkCommand ? "Copied!" : "Copy conversion command"}
               </button>
+              <div className="inline-flex rounded-md border border-white/15 overflow-hidden" role="group">
+                <button
+                  type="button"
+                  onClick={() => setBulkFillLookupMode("entertainment")}
+                  className={`px-2.5 py-2 text-xs font-medium transition ${
+                    bulkFillLookupMode === "entertainment"
+                      ? "bg-amber-500/20 text-amber-300 border-r border-white/15"
+                      : "bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-neutral-300 border-r border-white/15"
+                  }`}
+                >
+                  Film / TV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkFillLookupMode("sports")}
+                  className={`px-2.5 py-2 text-xs font-medium transition ${
+                    bulkFillLookupMode === "sports"
+                      ? "bg-sky-500/20 text-sky-300"
+                      : "bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-neutral-300"
+                  }`}
+                >
+                  Sporting Event
+                </button>
+              </div>
               <button
                 onClick={handleBulkFill}
                 className="rounded-md border border-blue-300/50 bg-blue-500/20 px-4 py-2 text-sm font-semibold text-blue-50 transition hover:border-blue-200 hover:bg-blue-500/30"

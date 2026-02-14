@@ -342,7 +342,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { filename, existingMetadata, maxTokens = 512, userContext } = body;
+    const { filename, existingMetadata, maxTokens = 512, userContext, lookupMode } = body;
+    const isSportsMode = lookupMode === "sports";
 
     if (!filename || typeof filename !== "string") {
       return NextResponse.json(
@@ -355,7 +356,69 @@ export async function POST(request: NextRequest) {
       apiKey: process.env.OPENAI_API_KEY,
     });
 
-    const systemPrompt = `You are a media identification assistant. Given a filename, identify the movie, TV show, documentary, sporting event, or other media and return structured metadata.
+    const systemPrompt = isSportsMode
+    ? `You are a sporting event identification assistant. Given a filename, identify the specific sporting event (game, match, race, fight, etc.) and return structured metadata. The user has explicitly indicated this is a SPORTING EVENT — treat it as such even if the filename is ambiguous.
+
+Your response MUST be valid JSON with exactly these fields:
+{
+  "title": "Team A vs Team B",
+  "year": 1997,
+  "releaseDate": "1997-02-02",
+  "director": "Commentator names if known",
+  "category": "Basketball",
+  "makingOf": "Key players, coaches, venue, broadcast info, significance",
+  "plot": "Detailed game summary with scores and stats",
+  "type": "sports",
+  "season": null,
+  "episode": null,
+  "imdbUrl": null,
+  "eventUrl": "https://www.basketball-reference.com/boxscores/199702020CHI.html"
+}
+
+Rules:
+- "type" MUST be "sports" — the user has explicitly indicated this is a sporting event
+- "title" should be the matchup or event name (e.g., "Bulls vs Lakers", "Super Bowl XXXII", "Monaco Grand Prix 1998")
+- "year" should be the year of the event
+- "releaseDate" MUST be the EXACT date of the event in YYYY-MM-DD format — research to find the specific date!
+- "category" should be the sport type (e.g., "Basketball", "Football", "Baseball", "Soccer", "Hockey", "Racing", "Boxing", "MMA", "Tennis", "Golf", etc.)
+- "director" can list the lead broadcaster(s)/commentator(s) if known, or null
+- "makingOf" should include: key players who participated, coaches, venue/location, attendance if known, broadcast network, significance of the game (playoff, rivalry, championship, etc.), notable storylines going into the game
+- "plot" should describe what happened in THIS SPECIFIC GAME with as much detail as possible:
+  * Final score and how the scoring unfolded (quarter-by-quarter, inning-by-inning, etc.)
+  * Standout player performances with STATS (e.g., "Michael Jordan: 35 pts, 8 reb, 5 ast")
+  * Key individual achievements (career highs, records broken, milestones)
+  * Game-changing moments and dramatic plays
+  * Momentum shifts and turning points
+  * Post-game significance (playoff implications, records, etc.)
+- "imdbUrl" should be null for sporting events (unless it's a well-known documentary/broadcast that happens to be on IMDB)
+- "eventUrl" is CRITICAL — provide a URL to the box score or game page on a sports reference site:
+  * Basketball (NBA): Basketball Reference — https://www.basketball-reference.com/boxscores/YYYYMMDD0[HOME_TEAM_ABBR].html
+    Common abbreviations: CHI (Bulls), LAL (Lakers), BOS (Celtics), NYK (Knicks), MIA (Heat), GSW (Warriors), SAS (Spurs), PHI (76ers), DAL (Mavericks), HOU (Rockets), DET (Pistons), etc.
+  * Football (NFL): Pro Football Reference — https://www.pro-football-reference.com/boxscores/YYYYMMDD0[abbr].htm
+  * Baseball (MLB): Baseball Reference — https://www.baseball-reference.com/boxes/[TEAM]/[TEAM]YYYYMMDD0.shtml
+  * Hockey (NHL): Hockey Reference — https://www.hockey-reference.com/boxscores/YYYYMMDD0[TEAM].html
+  * Other sports: ESPN game page or official league site
+  Only provide if you are confident the URL is correct for this specific game.
+- "season" and "episode" should be null (not applicable for sports)
+
+CRITICAL — Finding the Exact Game Date:
+When you have a MONTH + YEAR but NOT an exact date (e.g., "february-1997"):
+1. Think: "When did [Team A] and [Team B] play in [Month] [Year]?"
+2. Recall the teams' schedules for that specific month
+3. If multiple games occurred that month, consider context clues (home/away, network, etc.)
+4. The releaseDate field MUST be the exact game date in YYYY-MM-DD format
+
+Sports Content Detection:
+- Look for DATE patterns like "02-01-1998", "1998-02-01", etc.
+- Look for MONTH-YEAR patterns like "february-1997", "jan-2005"
+- Look for team names, player names, league indicators (NBA, NFL, MLB, NHL)
+- Look for broadcast indicators (nba-on-tbs, espn, monday-night-football)
+
+General:
+- If you cannot identify the exact game, make your best guess based on the filename
+- If existing metadata is provided, use it as a hint but verify/correct if needed
+- Always return valid JSON, nothing else`
+    : `You are a media identification assistant. Given a filename, identify the movie, TV show, documentary, sporting event, or other media and return structured metadata.
 
 Your response MUST be valid JSON with exactly these fields:
 {
@@ -500,7 +563,11 @@ General:
 - Always return valid JSON, nothing else`;
 
     // Build user prompt with existing metadata context if available
-    let userPrompt = `Identify this media file and return the metadata as JSON:
+    let userPrompt = isSportsMode
+      ? `This is a SPORTING EVENT recording. Identify the specific game/match/event and return detailed metadata as JSON:
+
+Filename: ${filename}`
+      : `Identify this media file and return the metadata as JSON:
 
 Filename: ${filename}`;
 
@@ -875,7 +942,7 @@ ${existingFields.join("\n")}`;
     // Clamp maxTokens to reasonable range
     const tokenLimit = Math.min(Math.max(Number(maxTokens) || 512, 128), 2048);
     
-    console.log(`[AI Lookup] Analyzing filename: ${filename} (maxTokens: ${tokenLimit}${userContext ? `, userContext: "${userContext}"` : ""})`);
+    console.log(`[AI Lookup] Analyzing filename: ${filename} (mode: ${isSportsMode ? "sports" : "entertainment"}, maxTokens: ${tokenLimit}${userContext ? `, userContext: "${userContext}"` : ""})`);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini", // Fast and cost-effective for this task
@@ -929,17 +996,21 @@ ${existingFields.join("\n")}`;
       ? parsed.season : null;
     const parsedEpisode = typeof parsed.episode === "number" && Number.isInteger(parsed.episode) && parsed.episode > 0
       ? parsed.episode : null;
-    const parsedType = typeof parsed.type === "string" && validTypes.includes(parsed.type.toLowerCase())
-      ? parsed.type.toLowerCase() : null;
+    // In sports mode, force type to "sports" regardless of AI response
+    const parsedType = isSportsMode
+      ? "sports"
+      : (typeof parsed.type === "string" && validTypes.includes(parsed.type.toLowerCase())
+        ? parsed.type.toLowerCase() : null);
     const isTvContent = parsedType === "tv" && parsedSeason && parsedEpisode;
     
     // Validate IMDB URL format and verify by fetching the page
+    // In sports mode, skip IMDB validation entirely — sports content uses eventUrl instead
     let validatedImdbUrl: string | null = null;
     let seriesImdbUrl: string | null = null;
     
     // For TV content with season/episode info, use the IMDB API to find the correct episode URL
     // This is much more reliable than AI-generated IMDB IDs which are often hallucinated
-    if (isTvContent && parsedTitle) {
+    if (!isSportsMode && isTvContent && parsedTitle) {
       console.log(`[AI Lookup] TV content detected: "${parsedTitle}" S${String(parsedSeason).padStart(2, '0')}E${String(parsedEpisode).padStart(2, '0')} - using IMDB API to find episode`);
       const { episodeUrl, seriesUrl } = await findTvEpisodeImdbUrl(
         parsedTitle, parsedSeason, parsedEpisode, parsedYear
@@ -963,7 +1034,7 @@ ${existingFields.join("\n")}`;
     }
     
     // For non-TV content (or if TV episode search failed), try the AI-provided URL with validation
-    if (!validatedImdbUrl && typeof parsed.imdbUrl === "string" && parsed.imdbUrl.trim()) {
+    if (!isSportsMode && !validatedImdbUrl && typeof parsed.imdbUrl === "string" && parsed.imdbUrl.trim()) {
       const imdbUrlTrimmed = parsed.imdbUrl.trim();
       // Check if it matches IMDB URL pattern
       const imdbPattern = /^https?:\/\/(www\.)?imdb\.com\/title\/tt\d{7,8}\/?$/i;

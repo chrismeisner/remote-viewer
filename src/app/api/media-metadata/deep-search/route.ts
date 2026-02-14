@@ -20,6 +20,7 @@ type DeepSearchRequest = {
     eventUrl?: string | null;
     tags?: string[] | null;
   };
+  lookupMode?: "entertainment" | "sports";
 };
 
 type DeepSearchResponse = {
@@ -63,7 +64,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body: DeepSearchRequest = await request.json();
-    const { filename, existingMetadata } = body;
+    const { filename, existingMetadata, lookupMode } = body;
+    const isSportsMode = lookupMode === "sports";
 
     if (!filename || typeof filename !== "string") {
       return NextResponse.json(
@@ -99,7 +101,8 @@ export async function POST(request: NextRequest) {
     if (existingMetadata.plot) contextLines.push(`Current Plot: ${existingMetadata.plot}`);
     if (existingMetadata.tags?.length) contextLines.push(`Tags: ${existingMetadata.tags.join(", ")}`);
 
-    const mediaType = existingMetadata.type || "unknown";
+    // In sports mode, force sports behavior regardless of existing metadata type
+    const mediaType = isSportsMode ? "sports" : (existingMetadata.type || "unknown");
     const isTv = mediaType === "tv";
     const isSports = mediaType === "sports";
     const isConcert = mediaType === "concert";
@@ -241,7 +244,7 @@ Rules:
 - Be THOROUGH — this is a deep search, not a quick lookup`;
 
     const userPrompt = `Perform a DEEP SEARCH for this media. Use all the existing metadata below to identify the EXACT content and research it thoroughly.
-
+${isSportsMode ? "\nIMPORTANT: The user has explicitly indicated this is a SPORTING EVENT. Treat it as such — set type to \"sports\" and focus on finding game details, scores, stats, and an eventUrl (box score URL from a sports reference site).\n" : ""}
 Filename: ${filename}
 
 EXISTING METADATA:
@@ -251,7 +254,7 @@ ${typeSpecificInstructions}
 
 Return enriched metadata as JSON. Be thorough and specific.`;
 
-    console.log(`[Deep Search] Starting deep search for: ${filename} (type: ${mediaType})`);
+    console.log(`[Deep Search] Starting deep search for: ${filename} (type: ${mediaType}, mode: ${isSportsMode ? "sports" : "entertainment"})`);
     if (isTv) {
       console.log(`[Deep Search] TV Episode: "${existingMetadata.title}" S${existingMetadata.season}E${existingMetadata.episode}`);
     }
