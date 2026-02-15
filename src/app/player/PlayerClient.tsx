@@ -90,7 +90,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const [volume, setVolume] = useState(1.0); // 0.0 to 1.0
   const volumeRef = useRef(volume);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [crtEnabled, setCrtEnabled] = useState(true);
+  const [crtEnabled, setCrtEnabled] = useState(false);
   const previousNowPlayingRef = useRef<NowPlaying | null>(null);
   const lastResolvedAtRef = useRef<number | null>(null);
   const lastRttMsRef = useRef<number>(0);
@@ -336,8 +336,8 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     if (stored === "true" || stored === "false") {
       setCrtEnabled(stored === "true");
     } else {
-      localStorage.setItem(CRT_PREF_KEY, "true");
-      setCrtEnabled(true);
+      localStorage.setItem(CRT_PREF_KEY, "false");
+      setCrtEnabled(false);
     }
   }, []);
 

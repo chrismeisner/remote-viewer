@@ -4959,80 +4959,29 @@ export default function MediaAdminPage() {
                       </th>
                       <th className="px-3 py-2 font-semibold w-16 text-center">Cover</th>
                       <th 
-                        className="px-3 py-2 font-semibold w-64 cursor-pointer hover:bg-white/5 transition select-none"
-                        onClick={() => handleColumnSort("filename")}
-                      >
-                        <span className="flex items-center gap-1">
-                          File
-                          {sortBy === "filename" && (
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              {sortDirection === "asc" ? (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                              ) : (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              )}
-                            </svg>
-                          )}
-                        </span>
-                      </th>
-                      <th 
-                        className="px-3 py-2 font-semibold w-20 text-left cursor-pointer hover:bg-white/5 transition select-none"
-                        onClick={() => handleColumnSort("format")}
-                      >
-                        <span className="flex items-center gap-1">
-                          Format
-                          {sortBy === "format" && (
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              {sortDirection === "asc" ? (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                              ) : (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              )}
-                            </svg>
-                          )}
-                        </span>
-                      </th>
-                      <th 
-                        className="px-3 py-2 font-semibold w-28 text-left cursor-pointer hover:bg-white/5 transition select-none"
-                        onClick={() => handleColumnSort("supported")}
-                      >
-                        <span className="flex items-center gap-1">
-                          Supported
-                          {sortBy === "supported" && (
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              {sortDirection === "asc" ? (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                              ) : (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              )}
-                            </svg>
-                          )}
-                        </span>
-                      </th>
-                      <th 
-                        className="px-3 py-2 font-semibold w-28 text-left cursor-pointer hover:bg-white/5 transition select-none"
-                        onClick={() => handleColumnSort("scheduled")}
-                      >
-                        <span className="flex items-center gap-1">
-                          Scheduled
-                          {sortBy === "scheduled" && (
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              {sortDirection === "asc" ? (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                              ) : (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              )}
-                            </svg>
-                          )}
-                        </span>
-                      </th>
-                      <th 
                         className="px-3 py-2 font-semibold min-w-[150px] cursor-pointer hover:bg-white/5 transition select-none"
                         onClick={() => handleColumnSort("title")}
                       >
                         <span className="flex items-center gap-1">
                           Title
                           {sortBy === "title" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
+                      </th>
+                      <th 
+                        className="px-3 py-2 font-semibold w-64 cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("filename")}
+                      >
+                        <span className="flex items-center gap-1">
+                          File
+                          {sortBy === "filename" && (
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               {sortDirection === "asc" ? (
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -5067,6 +5016,57 @@ export default function MediaAdminPage() {
                         <span className="flex items-center justify-end gap-1">
                           Duration
                           {sortBy === "duration" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
+                      </th>
+                      <th 
+                        className="px-3 py-2 font-semibold w-28 text-left cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("scheduled")}
+                      >
+                        <span className="flex items-center gap-1">
+                          Scheduled
+                          {sortBy === "scheduled" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
+                      </th>
+                      <th 
+                        className="px-3 py-2 font-semibold w-20 text-left cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("format")}
+                      >
+                        <span className="flex items-center gap-1">
+                          Format
+                          {sortBy === "format" && (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {sortDirection === "asc" ? (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              )}
+                            </svg>
+                          )}
+                        </span>
+                      </th>
+                      <th 
+                        className="px-3 py-2 font-semibold w-28 text-left cursor-pointer hover:bg-white/5 transition select-none"
+                        onClick={() => handleColumnSort("supported")}
+                      >
+                        <span className="flex items-center gap-1">
+                          Supported
+                          {sortBy === "supported" && (
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               {sortDirection === "asc" ? (
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -5147,6 +5147,9 @@ export default function MediaAdminPage() {
                               </button>
                             )}
                           </td>
+                          <td className="px-3 py-2 text-neutral-200">
+                            {meta.title || <span className="text-neutral-500">—</span>}
+                          </td>
                           <td className="px-3 py-2 max-w-[256px]">
                             <button
                               type="button"
@@ -5157,25 +5160,11 @@ export default function MediaAdminPage() {
                               {file.relPath}
                             </button>
                           </td>
-                          <td className="px-3 py-2 text-left text-neutral-200 uppercase">
-                            {file.format || "—"}
+                          <td className="px-3 py-2 text-center text-neutral-200">
+                            {meta.year || <span className="text-neutral-500">—</span>}
                           </td>
-                          <td className="px-3 py-2 text-left">
-                            <span
-                              className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                                isBrowserSupported(file)
-                                  ? "bg-emerald-500/20 text-emerald-100"
-                                  : "bg-amber-500/20 text-amber-100"
-                              }`}
-                            >
-                              {isBrowserSupported(file)
-                                ? file.supportedViaCompanion
-                                  ? "Yes (companion)"
-                                  : "Yes"
-                                : hasUnsupportedAudio(file)
-                                  ? "No (audio)"
-                                  : "No"}
-                            </span>
+                          <td className="px-3 py-2 text-right text-neutral-200">
+                            {formatDuration(file.durationSeconds)}
                           </td>
                           <td className="px-3 py-2 text-left">
                             {(() => {
@@ -5198,14 +5187,25 @@ export default function MediaAdminPage() {
                               );
                             })()}
                           </td>
-                          <td className="px-3 py-2 text-neutral-200">
-                            {meta.title || <span className="text-neutral-500">—</span>}
+                          <td className="px-3 py-2 text-left text-neutral-200 uppercase">
+                            {file.format || "—"}
                           </td>
-                          <td className="px-3 py-2 text-center text-neutral-200">
-                            {meta.year || <span className="text-neutral-500">—</span>}
-                          </td>
-                          <td className="px-3 py-2 text-right text-neutral-200">
-                            {formatDuration(file.durationSeconds)}
+                          <td className="px-3 py-2 text-left">
+                            <span
+                              className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                                isBrowserSupported(file)
+                                  ? "bg-emerald-500/20 text-emerald-100"
+                                  : "bg-amber-500/20 text-amber-100"
+                              }`}
+                            >
+                              {isBrowserSupported(file)
+                                ? file.supportedViaCompanion
+                                  ? "Yes (companion)"
+                                  : "Yes"
+                                : hasUnsupportedAudio(file)
+                                  ? "No (audio)"
+                                  : "No"}
+                            </span>
                           </td>
                           <td className="px-3 py-2 text-left text-neutral-400 text-xs">
                             {file.dateAdded ? formatDateAdded(file.dateAdded) : "—"}

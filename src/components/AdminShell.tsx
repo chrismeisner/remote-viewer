@@ -128,7 +128,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
 
       {/* Main content */}
       <main className="flex-1 min-w-0">
-        <div className="mx-auto max-w-6xl px-6 py-8">{children}</div>
+        <div className="mx-auto max-w-[1800px] px-6 py-8">{children}</div>
       </main>
     </div>
   );
