@@ -52,6 +52,7 @@ type MediaMetadata = {
   coverPath?: string | null; // Full filesystem path for local mode
   coverEmoji?: string | null; // Emoji to use as cover (alternative to image)
   tags?: string[] | null; // Flexible tags for actors, themes, keywords, etc.
+  subtitleFile?: string | null; // Relative path to .vtt subtitle sidecar file
 };
 
 type CoverOption = {
@@ -215,6 +216,13 @@ function MediaDetailModal({
     loading: boolean;
     error?: string;
   }>({ checked: false, hasFaststart: null, moovPosition: "unknown", loading: false });
+
+  // Subtitle state
+  const [subtitleUploading, setSubtitleUploading] = useState(false);
+  const [subtitleError, setSubtitleError] = useState<string | null>(null);
+  const [subtitleSuccess, setSubtitleSuccess] = useState(false);
+  const [subtitleRemoving, setSubtitleRemoving] = useState(false);
+  const subtitleInputRef = useRef<HTMLInputElement>(null);
 
   // Compute if filename needs cleanup
   const cleanedPath = useMemo(() => cleanupFilename(currentRelPath), [currentRelPath]);
@@ -929,6 +937,68 @@ function MediaDetailModal({
     }
   };
 
+  // Subtitle handlers
+  const handleSubtitleUpload = async (file: File) => {
+    console.log("[admin] subtitle upload started", {
+      fileName: file.name,
+      fileSize: file.size,
+      relPath: currentRelPath,
+      source: mediaSource,
+    });
+    setSubtitleUploading(true);
+    setSubtitleError(null);
+    setSubtitleSuccess(false);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("relPath", currentRelPath);
+      formData.append("source", mediaSource);
+      const res = await fetch("/api/subtitles", { method: "POST", body: formData });
+      const data = await res.json();
+      console.log("[admin] subtitle upload response", { ok: res.ok, data });
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setMetadata((prev) => ({ ...prev, subtitleFile: data.subtitleFile }));
+      setSubtitleSuccess(true);
+      setTimeout(() => setSubtitleSuccess(false), 3000);
+      if (onMetadataUpdate) {
+        onMetadataUpdate(currentRelPath, { ...metadata, subtitleFile: data.subtitleFile });
+      }
+    } catch (err) {
+      console.error("[admin] subtitle upload failed", err);
+      setSubtitleError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setSubtitleUploading(false);
+    }
+  };
+
+  const handleSubtitleRemove = async () => {
+    console.log("[admin] subtitle remove started", { relPath: currentRelPath, source: mediaSource });
+    setSubtitleRemoving(true);
+    setSubtitleError(null);
+    try {
+      const res = await fetch(
+        `/api/subtitles?relPath=${encodeURIComponent(currentRelPath)}&source=${mediaSource}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      console.log("[admin] subtitle remove response", { ok: res.ok, data });
+      if (!res.ok) throw new Error(data.error || "Remove failed");
+      setMetadata((prev) => {
+        const next = { ...prev };
+        delete next.subtitleFile;
+        return next;
+      });
+      if (onMetadataUpdate) {
+        onMetadataUpdate(currentRelPath, { ...metadata, subtitleFile: null });
+      }
+    } catch (err) {
+      console.error("[admin] subtitle remove failed", err);
+      setSubtitleError(err instanceof Error ? err.message : "Remove failed");
+    } finally {
+      setSubtitleRemoving(false);
+    }
+  };
+
   // Filename rename handlers
   const handleShowRename = () => {
     setShowRenameUI(true);
@@ -1625,6 +1695,70 @@ function MediaDetailModal({
               </span>
             </div>
           </div>
+        </div>
+
+        {/* Subtitles Section */}
+        <div className="border-t border-white/10 bg-neutral-800/30 px-5 py-4">
+          <h3 className="text-xs uppercase tracking-widest text-neutral-500 mb-3">Subtitles</h3>
+          <input
+            ref={subtitleInputRef}
+            type="file"
+            accept=".srt,.vtt"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleSubtitleUpload(file);
+              e.target.value = "";
+            }}
+          />
+
+          {metadata.subtitleFile ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  Active
+                </span>
+                <span className="text-sm text-neutral-300 font-mono truncate" title={metadata.subtitleFile}>
+                  {metadata.subtitleFile.split("/").pop()}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => subtitleInputRef.current?.click()}
+                  disabled={subtitleUploading}
+                  className="rounded-md border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-neutral-200 transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  {subtitleUploading ? "Uploading..." : "Replace"}
+                </button>
+                <button
+                  onClick={handleSubtitleRemove}
+                  disabled={subtitleRemoving}
+                  className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+                >
+                  {subtitleRemoving ? "Removing..." : "Remove"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-neutral-500">No subtitles attached. Upload a .srt or .vtt file.</p>
+              <button
+                onClick={() => subtitleInputRef.current?.click()}
+                disabled={subtitleUploading}
+                className="rounded-md border border-white/20 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:border-emerald-200 hover:bg-emerald-500/30 disabled:opacity-50"
+              >
+                {subtitleUploading ? "Uploading..." : "Upload subtitle file"}
+              </button>
+            </div>
+          )}
+
+          {subtitleSuccess && (
+            <p className="mt-2 text-xs text-emerald-300">Subtitle uploaded successfully.</p>
+          )}
+          {subtitleError && (
+            <p className="mt-2 text-xs text-red-400">{subtitleError}</p>
+          )}
         </div>
 
         {/* Filename Cleanup Section - Only show for remote source */}

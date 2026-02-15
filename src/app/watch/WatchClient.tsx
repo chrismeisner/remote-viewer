@@ -18,10 +18,12 @@ import {
   trackShare,
   setUserProperties,
 } from "@/lib/analytics";
+import { useSubtitleStyles } from "@/hooks/useSubtitleStyles";
 
 const MUTED_PREF_KEY = "player-muted-default";
 const CRT_PREF_KEY = "player-crt-default";
 const VOLUME_PREF_KEY = "player-volume-default";
+const CC_PREF_KEY = "player-cc-default";
 
 type MediaMetadata = {
   title?: string | null;
@@ -38,6 +40,7 @@ type MediaMetadata = {
   coverLocal?: string | null;
   coverPath?: string | null;
   tags?: string[] | null;
+  subtitleFile?: string | null;
 };
 
 interface WatchClientProps {
@@ -46,6 +49,7 @@ interface WatchClientProps {
 }
 
 export default function WatchClient({ initialFile, initialSource }: WatchClientProps) {
+  useSubtitleStyles();
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // Media state
@@ -82,6 +86,12 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
   // Share
   const [shareCopied, setShareCopied] = useState(false);
 
+  // Closed captions
+  const [ccEnabled, setCcEnabled] = useState(false);
+
+  // Remote overlay visibility
+  const [showControls, setShowControls] = useState(true);
+
   // Seeking via scrub bar
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekTime, setSeekTime] = useState(0);
@@ -109,6 +119,26 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
       }, 1500);
     }
   }, []);
+
+  // ── Hide global header (true full-screen player) ──────────────────
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.classList.add("header-hidden");
+    return () => document.body.classList.remove("header-hidden");
+  }, []);
+
+  // ── Load remote/controls preference ──────────────────────────────
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("watch-remote-default");
+    if (stored === "true" || stored === "false") {
+      setShowControls(stored === "true");
+    }
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("watch-remote-default", showControls ? "true" : "false");
+  }, [showControls]);
 
   // ── Cleanup timeouts ────────────────────────────────────────────────
   useEffect(() => {
@@ -190,6 +220,32 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
     if (typeof window === "undefined") return;
     localStorage.setItem(VOLUME_PREF_KEY, volume.toString());
   }, [volume]);
+
+  // ── Load CC preference ─────────────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(CC_PREF_KEY);
+    if (stored === "true") setCcEnabled(true);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(CC_PREF_KEY, ccEnabled ? "true" : "false");
+  }, [ccEnabled]);
+
+  // ── Sync CC track mode to video element ───────────────────────────
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const trackCount = video.textTracks.length;
+    console.log("[watch] syncing CC track mode", {
+      ccEnabled,
+      textTrackCount: trackCount,
+      subtitleFile: infoMetadata?.subtitleFile,
+    });
+    for (let i = 0; i < trackCount; i++) {
+      video.textTracks[i].mode = ccEnabled ? "showing" : "hidden";
+    }
+  }, [ccEnabled, infoMetadata?.subtitleFile]);
 
   // ── Show volume overlay on changes ──────────────────────────────────
   useEffect(() => {
@@ -433,9 +489,21 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
         return;
       }
 
+      if (key === "s") {
+        event.preventDefault();
+        if (infoMetadata?.subtitleFile) setCcEnabled((prev) => !prev);
+        return;
+      }
+
       if (key === "f") {
         event.preventDefault();
         toggleFullscreen();
+        return;
+      }
+
+      if (key === "r") {
+        event.preventDefault();
+        setShowControls((prev) => !prev);
         return;
       }
 
@@ -494,7 +562,7 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [muted, volume, showInfoModal, filePath, isPlaying]);
+  }, [muted, volume, showControls, showInfoModal, filePath, isPlaying, infoMetadata?.subtitleFile]);
 
   // ── Player actions ──────────────────────────────────────────────────
   const togglePlayPause = () => {
@@ -617,6 +685,21 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
     return null;
   };
 
+  // ── Build subtitle URL ──────────────────────────────────────────────
+  const subtitleUrl = infoMetadata?.subtitleFile
+    ? mediaSource === "remote"
+      ? new URL(infoMetadata.subtitleFile, REMOTE_MEDIA_BASE).toString()
+      : `/api/subtitles/serve/${infoMetadata.subtitleFile.split("/").map(encodeURIComponent).join("/")}`
+    : null;
+
+  if (infoMetadata?.subtitleFile) {
+    console.log("[watch] subtitle available", {
+      subtitleFile: infoMetadata.subtitleFile,
+      subtitleUrl,
+      ccEnabled,
+    });
+  }
+
   // ── Displayed time ──────────────────────────────────────────────────
   const displayTime = isSeeking ? seekTime : currentTime;
 
@@ -638,9 +721,9 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-black text-neutral-100">
-      {/* Video area */}
-      <main className="relative flex-1 min-h-0">
+    <div className="h-[100dvh] overflow-hidden bg-black text-neutral-100">
+      {/* Video area — full viewport */}
+      <main className="relative h-full w-full">
         <div
           className={`relative h-full w-full overflow-hidden bg-black ${crtEnabled ? "crt-frame" : ""}`}
         >
@@ -678,7 +761,18 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
               error ? "hidden" : ""
             }`}
             style={{ pointerEvents: "auto" }}
-          />
+            crossOrigin="anonymous"
+          >
+            {subtitleUrl && (
+              <track
+                kind="subtitles"
+                src={subtitleUrl}
+                srcLang="en"
+                label="English"
+                default={ccEnabled}
+              />
+            )}
+          </video>
 
           {/* Play/pause overlay icon (briefly shown on click) */}
 
@@ -693,6 +787,8 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
             <div className="channel-overlay font-mono">
               {muted ? (
                 <span className="channel-name">MUTE</span>
+              ) : Math.round(volume * 10) === 10 ? (
+                <span className="channel-name">VOL MAX</span>
               ) : (
                 <>
                   <span className="channel-name">VOL</span>
@@ -705,11 +801,11 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
           </div>
 
           {/* Controls overlay at bottom */}
-          {!isFullscreen && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-4">
-              <div className="pointer-events-auto w-full max-w-4xl space-y-2 rounded-md border border-white/15 bg-black/70 px-4 py-3 shadow-2xl shadow-black/40 backdrop-blur">
+          {showControls && !isFullscreen && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-[4vh] z-20 flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-3xl space-y-2 rounded-md border border-white/15 bg-black/60 p-2 shadow-2xl shadow-black/40 backdrop-blur">
                 {/* Seek bar */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 px-2">
                   <span className="min-w-[48px] text-right font-mono text-xs tabular-nums text-neutral-400">
                     {formatTime(displayTime)}
                   </span>
@@ -747,7 +843,7 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   <button
                     onClick={togglePlayPause}
-                    className="inline-flex items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                    className="inline-flex items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
                   >
                     {isPlaying ? "Pause" : "Play"}
                   </button>
@@ -758,7 +854,7 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
                         return !m;
                       })
                     }
-                    className={`inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-semibold transition ${
+                    className={`inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition ${
                       muted
                         ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
                         : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -773,7 +869,7 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
                         return !c;
                       })
                     }
-                    className={`inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-semibold transition ${
+                    className={`inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition ${
                       crtEnabled
                         ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
                         : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -781,15 +877,27 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
                   >
                     CRT
                   </button>
+                  {subtitleUrl && (
+                    <button
+                      onClick={() => setCcEnabled((c) => !c)}
+                      className={`inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                        ccEnabled
+                          ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+                          : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
+                      }`}
+                    >
+                      CC
+                    </button>
+                  )}
                   <button
                     onClick={toggleFullscreen}
-                    className="inline-flex items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                    className="inline-flex items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
                   >
                     {isFullscreen ? "Exit" : "Full"}
                   </button>
                   <button
                     onClick={() => setShowInfoModal(true)}
-                    className="inline-flex items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                    className="inline-flex items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
                   >
                     Info
                   </button>
@@ -801,6 +909,7 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
       </main>
 
       {/* Info modal */}
+
       <Modal
         open={showInfoModal}
         onClose={() => setShowInfoModal(false)}

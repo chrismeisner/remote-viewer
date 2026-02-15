@@ -116,9 +116,18 @@ video:not([controls]) {
   pointer-events: auto;
 }
 
-/* Prevent mouse interactions from triggering native controls UI */
+/*
+ * Subtitle styling defaults.
+ * These are applied at runtime by the useSubtitleStyles hook which uses
+ * the hardcoded default settings from lib/subtitle-styles.ts.
+ */
 video::cue {
-  display: none;
+  font-family: "HomeVideo", "DM Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 1.8vw;
+  line-height: 1.1;
+  color: #d4d4d4;
+  background-color: rgba(0, 0, 0, 0.75);
+  padding: 0.4em 0.6em;
 }
 
 /* Additional fullscreen control hiding */
@@ -150,7 +159,6 @@ video:-moz-full-screen {
 .crt {
   position: relative;
   overflow: hidden;
-  /* Lighter filters - removed blur() which was causing frame drops */
   filter: contrast(1.08) saturate(1.05) brightness(0.97);
   border-radius: 18px;
   /* Hint GPU acceleration for the container */
@@ -164,25 +172,31 @@ video:-moz-full-screen {
   border-radius: 0 !important;
 }
 
-/* Scanlines - now static instead of animated to reduce compositing overhead */
+/* CRT Scanlines - horizontal lines that simulate retro CRT monitor effect */
 .crt-frame::before,
 .crt::before {
   content: "";
   pointer-events: none;
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 15;
+  /* Create alternating dark scan lines with subtle lighter gaps between them */
   background: repeating-linear-gradient(
     to bottom,
-    rgba(255, 255, 255, 0.06) 0px,
-    rgba(255, 255, 255, 0.06) 1px,
-    rgba(0, 0, 0, 0.18) 2px,
-    rgba(0, 0, 0, 0.18) 3px
+    transparent 0px,
+    transparent 1px,
+    rgba(0, 0, 0, 0.35) 1px,
+    rgba(0, 0, 0, 0.35) 2px,
+    transparent 2px,
+    transparent 3px
   );
   background-size: 100% 3px;
-  opacity: 0.4;
+  opacity: 0.5;
+  /* Stronger blur for much softer edges on scan lines */
+  filter: blur(0.5px);
+  /* Overlay blend mode gives the most authentic CRT look */
   mix-blend-mode: overlay;
-  /* Removed animation - static scanlines are much cheaper */
+  /* Static scanlines - no animation for better performance */
 }
 
 .crt-frame::after,
@@ -283,22 +297,7 @@ video:-moz-full-screen {
   }
 }
 
-/* Scanline effect on the channel overlay when CRT is enabled */
-.crt-frame .channel-overlay::before {
-  content: "";
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0px,
-    transparent 1px,
-    rgba(0, 0, 0, 0.3) 2px,
-    rgba(0, 0, 0, 0.3) 3px
-  );
-  background-size: 100% 3px;
-  opacity: 0.6;
-}
+/* Removed extra scanline background on channel overlay - scan lines now come from the main CRT frame */
 
 /* ── Watch page seek bar ─────────────────────────────────────────── */
 .watch-seek-bar {

@@ -194,6 +194,7 @@ export type MediaMetadataItem = {
   coverPath?: string | null; // Full filesystem path to local image (for local mode)
   coverEmoji?: string | null; // Emoji to use as cover (alternative to image)
   tags?: string[] | null; // Flexible tags for actors, themes, keywords, etc.
+  subtitleFile?: string | null; // Relative path to .vtt subtitle sidecar file (e.g. "movies/Movie (2024).en.vtt")
 };
 
 export type MediaMetadataStore = {
@@ -1723,6 +1724,7 @@ export async function updateMediaItemMetadata(
   if (updates.coverPath !== undefined) updated.coverPath = updates.coverPath;
   if (updates.coverEmoji !== undefined) updated.coverEmoji = updates.coverEmoji;
   if (updates.tags !== undefined) updated.tags = updates.tags;
+  if (updates.subtitleFile !== undefined) updated.subtitleFile = updates.subtitleFile;
   
   // Set lastUpdated timestamp
   updated.lastUpdated = new Date().toISOString();
@@ -1745,6 +1747,7 @@ export async function updateMediaItemMetadata(
   if (updated.coverPath != null) cleaned.coverPath = updated.coverPath;
   if (updated.coverEmoji != null) cleaned.coverEmoji = updated.coverEmoji;
   if (updated.tags != null && updated.tags.length > 0) cleaned.tags = updated.tags;
+  if (updated.subtitleFile != null) cleaned.subtitleFile = updated.subtitleFile;
   if (updated.lastUpdated != null) cleaned.lastUpdated = updated.lastUpdated;
   
   // Only store if there's actual data
@@ -1895,6 +1898,7 @@ export async function updateMediaItemMetadataBySource(
   if (updates.coverPath !== undefined) updated.coverPath = updates.coverPath;
   if (updates.coverEmoji !== undefined) updated.coverEmoji = updates.coverEmoji;
   if (updates.tags !== undefined) updated.tags = updates.tags;
+  if (updates.subtitleFile !== undefined) updated.subtitleFile = updates.subtitleFile;
   
   // Set lastUpdated timestamp
   updated.lastUpdated = new Date().toISOString();
@@ -1917,6 +1921,7 @@ export async function updateMediaItemMetadataBySource(
   if (updated.coverPath != null) cleaned.coverPath = updated.coverPath;
   if (updated.coverEmoji != null) cleaned.coverEmoji = updated.coverEmoji;
   if (updated.tags != null && updated.tags.length > 0) cleaned.tags = updated.tags;
+  if (updated.subtitleFile != null) cleaned.subtitleFile = updated.subtitleFile;
   if (updated.lastUpdated != null) cleaned.lastUpdated = updated.lastUpdated;
   
   // Only store if there's actual data

@@ -268,6 +268,25 @@ export async function uploadFileToFtp(
 }
 
 /**
+ * Delete a file from the FTP server.
+ * @param subPath - Path relative to the base directory (e.g., "movies/Movie.en.vtt")
+ */
+export async function deleteFileFromFtp(subPath: string): Promise<void> {
+  const { host, user, password, port, remotePath, secure } = requireFtpConfig();
+
+  const baseDir = getRemoteBaseDir(remotePath);
+  const targetPath = path.posix.join(baseDir, subPath);
+
+  const client = new Client(15000);
+  try {
+    await client.access({ host, port, user, password, secure });
+    await client.remove(targetPath);
+  } finally {
+    client.close();
+  }
+}
+
+/**
  * Check if a directory exists on the FTP server.
  * @param subPath - Path relative to the base directory (e.g., "covers")
  * @returns true if the directory exists, false otherwise

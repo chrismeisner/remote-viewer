@@ -20,12 +20,14 @@ import {
   trackShare,
   setUserProperties,
 } from "@/lib/analytics";
+import { useSubtitleStyles } from "@/hooks/useSubtitleStyles";
 
 const MUTED_PREF_KEY = "player-muted-default";
 const CRT_PREF_KEY = "player-crt-default";
 const REMOTE_PREF_KEY = "player-remote-default";
 const VOLUME_PREF_KEY = "player-volume-default";
 const WELCOME_SEEN_KEY = "player-welcome-seen";
+const CC_PREF_KEY = "player-cc-default";
 
 type NowPlaying = {
   title: string;
@@ -52,6 +54,7 @@ type MediaMetadata = {
   coverLocal?: string | null;
   coverPath?: string | null;
   tags?: string[] | null;
+  subtitleFile?: string | null;
 };
 
 type NowPlayingResponse = {
@@ -77,6 +80,7 @@ interface PlayerClientProps {
 }
 
 export default function PlayerClient({ initialChannel }: PlayerClientProps) {
+  useSubtitleStyles();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +101,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const [channel, setChannel] = useState<string | null>(initialChannel ?? null);
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
-  const initialChannelSet = useRef(!!initialChannel);
+  const initialChannelSet = useRef(false); // Always start false, we'll set it properly after loading channels
   const [showChannelInfo, setShowChannelInfo] = useState(false);
   const [showHeader, setShowHeader] = useState(false);
   const [showControls, setShowControls] = useState(true);
@@ -109,7 +113,8 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const [infoLoading, setInfoLoading] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   const [shareCopied, setShareCopied] = useState(false);
-  const [isMobile] = useState(() => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  const [isMobile] = useState(() => typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  const [ccEnabled, setCcEnabled] = useState(false);
   
   // Stream stats for info modal (simplified - just buffer health)
   const [streamStats, setStreamStats] = useState<{
@@ -383,6 +388,34 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     localStorage.setItem(REMOTE_PREF_KEY, showControls ? "true" : "false");
   }, [showControls]);
 
+  // Load CC preference from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(CC_PREF_KEY);
+    if (stored === "true") setCcEnabled(true);
+  }, []);
+
+  // Persist CC preference
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(CC_PREF_KEY, ccEnabled ? "true" : "false");
+  }, [ccEnabled]);
+
+  // Sync CC track mode to video element
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const trackCount = video.textTracks.length;
+    console.log("[player] syncing CC track mode", {
+      ccEnabled,
+      textTrackCount: trackCount,
+      subtitleFile: infoMetadata?.subtitleFile,
+    });
+    for (let i = 0; i < trackCount; i++) {
+      video.textTracks[i].mode = ccEnabled ? "showing" : "hidden";
+    }
+  }, [ccEnabled, infoMetadata?.subtitleFile]);
+
   // Check if this is a first-time visitor (show welcome only once per browser)
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -623,8 +656,22 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         message: video.error?.message,
         relPath: nowPlaying.relPath,
         src: nowPlaying.src,
+        mediaSource,
+        videoSrc: video.src,
       };
       console.error("[player] video error", errorDetails);
+      
+      // Log the actual MediaError object for debugging
+      if (video.error) {
+        console.error("[player] MediaError details:", {
+          code: video.error.code,
+          message: video.error.message,
+          MEDIA_ERR_ABORTED: video.error.MEDIA_ERR_ABORTED,
+          MEDIA_ERR_NETWORK: video.error.MEDIA_ERR_NETWORK,
+          MEDIA_ERR_DECODE: video.error.MEDIA_ERR_DECODE,
+          MEDIA_ERR_SRC_NOT_SUPPORTED: video.error.MEDIA_ERR_SRC_NOT_SUPPORTED,
+        });
+      }
       
       // Clear loading state on error
       setIsVideoLoading(false);
@@ -916,6 +963,12 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         return;
       }
 
+      if (key === "s") {
+        event.preventDefault();
+        if (infoMetadata?.subtitleFile) setCcEnabled((prev) => !prev);
+        return;
+      }
+
       if (key === "f") {
         event.preventDefault();
         toggleFullscreen();
@@ -1052,7 +1105,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [channels, channel, muted, volume, channelInputBuffer, showInfoModal, nowPlaying, mediaSource]);
+  }, [channels, channel, muted, volume, channelInputBuffer, showInfoModal, nowPlaying, mediaSource, infoMetadata?.subtitleFile]);
 
   const resolvedSrc = (np: NowPlaying | null) =>
     np ? withMediaSource(np, mediaSource).src : "";
@@ -1096,19 +1149,21 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
             return;
           }
           
-          // Determine if we need to set/change the channel
-          const needsChannelSelection = !channel || !channelIds.includes(channel);
-          
-          if (needsChannelSelection) {
+          // Check if we have an initial channel from props or URL
+          if (!initialChannelSet.current) {
+            initialChannelSet.current = true;
+            
             let targetChannelId: string | null = null;
             
-            // Check for URL parameter on first load only (skip if initialChannel was provided)
-            if (typeof window !== 'undefined' && !initialChannelSet.current) {
+            // Priority 1: initialChannel prop (from server-side rendering)
+            if (initialChannel && channelIds.includes(initialChannel)) {
+              targetChannelId = initialChannel;
+              console.log('[player] starting on channel from initialChannel prop:', initialChannel);
+            } 
+            // Priority 2: URL parameter (client-side only, for when user navigates directly)
+            else if (typeof window !== 'undefined') {
               const urlParams = new URLSearchParams(window.location.search);
               const channelParam = urlParams.get('channel');
-              
-              // Mark that we've checked the URL param (do this regardless of validity)
-              initialChannelSet.current = true;
               
               if (channelParam && channelIds.includes(channelParam)) {
                 targetChannelId = channelParam;
@@ -1118,11 +1173,26 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
               }
             }
             
-            // Use URL param channel if found, otherwise use first channel
-            const targetChannel = targetChannelId 
-              ? channelList.find(c => c.id === targetChannelId)!
-              : channelList[0];
-            
+            // If we found a target channel, trigger overlay and refresh
+            if (targetChannelId) {
+              const targetChannel = channelList.find(c => c.id === targetChannelId)!;
+              // Only set channel if it's different from current (initialChannel may have set it already)
+              if (channel !== targetChannelId) {
+                setChannel(targetChannelId);
+              }
+              triggerChannelOverlay(targetChannel);
+              setRefreshToken((token) => token + 1);
+            } else {
+              // No channel specified - use first channel as default
+              const targetChannel = channelList[0];
+              setChannel(targetChannel.id);
+              triggerChannelOverlay(targetChannel);
+              setRefreshToken((token) => token + 1);
+            }
+          } 
+          // If channels were already initialized but current channel is invalid, switch to first
+          else if (!channelIds.includes(channel ?? '')) {
+            const targetChannel = channelList[0];
             setChannel(targetChannel.id);
             triggerChannelOverlay(targetChannel);
             setRefreshToken((token) => token + 1);
@@ -1250,6 +1320,22 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     if (metadata.coverPath) return `/api/local-image?path=${encodeURIComponent(metadata.coverPath)}`;
     return null;
   };
+
+  // Build subtitle URL from metadata
+  const subtitleUrl = infoMetadata?.subtitleFile
+    ? mediaSource === "remote"
+      ? new URL(infoMetadata.subtitleFile, REMOTE_MEDIA_BASE).toString()
+      : `/api/subtitles/serve/${infoMetadata.subtitleFile.split("/").map(encodeURIComponent).join("/")}`
+    : null;
+
+  if (infoMetadata?.subtitleFile) {
+    console.log("[player] subtitle available", {
+      subtitleFile: infoMetadata.subtitleFile,
+      subtitleUrl,
+      ccEnabled,
+    });
+  }
+
   // Chromeless is controlled by the header toggle only.
   // The remote visibility must never change player sizing/layout.
   const isChromeless = !showHeader;
@@ -1289,6 +1375,18 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         >
           Mute
         </button>
+        {subtitleUrl && (
+          <button
+            onClick={() => setCcEnabled((c) => !c)}
+            className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
+              ccEnabled
+                ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+                : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
+            }`}
+          >
+            CC
+          </button>
+        )}
         <button
           onClick={toggleFullscreen}
           className="inline-flex min-w-0 flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-2 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:px-3"
@@ -1384,7 +1482,18 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
                   isChromeless ? "h-full w-full object-contain" : "aspect-video w-full"
                 } ${channel && (!nowPlaying || isVideoLoading) ? "hidden" : ""}`}
                 style={{ pointerEvents: 'auto' }}
-              />
+                crossOrigin="anonymous"
+              >
+                {subtitleUrl && (
+                  <track
+                    kind="subtitles"
+                    src={subtitleUrl}
+                    srcLang="en"
+                    label="English"
+                    default={ccEnabled}
+                  />
+                )}
+              </video>
 
               {/* CRT-style channel overlay - stays visible while loading or no programming */}
               <div
@@ -1413,6 +1522,8 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
                 <div className="channel-overlay font-mono">
                   {muted ? (
                     <span className="channel-name">MUTE</span>
+                  ) : Math.round(volume * 10) === 10 ? (
+                    <span className="channel-name">VOL MAX</span>
                   ) : (
                     <>
                       <span className="channel-name">VOL</span>
@@ -1508,6 +1619,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
             <li className="flex justify-between gap-4"><span>Volume down</span><span className="font-mono text-neutral-100">←</span></li>
             <li className="flex justify-between gap-4"><span>Mute</span><span className="font-mono text-neutral-100">m</span></li>
             <li className="flex justify-between gap-4"><span>CRT Effect</span><span className="font-mono text-neutral-100">c</span></li>
+            <li className="flex justify-between gap-4"><span>Subtitles</span><span className="font-mono text-neutral-100">s</span></li>
             <li className="flex justify-between gap-4"><span>Fullscreen</span><span className="font-mono text-neutral-100">f</span></li>
           </ul>
         </div>

@@ -1,6 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+// Re-export subtitle types & defaults from the shared (client-safe) module
+// for backward compatibility with existing imports
+export {
+  type SubtitleFontFamily,
+  type SubtitleAnchorMode,
+  type SubtitleSettings,
+  DEFAULT_SUBTITLE_SETTINGS,
+} from "@/lib/subtitle-styles";
+
 const CONFIG_FILE = path.join(process.cwd(), "data", "local", "config.json");
 const DATA_SUBFOLDER = ".remote-viewer";
 
@@ -235,3 +244,4 @@ export async function validateCoversPath(
 export function clearConfigCache(): void {
   configCache = null;
 }
+
