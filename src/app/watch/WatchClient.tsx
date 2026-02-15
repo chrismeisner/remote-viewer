@@ -72,7 +72,7 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
   const [volume, setVolume] = useState(1.0);
   const volumeRef = useRef(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [crtEnabled, setCrtEnabled] = useState(true);
+  const [crtEnabled, setCrtEnabled] = useState(false);
 
   // Volume overlay
   const [showVolumeOverlay, setShowVolumeOverlay] = useState(false);
@@ -99,10 +99,8 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
   // ── Build the video source URL ──────────────────────────────────────
   const buildSrc = useCallback(
     (file: string, source: MediaSource): string => {
-      if (source === "remote") {
-        return new URL(file, REMOTE_MEDIA_BASE).toString();
-      }
-      return `/api/media?file=${encodeURIComponent(file)}`;
+      // Always use the API proxy to avoid CORS issues
+      return `/api/media?file=${encodeURIComponent(file)}&source=${source}`;
     },
     [],
   );
@@ -192,8 +190,8 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
     if (stored === "true" || stored === "false") {
       setCrtEnabled(stored === "true");
     } else {
-      localStorage.setItem(CRT_PREF_KEY, "true");
-      setCrtEnabled(true);
+      localStorage.setItem(CRT_PREF_KEY, "false");
+      setCrtEnabled(false);
     }
   }, []);
   useEffect(() => {
