@@ -425,9 +425,11 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     }
   }, []);
 
-  // Re-apply media source mapping when source changes
+  // Re-apply media source mapping when source changes - refetch now playing
   useEffect(() => {
-    setNowPlaying((prev) => (prev ? withMediaSource(prev, mediaSource) : prev));
+    if (nowPlaying) {
+      setRefreshToken((t) => t + 1);
+    }
   }, [mediaSource]);
 
   const computeExpectedOffset = (entry: NowPlaying) => {
@@ -480,12 +482,10 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
           lastResolvedAtRef.current = resolvedAt;
           lastRttMsRef.current = Math.max(0, resolvedAt - startedAt);
           if (data?.nowPlaying) {
-            setNowPlaying(
-              withMediaSource(
-                { ...data.nowPlaying, serverTimeMs: data.serverTimeMs },
-                mediaSource,
-              ),
-            );
+            setNowPlaying({
+              ...data.nowPlaying,
+              serverTimeMs: data.serverTimeMs,
+            });
           } else {
             setNowPlaying(null);
             // No content scheduled - clear loading state but keep overlay visible briefly
@@ -1107,8 +1107,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     return () => window.removeEventListener("keydown", handler);
   }, [channels, channel, muted, volume, channelInputBuffer, showInfoModal, nowPlaying, mediaSource, infoMetadata?.subtitleFile]);
 
-  const resolvedSrc = (np: NowPlaying | null) =>
-    np ? withMediaSource(np, mediaSource).src : "";
+  const resolvedSrc = (np: NowPlaying | null) => np?.src || "";
 
   // Normalize channels to ChannelInfo format (handles legacy string[] responses)
   // Also filters out inactive channels (active !== false means active)
@@ -1874,14 +1873,6 @@ function clampTime(value: number, durationSeconds: number, bufferSeconds = 0.25)
   if (duration <= 0) return Math.max(0, value);
   const maxPlayable = Math.max(0, duration - bufferSeconds);
   return Math.min(Math.max(0, value), maxPlayable);
-}
-
-function withMediaSource(entry: { title: string; relPath: string; durationSeconds: number; startOffsetSeconds: number; endsAt: number; src: string; serverTimeMs?: number }, mediaSource: "local" | "remote"): { title: string; relPath: string; durationSeconds: number; startOffsetSeconds: number; endsAt: number; src: string; serverTimeMs?: number } {
-  if (mediaSource === "remote") {
-    const remote = new URL(entry.relPath, REMOTE_MEDIA_BASE).toString();
-    return { ...entry, src: remote };
-  }
-  return entry;
 }
 
 function formatOffsetForDisplay(seconds: number): string {

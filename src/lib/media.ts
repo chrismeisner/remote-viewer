@@ -262,8 +262,10 @@ export function clearMediaCaches(): void {
   console.log("[Media Lib] After clear - caches reset to null/empty");
 }
 
-export function buildMediaUrl(relPath: string): string {
-  return `/api/media?file=${encodeURIComponent(relPath)}`;
+export function buildMediaUrl(relPath: string, source: MediaSource = "local"): string {
+  // Always use the API proxy to avoid CORS issues
+  // The API will either serve local files or proxy remote files
+  return `/api/media?file=${encodeURIComponent(relPath)}&source=${source}`;
 }
 
 export async function getNowPlaying(
@@ -787,7 +789,7 @@ async function get24HourNowPlaying(
   // If nothing is scheduled at this moment, return null (show blue screen).
   const active = findActiveSlot(slots, zoned.secondsOfDay);
   if (active) {
-    return buildNowPlaying(active, now, zoned.secondsOfDay, 0);
+    return buildNowPlaying(active, now, zoned.secondsOfDay, 0, source);
   }
 
   // No active slot - show blue screen (return null)
@@ -835,7 +837,7 @@ async function getLoopingNowPlaying(
         durationSeconds: item.durationSeconds,
         startOffsetSeconds: offsetSeconds,
         endsAt: now + remainingSeconds * 1000,
-        src: buildMediaUrl(item.file),
+        src: buildMediaUrl(item.file, source),
       };
     }
     accumulated += item.durationSeconds;
@@ -1332,6 +1334,7 @@ function buildNowPlaying(
   now: number,
   currentSeconds: number,
   dayOffset: number,
+  source: MediaSource,
 ): NowPlaying {
   const deltaSeconds =
     dayOffset * 86400 + (slot.startSeconds - currentSeconds);
@@ -1348,7 +1351,7 @@ function buildNowPlaying(
     durationSeconds: slot.durationSeconds,
     startOffsetSeconds,
     endsAt: now + (secondsUntilStart + remainingWindow) * 1000,
-    src: buildMediaUrl(slot.relPath),
+    src: buildMediaUrl(slot.relPath, source),
   };
 }
 
