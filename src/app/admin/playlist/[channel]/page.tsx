@@ -97,6 +97,10 @@ export default function ChannelPlaylistPage() {
   // Media metadata for enhanced search
   const [mediaMetadata, setMediaMetadata] = useState<MediaMetadataStore>({ items: {} });
   
+  // Sort state for playlist ordering
+  const [sortField, setSortField] = useState<"name" | "year" | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedPlaylistRef = useRef<string>("[]");
   const lastSavedOffsetRef = useRef<number>(0);
@@ -491,6 +495,7 @@ export default function ChannelPlaylistPage() {
   }, []);
 
   const movePlaylistItem = useCallback((fromIndex: number, direction: "up" | "down") => {
+    setSortField(null); // Clear sort indicator on manual reorder
     setPlaylist(prev => {
       const newList = [...prev];
       const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
@@ -502,7 +507,7 @@ export default function ChannelPlaylistPage() {
 
   const shufflePlaylist = useCallback(() => {
     if (playlist.length <= 1) return;
-    
+    setSortField(null); // Clear sort indicator on shuffle
     setPlaylist(prev => {
       const shuffled = [...prev];
       // Fisher-Yates shuffle algorithm
@@ -513,6 +518,43 @@ export default function ChannelPlaylistPage() {
       return shuffled;
     });
   }, [playlist.length]);
+
+  const sortPlaylistByName = useCallback((direction: "asc" | "desc") => {
+    if (playlist.length <= 1) return;
+    setSortField("name");
+    setSortDirection(direction);
+    setPlaylist(prev => {
+      const sorted = [...prev].sort((a, b) => {
+        const nameA = (a.title || a.file).toLowerCase();
+        const nameB = (b.title || b.file).toLowerCase();
+        const cmp = nameA.localeCompare(nameB, undefined, { sensitivity: "base" });
+        return direction === "asc" ? cmp : -cmp;
+      });
+      return sorted;
+    });
+  }, [playlist.length]);
+
+  const sortPlaylistByYear = useCallback((direction: "asc" | "desc") => {
+    if (playlist.length <= 1) return;
+    setSortField("year");
+    setSortDirection(direction);
+    setPlaylist(prev => {
+      const sorted = [...prev].sort((a, b) => {
+        const metaA = mediaMetadata.items[a.file];
+        const metaB = mediaMetadata.items[b.file];
+        const yearA = metaA?.year ?? (direction === "asc" ? Infinity : -Infinity);
+        const yearB = metaB?.year ?? (direction === "asc" ? Infinity : -Infinity);
+        if (yearA !== yearB) {
+          return direction === "asc" ? yearA - yearB : yearB - yearA;
+        }
+        // Secondary sort by name when years are equal
+        const nameA = (a.title || a.file).toLowerCase();
+        const nameB = (b.title || b.file).toLowerCase();
+        return nameA.localeCompare(nameB, undefined, { sensitivity: "base" });
+      });
+      return sorted;
+    });
+  }, [playlist.length, mediaMetadata]);
 
   const clearPlaylist = async () => {
     const confirmed = window.confirm(`Clear playlist for "${channelId}"?`);
@@ -602,8 +644,37 @@ export default function ChannelPlaylistPage() {
           disabled={loading || autoSaveStatus === "saving" || playlist.length <= 1}
           title="Randomize playlist order"
         >
-          🔀 Shuffle
+          Shuffle
         </button>
+
+        {/* Sort buttons */}
+        <div className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 p-0.5">
+          <span className="px-2 text-xs text-neutral-400">Sort:</span>
+          <button
+            onClick={() => sortPlaylistByName(sortField === "name" && sortDirection === "asc" ? "desc" : "asc")}
+            className={`rounded px-2.5 py-1 text-xs font-semibold transition ${
+              sortField === "name"
+                ? "bg-purple-500/30 text-purple-100 border border-purple-400/40"
+                : "text-neutral-300 hover:bg-white/10 hover:text-neutral-100 border border-transparent"
+            } disabled:opacity-50`}
+            disabled={loading || autoSaveStatus === "saving" || playlist.length <= 1}
+            title={`Sort by filename ${sortField === "name" && sortDirection === "asc" ? "(currently A→Z, click for Z→A)" : sortField === "name" && sortDirection === "desc" ? "(currently Z→A, click for A→Z)" : "(A→Z)"}`}
+          >
+            Name {sortField === "name" ? (sortDirection === "asc" ? "↑" : "↓") : ""}
+          </button>
+          <button
+            onClick={() => sortPlaylistByYear(sortField === "year" && sortDirection === "asc" ? "desc" : "asc")}
+            className={`rounded px-2.5 py-1 text-xs font-semibold transition ${
+              sortField === "year"
+                ? "bg-purple-500/30 text-purple-100 border border-purple-400/40"
+                : "text-neutral-300 hover:bg-white/10 hover:text-neutral-100 border border-transparent"
+            } disabled:opacity-50`}
+            disabled={loading || autoSaveStatus === "saving" || playlist.length <= 1}
+            title={`Sort by year ${sortField === "year" && sortDirection === "asc" ? "(currently oldest first, click for newest first)" : sortField === "year" && sortDirection === "desc" ? "(currently newest first, click for oldest first)" : "(oldest first)"}`}
+          >
+            Year {sortField === "year" ? (sortDirection === "asc" ? "↑" : "↓") : ""}
+          </button>
+        </div>
         <button
           onClick={() => void clearPlaylist()}
           className="rounded-md border border-red-400/60 bg-red-500/20 px-3 py-1 text-sm font-semibold text-red-50 transition hover:border-red-300 hover:bg-red-500/30 disabled:opacity-50"
