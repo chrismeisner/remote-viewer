@@ -4107,6 +4107,9 @@ export default function MediaAdminPage() {
   const [copiedBulkCommand, setCopiedBulkCommand] = useState(false);
   const [bulkTargetResolution, setBulkTargetResolution] = useState<TargetResolution>("original");
 
+  // Filename hover tooltip state (fixed position to escape overflow containers)
+  const [fnameTooltip, setFnameTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+
   // Bulk AI fill state
   const [bulkFillOpen, setBulkFillOpen] = useState(false);
   const [bulkFillRunning, setBulkFillRunning] = useState(false);
@@ -5246,7 +5249,11 @@ export default function MediaAdminPage() {
                               type="button"
                               className="text-left underline decoration-dotted underline-offset-2 hover:text-emerald-200 truncate block w-full"
                               onClick={() => setSelectedFile(file)}
-                              title={file.relPath}
+                              onMouseEnter={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setFnameTooltip({ text: file.relPath, x: rect.left, y: rect.top });
+                              }}
+                              onMouseLeave={() => setFnameTooltip(null)}
                             >
                               {file.relPath}
                             </button>
@@ -5503,6 +5510,18 @@ export default function MediaAdminPage() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fixed-position filename tooltip (escapes table overflow) */}
+      {fnameTooltip && (
+        <div
+          className="fixed z-[9999] pointer-events-none"
+          style={{ left: fnameTooltip.x, top: fnameTooltip.y - 8, transform: "translateY(-100%)" }}
+        >
+          <div className="rounded-md border border-white/20 bg-neutral-800 px-3 py-1.5 text-xs text-neutral-100 shadow-xl shadow-black/50 max-w-[500px] break-all whitespace-pre-wrap">
+            {fnameTooltip.text}
           </div>
         </div>
       )}
