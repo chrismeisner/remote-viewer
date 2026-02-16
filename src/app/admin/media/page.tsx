@@ -2135,6 +2135,97 @@ function MediaDetailModal({
                         <div className="h-3 w-3 animate-spin rounded-full border border-neutral-600 border-t-neutral-300" />
                       )}
                     </label>
+                    
+                    {/* TV Episode Cover Source Picker */}
+                    {useImdbCover && imdbPreview?.type === "tvEpisode" && (
+                      <div className="mt-3 pl-5 space-y-2.5 border-l-2 border-amber-500/30">
+                        <p className="text-[11px] uppercase tracking-wide text-neutral-500 font-semibold">TV Cover Source</p>
+                        
+                        {/* Radio: Episode Still Frame */}
+                        <label className="flex items-start gap-2.5 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="tvCoverSource"
+                            value="episode"
+                            checked={tvCoverSource === "episode"}
+                            onChange={(e) => setTvCoverSource(e.target.value as "episode" | "series")}
+                            className="mt-0.5 h-3.5 w-3.5 rounded-full border-neutral-600 bg-neutral-800 text-blue-500 accent-blue-500"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-neutral-200 group-hover:text-neutral-100">Episode Still Frame</span>
+                              {imdbPreview.image && tvCoverSource === "episode" && (
+                                <span className="text-[10px] text-blue-400">✓ Active</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-neutral-500 mt-0.5">Use the episode's screenshot</p>
+                          </div>
+                        </label>
+                        
+                        {/* Radio: Series Poster */}
+                        <label className="flex items-start gap-2.5 cursor-pointer group">
+                          <input
+                            type="radio"
+                            name="tvCoverSource"
+                            value="series"
+                            checked={tvCoverSource === "series"}
+                            onChange={(e) => setTvCoverSource(e.target.value as "episode" | "series")}
+                            className="mt-0.5 h-3.5 w-3.5 rounded-full border-neutral-600 bg-neutral-800 text-blue-500 accent-blue-500"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-neutral-200 group-hover:text-neutral-100">Series Poster</span>
+                              {seriesPreview?.image && tvCoverSource === "series" && (
+                                <span className="text-[10px] text-blue-400">✓ Active</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-neutral-500 mt-0.5">Use the TV series poster</p>
+                          </div>
+                        </label>
+                        
+                        {/* Series IMDB URL input - only when "series" is selected */}
+                        {tvCoverSource === "series" && (
+                          <div className="space-y-1.5">
+                            <label className="block text-[11px] text-neutral-500">Series IMDB URL</label>
+                            <input
+                              type="url"
+                              value={seriesImdbUrl}
+                              onChange={(e) => setSeriesImdbUrl(e.target.value)}
+                              placeholder="e.g. https://www.imdb.com/title/tt0903747/"
+                              className="w-full rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-blue-300 focus:bg-white/10"
+                            />
+                            
+                            {/* Series preview */}
+                            {seriesPreview && (
+                              <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1.5">
+                                {seriesPreview.image && (
+                                  <img
+                                    src={seriesPreview.image}
+                                    alt={seriesPreview.title}
+                                    className="h-8 w-6 rounded object-cover shrink-0 bg-neutral-800"
+                                  />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] font-medium text-neutral-200 truncate">
+                                    {seriesPreview.title}
+                                  </p>
+                                </div>
+                                <span className="text-[9px] text-emerald-400 shrink-0">✓</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Save Cover Source Button */}
+                        <button
+                          onClick={handleSaveAll}
+                          disabled={metadataSaving || aiLoading || deepSearchLoading}
+                          className="w-full rounded-md bg-blue-500 hover:bg-blue-400 px-3 py-1.5 text-xs font-semibold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {metadataSaving ? "Saving..." : "Save Cover Selection"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
