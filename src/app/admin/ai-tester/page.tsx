@@ -197,37 +197,37 @@ function buildMetaContext(
       ? `S${season.padStart(2, "0")}E${episode.padStart(2, "0")}`
       : "";
 
+  // Build context lines: identity first, then descriptive, then position
   const lines: string[] = [];
+  // Identity block
   if (ev.title)           lines.push(`Title: ${title}${year}`);
-  if (ev.director && media.director)  lines.push(`Director: ${media.director}`);
-  if (ev.type && media.type)          lines.push(`Type: ${media.type}`);
-  if (ev.genre && media.category)     lines.push(`Genre: ${media.category}`);
-  if (ev.plot && media.plot)          lines.push(`Plot: ${media.plot}`);
-  if (ev.production && media.makingOf) lines.push(`Production: ${media.makingOf}`);
-  if (ev.castTags && media.tags?.length) lines.push(`Cast/Tags: ${media.tags!.join(", ")}`);
-  if (ev.imdbUrl && media.imdbUrl)    lines.push(`IMDb: ${media.imdbUrl}`);
+  if (ev.type && media.type) lines.push(`Type: ${media.type}`);
   if (ev.episodeDetails) {
-    if (episodeCode) {
-      lines.push(`Episode: ${episodeCode}`);
-    } else {
-      if (season) lines.push(`Season: ${season}`);
-      if (episode) lines.push(`Episode: ${episode}`);
-    }
-    if (releaseDate) lines.push(`Release Date: ${releaseDate}`);
+    if (season)      lines.push(`Season: ${season}`);
+    if (episode)     lines.push(`Episode: ${episode}`);
+    if (episodeCode) lines.push(`Episode Code: ${episodeCode}`);
+    if (releaseDate) lines.push(`Air Date: ${releaseDate}`);
   }
+  if (ev.imdbUrl && media.imdbUrl) lines.push(`IMDb: ${media.imdbUrl}`);
+  // Descriptive block
+  if (ev.director && media.director)    lines.push(`Director: ${media.director}`);
+  if (ev.genre && media.category)       lines.push(`Genre: ${media.category}`);
+  if (ev.plot && media.plot)            lines.push(`Plot: ${media.plot}`);
+  if (ev.production && media.makingOf)  lines.push(`Production: ${media.makingOf}`);
+  if (ev.castTags && media.tags?.length) lines.push(`Cast/Tags: ${media.tags!.join(", ")}`);
+  // Position block
   if (ev.playbackPosition) lines.push(`\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`);
 
   return { metaContext: lines.join("\n"), timestamp, duration, pct, title, year, season, episode, episodeCode, releaseDate };
 }
 
-function interpolatePrompt(
+function interpolatePromptFromContext(
   template: string,
+  ctx: ReturnType<typeof buildMetaContext>,
   media: MediaItem,
-  playbackPercent: number,
-  ev: EnabledVars = DEFAULT_ENABLED_VARS
+  ev: EnabledVars
 ): string {
-  const { metaContext, timestamp, duration, pct, title, year, season, episode, episodeCode, releaseDate } = buildMetaContext(media, playbackPercent, ev);
-
+  const { metaContext, timestamp, duration, pct, title, year, season, episode, episodeCode, releaseDate } = ctx;
   return template
     .replace(/\{\{title\}\}/g, title)
     .replace(/\{\{year\}\}/g, year)
@@ -242,6 +242,16 @@ function interpolatePrompt(
     .replace(/\{\{metaContext\}\}/g, metaContext);
 }
 
+function interpolatePrompt(
+  template: string,
+  media: MediaItem,
+  playbackPercent: number,
+  ev: EnabledVars = DEFAULT_ENABLED_VARS
+): string {
+  const ctx = buildMetaContext(media, playbackPercent, ev);
+  return interpolatePromptFromContext(template, ctx, media, ev);
+}
+
 function buildAiTestRequestPayload(
   media: MediaItem,
   playbackPercent: number,
@@ -249,17 +259,9 @@ function buildAiTestRequestPayload(
   ev: EnabledVars
 ): AiTestRequestPayload {
   const normalizedVars: EnabledVars = { ...DEFAULT_ENABLED_VARS, ...ev };
-  const { metaContext, timestamp, duration, pct } = buildMetaContext(
-    media,
-    playbackPercent,
-    normalizedVars
-  );
-  const interpolated = interpolatePrompt(
-    promptTemplate,
-    media,
-    playbackPercent,
-    normalizedVars
-  );
+  const ctx = buildMetaContext(media, playbackPercent, normalizedVars);
+  const { metaContext, timestamp, duration, pct } = ctx;
+  const interpolated = interpolatePromptFromContext(promptTemplate, ctx, media, normalizedVars);
   const userMsg = normalizedVars.playbackPosition && timestamp
     ? `I'm at ${timestamp} of ${duration} (${pct}% through). Give me a fact about what's happening around this point in the film/show.`
     : "Give me an interesting fact about this media.";

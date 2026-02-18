@@ -415,24 +415,25 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     const duration  = showPos ? formatOffsetForDisplay(nowPlaying.durationSeconds) : "";
     const pct = showPos ? Math.round((currentPlaybackTime / nowPlaying.durationSeconds) * 100) : 0;
 
+    // Build context lines: identity first, then descriptive, then position
     const metaLines: string[] = [];
+    // Identity block
     if (showTitle) metaLines.push(`Title: ${title}${year}`);
+    if (showType  && meta?.type) metaLines.push(`Type: ${meta.type}`);
+    if (showEpisode) {
+      if (season)      metaLines.push(`Season: ${season}`);
+      if (episode)     metaLines.push(`Episode: ${episode}`);
+      if (episodeCode) metaLines.push(`Episode Code: ${episodeCode}`);
+      if (releaseDate) metaLines.push(`Air Date: ${releaseDate}`);
+    }
+    if (showImdb && meta?.imdbUrl) metaLines.push(`IMDb: ${meta.imdbUrl}`);
+    // Descriptive block
     if (showDirector && meta?.director) metaLines.push(`Director: ${meta.director}`);
-    if (showType     && meta?.type)     metaLines.push(`Type: ${meta.type}`);
     if (showGenre    && meta?.category) metaLines.push(`Genre: ${meta.category}`);
     if (showPlot     && meta?.plot)     metaLines.push(`Plot: ${meta.plot}`);
     if (showProd     && meta?.makingOf) metaLines.push(`Production: ${meta.makingOf}`);
     if (showCast     && meta?.tags?.length) metaLines.push(`Cast/Tags: ${meta.tags!.join(", ")}`);
-    if (showImdb     && meta?.imdbUrl)  metaLines.push(`IMDb: ${meta.imdbUrl}`);
-    if (showEpisode) {
-      if (episodeCode) {
-        metaLines.push(`Episode: ${episodeCode}`);
-      } else {
-        if (season) metaLines.push(`Season: ${season}`);
-        if (episode) metaLines.push(`Episode: ${episode}`);
-      }
-      if (releaseDate) metaLines.push(`Release Date: ${releaseDate}`);
-    }
+    // Position block
     if (showPos) metaLines.push(`\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`);
     const metaContext = metaLines.join("\n");
 
