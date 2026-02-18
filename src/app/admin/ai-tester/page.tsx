@@ -485,6 +485,14 @@ export default function AiTesterPage() {
       draftAutoPlayOnChannelSwitch !== (config.autoPlayOnChannelSwitch ?? false) ||
       draftAutoPlayDelaySeconds !== (config.autoPlayDelaySeconds ?? 5) ||
       enabledVarsDirty);
+  const enabledTemplateVars = VAR_DEFINITIONS.flatMap(({ key, templateVars }) =>
+    draftEnabledVars[key] ? templateVars : []
+  );
+  const disabledTemplateVars = VAR_DEFINITIONS.flatMap(({ key, templateVars }) =>
+    draftEnabledVars[key] ? [] : templateVars
+  );
+  const hasAnyEnabledContextVar = (Object.keys(draftEnabledVars) as (keyof EnabledVars)[])
+    .some((k) => draftEnabledVars[k]);
   const requestPreview = selectedMediaItem
     ? buildAiTestRequestPayload(
         selectedMediaItem,
@@ -755,9 +763,31 @@ export default function AiTesterPage() {
       <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4">
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs text-neutral-400">System Prompt Template</label>
-          <span className="text-xs text-neutral-500">
-            Variables: <code className="text-emerald-400/80">{"{{title}}"}</code> <code className="text-emerald-400/80">{"{{year}}"}</code> <code className="text-emerald-400/80">{"{{timestamp}}"}</code> <code className="text-emerald-400/80">{"{{duration}}"}</code> <code className="text-emerald-400/80">{"{{percent}}"}</code> <code className="text-emerald-400/80">{"{{metaContext}}"}</code>
-          </span>
+          <div className="text-right text-xs text-neutral-500">
+            <div>
+              Active substitutions:{" "}
+              {enabledTemplateVars.length > 0 ? (
+                enabledTemplateVars.map((v) => (
+                  <code key={v} className="text-emerald-400/80 ml-1">{v}</code>
+                ))
+              ) : (
+                <span className="text-neutral-600">(none)</span>
+              )}
+              {" "}
+              <code className="text-emerald-400/80 ml-1">{"{{metaContext}}"}</code>
+              {!hasAnyEnabledContextVar && (
+                <span className="text-neutral-600 ml-1">(empty)</span>
+              )}
+            </div>
+            {disabledTemplateVars.length > 0 && (
+              <div className="mt-1 text-neutral-600">
+                Disabled:{" "}
+                {disabledTemplateVars.map((v) => (
+                  <code key={v} className="ml-1">{v}</code>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <textarea
           value={draftPrompt}
