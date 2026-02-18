@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isFtpConfigured, readJsonFromFtpWithLock, writeJsonToFtpWithLock } from "@/lib/ftp";
+import type { MediaSource } from "@/constants/media";
 
 const CONFIG_PATH = path.join(process.cwd(), "data", "local", "quick-fact-config.json");
+const REMOTE_CONFIG_FILE = "quick-fact-config.json";
 
 export type EnabledVars = {
   title: boolean;
@@ -69,20 +72,57 @@ async function loadConfig(): Promise<QuickFactConfig> {
   }
 }
 
+function normalizeConfig(saved: Partial<QuickFactConfig>): QuickFactConfig {
+  return {
+    ...DEFAULTS,
+    ...saved,
+    enabledVars: {
+      ...DEFAULT_ENABLED_VARS,
+      ...(saved.enabledVars ?? {}),
+    },
+  };
+}
+
+async function loadRemoteConfig(): Promise<QuickFactConfig> {
+  if (!isFtpConfigured()) {
+    return loadConfig();
+  }
+  const saved = await readJsonFromFtpWithLock<Partial<QuickFactConfig> | null>(
+    REMOTE_CONFIG_FILE,
+    null
+  );
+  return normalizeConfig(saved ?? {});
+}
+
 async function saveConfig(config: QuickFactConfig): Promise<void> {
   await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
   await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
 }
 
-export async function GET() {
-  const config = await loadConfig();
-  return NextResponse.json({ config, defaults: DEFAULTS });
+async function saveRemoteConfig(config: QuickFactConfig): Promise<void> {
+  if (!isFtpConfigured()) {
+    await saveConfig(config);
+    return;
+  }
+  await writeJsonToFtpWithLock(REMOTE_CONFIG_FILE, config);
 }
 
-export async function PUT(request: Request) {
+function getSource(request: NextRequest): MediaSource {
+  const sourceParam = request.nextUrl.searchParams.get("source");
+  return sourceParam === "remote" || sourceParam === "local" ? sourceParam : "local";
+}
+
+export async function GET(request: NextRequest) {
+  const source = getSource(request);
+  const config = source === "remote" ? await loadRemoteConfig() : await loadConfig();
+  return NextResponse.json({ config, defaults: DEFAULTS, source });
+}
+
+export async function PUT(request: NextRequest) {
   try {
+    const source = getSource(request);
     const body = await request.json();
-    const current = await loadConfig();
+    const current = source === "remote" ? await loadRemoteConfig() : await loadConfig();
     const updated: QuickFactConfig = {
       prompt: typeof body.prompt === "string" ? body.prompt : current.prompt,
       maxTokens: typeof body.maxTokens === "number" ? body.maxTokens : current.maxTokens,
@@ -96,8 +136,12 @@ export async function PUT(request: Request) {
         ? { ...DEFAULT_ENABLED_VARS, ...body.enabledVars }
         : current.enabledVars,
     };
-    await saveConfig(updated);
-    return NextResponse.json({ config: updated });
+    if (source === "remote") {
+      await saveRemoteConfig(updated);
+    } else {
+      await saveConfig(updated);
+    }
+    return NextResponse.json({ config: updated, source });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to save config" },

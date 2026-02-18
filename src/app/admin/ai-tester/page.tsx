@@ -305,7 +305,8 @@ export default function AiTesterPage() {
 
   // Load config
   useEffect(() => {
-    fetch(`/api/quick-fact-config?t=${Date.now()}`)
+    setLoading(true);
+    fetch(`/api/quick-fact-config?source=${mediaSource}&t=${Date.now()}`)
       .then((r) => r.json())
       .then((data) => {
         setConfig(data.config);
@@ -322,7 +323,7 @@ export default function AiTesterPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [mediaSource]);
 
   // Load media library
   useEffect(() => {
@@ -364,7 +365,7 @@ export default function AiTesterPage() {
     setSaving(true);
     setSaveMessage(null);
     try {
-      const res = await fetch("/api/quick-fact-config", {
+      const res = await fetch(`/api/quick-fact-config?source=${mediaSource}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -389,7 +390,7 @@ export default function AiTesterPage() {
       setSaving(false);
       setTimeout(() => setSaveMessage(null), 4000);
     }
-  }, [draftPrompt, draftMaxTokens, draftModel, draftHoldSeconds, draftTypingSpeedMs, draftWidthVw, draftAutoPlayOnChannelSwitch, draftAutoPlayDelaySeconds, draftEnabledVars]);
+  }, [draftPrompt, draftMaxTokens, draftModel, draftHoldSeconds, draftTypingSpeedMs, draftWidthVw, draftAutoPlayOnChannelSwitch, draftAutoPlayDelaySeconds, draftEnabledVars, mediaSource]);
 
   const handleReset = () => {
     if (!defaults) return;

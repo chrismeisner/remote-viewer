@@ -279,7 +279,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         const delayMs = (quickFactConfigRef.current?.autoPlayDelaySeconds ?? 5) * 1000;
         autoPlayTimeoutRef.current = setTimeout(() => {
           // Re-read config at fire time so admin toggle changes are respected
-          fetch(`/api/quick-fact-config?t=${Date.now()}`)
+          fetch(`/api/quick-fact-config?source=${mediaSource}&t=${Date.now()}`)
             .then((r) => r.json())
             .then((data) => {
               quickFactConfigRef.current = data.config;
@@ -295,11 +295,11 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
 
   // Load quick fact config on mount
   useEffect(() => {
-    fetch(`/api/quick-fact-config?t=${Date.now()}`)
+    fetch(`/api/quick-fact-config?source=${mediaSource}&t=${Date.now()}`)
       .then((r) => r.json())
       .then((data) => { quickFactConfigRef.current = data.config; })
       .catch(() => {});
-  }, []);
+  }, [mediaSource]);
 
   // Typewriter effect for quick fact
   useEffect(() => {
@@ -1091,7 +1091,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     const channelInfo = channels.find(c => c.id === channelId);
     if (channelInfo) {
       // Refresh quick-fact settings so auto-play toggle changes apply quickly
-      fetch(`/api/quick-fact-config?t=${Date.now()}`)
+      fetch(`/api/quick-fact-config?source=${mediaSource}&t=${Date.now()}`)
         .then((r) => r.json())
         .then((data) => { quickFactConfigRef.current = data.config; })
         .catch(() => {});
