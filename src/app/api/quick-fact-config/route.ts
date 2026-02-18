@@ -9,6 +9,8 @@ export type QuickFactConfig = {
   maxTokens: number;
   model: string;
   holdSeconds: number;
+  typingSpeedMs: number;
+  widthVw: number;
 };
 
 const DEFAULTS: QuickFactConfig = {
@@ -16,6 +18,8 @@ const DEFAULTS: QuickFactConfig = {
   maxTokens: 200,
   model: "gpt-4o",
   holdSeconds: 8,
+  typingSpeedMs: 30,
+  widthVw: 80,
 };
 
 async function loadConfig(): Promise<QuickFactConfig> {
@@ -47,6 +51,8 @@ export async function PUT(request: Request) {
       maxTokens: typeof body.maxTokens === "number" ? body.maxTokens : current.maxTokens,
       model: typeof body.model === "string" ? body.model : current.model,
       holdSeconds: typeof body.holdSeconds === "number" ? body.holdSeconds : current.holdSeconds,
+      typingSpeedMs: typeof body.typingSpeedMs === "number" ? body.typingSpeedMs : current.typingSpeedMs,
+      widthVw: typeof body.widthVw === "number" ? body.widthVw : current.widthVw,
     };
     await saveConfig(updated);
     return NextResponse.json({ config: updated });

@@ -141,6 +141,8 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     maxTokens: number;
     model: string;
     holdSeconds: number;
+    typingSpeedMs: number;
+    widthVw: number;
   } | null>(null);
 
   // Track if we've already checked for changelog updates this session
@@ -269,12 +271,13 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     if (quickFactTypewriterRef.current) clearTimeout(quickFactTypewriterRef.current);
     setQuickFactDisplay("");
     const holdMs = (quickFactConfigRef.current?.holdSeconds ?? 8) * 1000;
+    const speedMs = quickFactConfigRef.current?.typingSpeedMs ?? 30;
     let i = 0;
     const tick = () => {
       i++;
       setQuickFactDisplay(quickFactText.slice(0, i));
       if (i < quickFactText.length) {
-        quickFactTypewriterRef.current = setTimeout(tick, 30);
+        quickFactTypewriterRef.current = setTimeout(tick, speedMs);
       } else {
         quickFactTimeoutRef.current = setTimeout(() => {
           setShowQuickFact(false);
@@ -1126,7 +1129,15 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
                 } catch { /* skip */ }
               }
             }
-            const cleaned = full.replace(/\*\*/g, "").replace(/[*_#`]/g, "").trim();
+            const cleaned = full
+              .replace(/\(\s*\[[^\]]*\]\([^)]*\)\s*\)/g, "")
+              .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+              .replace(/\(\s*https?:\/\/[^\s)]+\s*\)/g, "")
+              .replace(/https?:\/\/\S+/g, "")
+              .replace(/\*\*/g, "")
+              .replace(/[*_#`]/g, "")
+              .replace(/\s{2,}/g, " ")
+              .trim();
             setQuickFactText(cleaned || `You're watching ${title}${year}`);
           })
           .catch(() => {
@@ -1671,7 +1682,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
                   showQuickFact && !showChannelOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
                 }`}
               >
-                <div className="channel-overlay font-mono" style={{ flexDirection: "column", alignItems: "flex-start", gap: 0, maxWidth: "80%" }}>
+                <div className="channel-overlay font-mono" style={{ flexDirection: "column", alignItems: "flex-start", gap: 0, maxWidth: `${quickFactConfigRef.current?.widthVw ?? 80}vw` }}>
                   {quickFactLoading && !quickFactDisplay ? (
                     <span className="channel-name" style={{ fontSize: 20 }}>
                       <span className="channel-cursor">▌</span>

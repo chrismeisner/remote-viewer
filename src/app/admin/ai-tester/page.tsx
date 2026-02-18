@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MEDIA_SOURCE_KEY,
   type MediaSource,
@@ -11,6 +11,8 @@ type QuickFactConfig = {
   maxTokens: number;
   model: string;
   holdSeconds: number;
+  typingSpeedMs: number;
+  widthVw: number;
 };
 
 type MediaItem = {
@@ -51,6 +53,37 @@ const HOLD_OPTIONS = [
   { value: 12, label: "12s" },
   { value: 20, label: "20s" },
 ];
+
+const TYPING_SPEED_OPTIONS = [
+  { value: 5, label: "Very Fast (5ms)" },
+  { value: 15, label: "Fast (15ms)" },
+  { value: 30, label: "Normal (30ms)" },
+  { value: 50, label: "Slow (50ms)" },
+  { value: 80, label: "Very Slow (80ms)" },
+];
+
+const WIDTH_OPTIONS = [
+  { value: 30, label: "30vw" },
+  { value: 40, label: "40vw" },
+  { value: 50, label: "50vw" },
+  { value: 60, label: "60vw" },
+  { value: 70, label: "70vw" },
+  { value: 80, label: "80vw" },
+  { value: 90, label: "90vw" },
+  { value: 100, label: "100vw" },
+];
+
+function cleanAiText(text: string): string {
+  return text
+    .replace(/\(\s*\[[^\]]*\]\([^)]*\)\s*\)/g, "")  // ([label](url)) → remove whole citation
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")          // [label](url) → label
+    .replace(/\(\s*https?:\/\/[^\s)]+\s*\)/g, "")     // (https://...) → remove
+    .replace(/https?:\/\/\S+/g, "")                   // bare URLs → remove
+    .replace(/\*\*/g, "")
+    .replace(/[*_#`]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 
 function formatSeconds(seconds: number): string {
   const safe = Math.max(0, Math.floor(seconds));
@@ -118,12 +151,41 @@ export default function AiTesterPage() {
   const [draftMaxTokens, setDraftMaxTokens] = useState(200);
   const [draftModel, setDraftModel] = useState("gpt-4o");
   const [draftHoldSeconds, setDraftHoldSeconds] = useState(8);
+  const [draftTypingSpeedMs, setDraftTypingSpeedMs] = useState(30);
+  const [draftWidthVw, setDraftWidthVw] = useState(80);
+
+  // Typewriter preview state
+  const [previewDisplay, setPreviewDisplay] = useState<string | null>(null);
+  const previewTypewriterRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem(MEDIA_SOURCE_KEY);
     if (stored === "remote" || stored === "local") setMediaSource(stored);
   }, []);
+
+  // Typewriter preview: replay testResult at draftTypingSpeedMs when streaming ends
+  useEffect(() => {
+    if (previewTypewriterRef.current) clearTimeout(previewTypewriterRef.current);
+    if (testResult === null || testStreaming) {
+      setPreviewDisplay(testStreaming ? testResult : null);
+      return;
+    }
+    setPreviewDisplay("");
+    let i = 0;
+    const tick = () => {
+      i++;
+      setPreviewDisplay(testResult.slice(0, i));
+      if (i < testResult.length) {
+        previewTypewriterRef.current = setTimeout(tick, draftTypingSpeedMs);
+      }
+    };
+    tick();
+    return () => {
+      if (previewTypewriterRef.current) clearTimeout(previewTypewriterRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testResult, testStreaming]);
 
   // Load config
   useEffect(() => {
@@ -136,6 +198,8 @@ export default function AiTesterPage() {
         setDraftMaxTokens(data.config.maxTokens);
         setDraftModel(data.config.model);
         setDraftHoldSeconds(data.config.holdSeconds);
+        setDraftTypingSpeedMs(data.config.typingSpeedMs ?? 30);
+        setDraftWidthVw(data.config.widthVw ?? 80);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -189,6 +253,8 @@ export default function AiTesterPage() {
           maxTokens: draftMaxTokens,
           model: draftModel,
           holdSeconds: draftHoldSeconds,
+          typingSpeedMs: draftTypingSpeedMs,
+          widthVw: draftWidthVw,
         }),
       });
       if (!res.ok) throw new Error("Failed to save");
@@ -201,7 +267,7 @@ export default function AiTesterPage() {
       setSaving(false);
       setTimeout(() => setSaveMessage(null), 4000);
     }
-  }, [draftPrompt, draftMaxTokens, draftModel, draftHoldSeconds]);
+  }, [draftPrompt, draftMaxTokens, draftModel, draftHoldSeconds, draftTypingSpeedMs, draftWidthVw]);
 
   const handleReset = () => {
     if (!defaults) return;
@@ -209,6 +275,8 @@ export default function AiTesterPage() {
     setDraftMaxTokens(defaults.maxTokens);
     setDraftModel(defaults.model);
     setDraftHoldSeconds(defaults.holdSeconds);
+    setDraftTypingSpeedMs(defaults.typingSpeedMs ?? 30);
+    setDraftWidthVw(defaults.widthVw ?? 80);
   };
 
   const handleTest = useCallback(async () => {
@@ -270,13 +338,13 @@ export default function AiTesterPage() {
             const evt: StreamEvent = JSON.parse(line);
             if (evt.type === "text") {
               full += evt.delta;
-              setTestResult(full.replace(/\*\*/g, "").replace(/[*_#`]/g, "").trim());
+              setTestResult(cleanAiText(full));
             }
           } catch { /* skip */ }
         }
       }
 
-      const cleaned = full.replace(/\*\*/g, "").replace(/[*_#`]/g, "").trim();
+      const cleaned = cleanAiText(full);
       setTestResult(cleaned || "(empty response)");
     } catch (err) {
       setTestResult(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -291,7 +359,9 @@ export default function AiTesterPage() {
     (draftPrompt !== config.prompt ||
       draftMaxTokens !== config.maxTokens ||
       draftModel !== config.model ||
-      draftHoldSeconds !== config.holdSeconds);
+      draftHoldSeconds !== config.holdSeconds ||
+      draftTypingSpeedMs !== (config.typingSpeedMs ?? 30) ||
+      draftWidthVw !== (config.widthVw ?? 80));
 
   if (loading) {
     return (
@@ -391,6 +461,38 @@ export default function AiTesterPage() {
             className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-emerald-400"
           >
             {HOLD_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value} className="bg-neutral-900">
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Typing Speed */}
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4">
+          <label className="block text-xs text-neutral-400 mb-2">Typing Speed (ms / char)</label>
+          <select
+            value={draftTypingSpeedMs}
+            onChange={(e) => setDraftTypingSpeedMs(Number(e.target.value))}
+            className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-emerald-400"
+          >
+            {TYPING_SPEED_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value} className="bg-neutral-900">
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Overlay Width */}
+        <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4">
+          <label className="block text-xs text-neutral-400 mb-2">Overlay Width</label>
+          <select
+            value={draftWidthVw}
+            onChange={(e) => setDraftWidthVw(Number(e.target.value))}
+            className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-emerald-400"
+          >
+            {WIDTH_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value} className="bg-neutral-900">
                 {opt.label}
               </option>
@@ -517,22 +619,48 @@ export default function AiTesterPage() {
           <div className="mt-4 rounded-md border border-white/10 bg-black p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-neutral-400">
-                {testStreaming ? "Streaming..." : "Result"}
+                {testStreaming ? "Streaming..." : previewDisplay !== null && previewDisplay.length < testResult.length ? "Typing..." : "Result"}
               </span>
-              <span className="text-xs text-neutral-500 font-mono tabular-nums">
-                {testResult.length} chars
-              </span>
+              <div className="flex items-center gap-3">
+                {!testStreaming && previewDisplay !== null && previewDisplay.length >= testResult.length && (
+                  <button
+                    onClick={() => {
+                      if (previewTypewriterRef.current) clearTimeout(previewTypewriterRef.current);
+                      setPreviewDisplay("");
+                      let i = 0;
+                      const tick = () => {
+                        i++;
+                        setPreviewDisplay(testResult.slice(0, i));
+                        if (i < testResult.length) {
+                          previewTypewriterRef.current = setTimeout(tick, draftTypingSpeedMs);
+                        }
+                      };
+                      tick();
+                    }}
+                    className="text-xs text-neutral-500 hover:text-neutral-300 transition"
+                  >
+                    ↺ Replay
+                  </button>
+                )}
+                <span className="text-xs text-neutral-500 font-mono tabular-nums">
+                  {testResult.length} chars
+                </span>
+              </div>
             </div>
 
             {/* CRT-style preview */}
             <div className="relative rounded bg-neutral-950 border border-white/5 p-4 overflow-hidden">
-              <p
-                className="text-xl leading-relaxed font-homevideo"
-                style={{ color: "#d4d4d4" }}
-              >
-                {testResult}
-                {testStreaming && <span className="ml-0.5 animate-pulse">▌</span>}
-              </p>
+              <div style={{ maxWidth: `${draftWidthVw}vw` }}>
+                <p
+                  className="text-xl leading-relaxed font-homevideo"
+                  style={{ color: "#d4d4d4" }}
+                >
+                  {testStreaming ? testResult : (previewDisplay ?? "")}
+                  {(testStreaming || (previewDisplay !== null && previewDisplay.length < testResult.length)) && (
+                    <span className="ml-0.5 animate-pulse">▌</span>
+                  )}
+                </p>
+              </div>
             </div>
           </div>
         )}
