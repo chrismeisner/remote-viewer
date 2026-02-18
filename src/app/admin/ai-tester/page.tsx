@@ -15,6 +15,8 @@ type EnabledVars = {
   plot: boolean;
   production: boolean;
   castTags: boolean;
+  imdbUrl: boolean;
+  episodeDetails: boolean;
   playbackPosition: boolean;
 };
 
@@ -27,6 +29,8 @@ const DEFAULT_ENABLED_VARS: EnabledVars = {
   plot: true,
   production: true,
   castTags: true,
+  imdbUrl: true,
+  episodeDetails: true,
   playbackPosition: true,
 };
 
@@ -44,6 +48,8 @@ const VAR_DEFINITIONS: {
   { key: "plot",            label: "Plot",             templateVars: [],                                             description: "Plot summary" },
   { key: "production",      label: "Production",       templateVars: [],                                             description: "Behind-the-scenes / production notes" },
   { key: "castTags",        label: "Cast / Tags",      templateVars: [],                                             description: "Cast members and tags" },
+  { key: "imdbUrl",         label: "IMDb URL",         templateVars: ["{{imdbUrl}}"],                               description: "Canonical IMDb page for this title/episode (if available)" },
+  { key: "episodeDetails",  label: "Episode Details",  templateVars: ["{{season}}", "{{episode}}", "{{episodeCode}}", "{{releaseDate}}"], description: "Season/episode and release date for episodic content" },
   { key: "playbackPosition", label: "Playback Position", templateVars: ["{{timestamp}}", "{{duration}}", "{{percent}}"], description: "Current position, duration, and percentage" },
 ];
 
@@ -69,6 +75,10 @@ type MediaItem = {
   plot?: string;
   makingOf?: string;
   tags?: string[];
+  imdbUrl?: string;
+  season?: number;
+  episode?: number;
+  releaseDate?: string;
   durationSeconds?: number;
 };
 
@@ -160,7 +170,18 @@ function buildMetaContext(
   media: MediaItem,
   playbackPercent: number,
   ev: EnabledVars = DEFAULT_ENABLED_VARS
-): { metaContext: string; timestamp: string; duration: string; pct: number; title: string; year: string } {
+): {
+  metaContext: string;
+  timestamp: string;
+  duration: string;
+  pct: number;
+  title: string;
+  year: string;
+  season: string;
+  episode: string;
+  episodeCode: string;
+  releaseDate: string;
+} {
   const title = ev.title ? (media.title || media.relPath) : "";
   const year = ev.year && media.year ? ` (${media.year})` : "";
   const dur = media.durationSeconds || 7200;
@@ -168,6 +189,13 @@ function buildMetaContext(
   const timestamp = ev.playbackPosition ? formatSeconds(currentSec) : "";
   const duration = ev.playbackPosition ? formatSeconds(dur) : "";
   const pct = ev.playbackPosition ? Math.round(playbackPercent) : 0;
+  const season = ev.episodeDetails && typeof media.season === "number" ? String(media.season) : "";
+  const episode = ev.episodeDetails && typeof media.episode === "number" ? String(media.episode) : "";
+  const releaseDate = ev.episodeDetails && media.releaseDate ? media.releaseDate : "";
+  const episodeCode =
+    season && episode
+      ? `S${season.padStart(2, "0")}E${episode.padStart(2, "0")}`
+      : "";
 
   const lines: string[] = [];
   if (ev.title)           lines.push(`Title: ${title}${year}`);
@@ -177,9 +205,19 @@ function buildMetaContext(
   if (ev.plot && media.plot)          lines.push(`Plot: ${media.plot}`);
   if (ev.production && media.makingOf) lines.push(`Production: ${media.makingOf}`);
   if (ev.castTags && media.tags?.length) lines.push(`Cast/Tags: ${media.tags!.join(", ")}`);
+  if (ev.imdbUrl && media.imdbUrl)    lines.push(`IMDb: ${media.imdbUrl}`);
+  if (ev.episodeDetails) {
+    if (episodeCode) {
+      lines.push(`Episode: ${episodeCode}`);
+    } else {
+      if (season) lines.push(`Season: ${season}`);
+      if (episode) lines.push(`Episode: ${episode}`);
+    }
+    if (releaseDate) lines.push(`Release Date: ${releaseDate}`);
+  }
   if (ev.playbackPosition) lines.push(`\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`);
 
-  return { metaContext: lines.join("\n"), timestamp, duration, pct, title, year };
+  return { metaContext: lines.join("\n"), timestamp, duration, pct, title, year, season, episode, episodeCode, releaseDate };
 }
 
 function interpolatePrompt(
@@ -188,11 +226,16 @@ function interpolatePrompt(
   playbackPercent: number,
   ev: EnabledVars = DEFAULT_ENABLED_VARS
 ): string {
-  const { metaContext, timestamp, duration, pct, title, year } = buildMetaContext(media, playbackPercent, ev);
+  const { metaContext, timestamp, duration, pct, title, year, season, episode, episodeCode, releaseDate } = buildMetaContext(media, playbackPercent, ev);
 
   return template
     .replace(/\{\{title\}\}/g, title)
     .replace(/\{\{year\}\}/g, year)
+    .replace(/\{\{imdbUrl\}\}/g, ev.imdbUrl && media.imdbUrl ? media.imdbUrl : "")
+    .replace(/\{\{season\}\}/g, season)
+    .replace(/\{\{episode\}\}/g, episode)
+    .replace(/\{\{episodeCode\}\}/g, episodeCode)
+    .replace(/\{\{releaseDate\}\}/g, releaseDate)
     .replace(/\{\{timestamp\}\}/g, timestamp)
     .replace(/\{\{duration\}\}/g, duration)
     .replace(/\{\{percent\}\}/g, pct ? String(pct) : "")
@@ -344,6 +387,10 @@ export default function AiTesterPage() {
             plot: (meta.plot as string) || undefined,
             makingOf: (meta.makingOf as string) || undefined,
             tags: (meta.tags as string[]) || undefined,
+            imdbUrl: (meta.imdbUrl as string) || undefined,
+            season: (meta.season as number) || undefined,
+            episode: (meta.episode as number) || undefined,
+            releaseDate: (meta.releaseDate as string) || undefined,
           }))
           .sort((a, b) => {
             const nameA = a.title || a.relPath;

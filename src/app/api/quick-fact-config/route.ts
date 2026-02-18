@@ -16,6 +16,8 @@ export type EnabledVars = {
   plot: boolean;
   production: boolean;
   castTags: boolean;
+  imdbUrl: boolean;
+  episodeDetails: boolean;
   playbackPosition: boolean;
 };
 
@@ -28,6 +30,8 @@ export const DEFAULT_ENABLED_VARS: EnabledVars = {
   plot: true,
   production: true,
   castTags: true,
+  imdbUrl: true,
+  episodeDetails: true,
   playbackPosition: true,
 };
 

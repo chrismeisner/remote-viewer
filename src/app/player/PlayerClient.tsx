@@ -55,6 +55,7 @@ type MediaMetadata = {
   coverLocal?: string | null;
   coverPath?: string | null;
   tags?: string[] | null;
+  imdbUrl?: string | null;
   subtitleFile?: string | null;
 };
 
@@ -136,6 +137,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const [quickFactLoading, setQuickFactLoading] = useState(false);
   const quickFactTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const quickFactTypewriterRef = useRef<NodeJS.Timeout | null>(null);
+  const quickFactRequestIdRef = useRef(0);
   const quickFactConfigRef = useRef<{
     prompt: string;
     maxTokens: number;
@@ -154,10 +156,31 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       plot?: boolean;
       production?: boolean;
       castTags?: boolean;
+      imdbUrl?: boolean;
+      episodeDetails?: boolean;
       playbackPosition?: boolean;
     };
   } | null>(null);
   const autoPlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const clearQuickFactOverlay = useCallback((cancelInFlight = true) => {
+    if (cancelInFlight) {
+      // Invalidate any pending async quick-fact response updates.
+      quickFactRequestIdRef.current += 1;
+    }
+    if (quickFactTimeoutRef.current) {
+      clearTimeout(quickFactTimeoutRef.current);
+      quickFactTimeoutRef.current = null;
+    }
+    if (quickFactTypewriterRef.current) {
+      clearTimeout(quickFactTypewriterRef.current);
+      quickFactTypewriterRef.current = null;
+    }
+    setQuickFactLoading(false);
+    setShowQuickFact(false);
+    setQuickFactDisplay("");
+    setQuickFactText("");
+  }, []);
 
   // Track if we've already checked for changelog updates this session
   const changelogCheckedRef = useRef(false);
@@ -232,7 +255,9 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     setNowPlaying(null);
     lastResolvedAtRef.current = null;
     lastRttMsRef.current = 0;
-  }, [channel]);
+    // Channel changes should immediately hide trivia overlay.
+    clearQuickFactOverlay();
+  }, [channel, clearQuickFactOverlay]);
 
   // Show channel overlay when channel changes
   const triggerChannelOverlay = (channelInfo: ChannelInfo, startLoading = true) => {
@@ -360,6 +385,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     setQuickFactText("");
     setShowQuickFact(true);
     setQuickFactLoading(true);
+    const requestId = ++quickFactRequestIdRef.current;
 
     const cfg = quickFactConfigRef.current;
     const ev = cfg?.enabledVars ?? {};
@@ -371,11 +397,20 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     const showPlot     = ev.plot            !== false;
     const showProd     = ev.production      !== false;
     const showCast     = ev.castTags        !== false;
+    const showImdb     = ev.imdbUrl         !== false;
+    const showEpisode  = ev.episodeDetails  !== false;
     const showPos      = ev.playbackPosition !== false;
 
     const meta = infoMetadata;
     const title = showTitle ? (infoMetadata?.title || nowPlaying.title) : "";
     const year  = showYear && infoMetadata?.year ? ` (${infoMetadata.year})` : "";
+    const season = showEpisode && typeof meta?.season === "number" ? String(meta.season) : "";
+    const episode = showEpisode && typeof meta?.episode === "number" ? String(meta.episode) : "";
+    const episodeCode =
+      season && episode
+        ? `S${season.padStart(2, "0")}E${episode.padStart(2, "0")}`
+        : "";
+    const releaseDate = showEpisode && meta?.releaseDate ? meta.releaseDate : "";
     const timestamp = showPos ? formatOffsetForDisplay(currentPlaybackTime) : "";
     const duration  = showPos ? formatOffsetForDisplay(nowPlaying.durationSeconds) : "";
     const pct = showPos ? Math.round((currentPlaybackTime / nowPlaying.durationSeconds) * 100) : 0;
@@ -388,6 +423,16 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     if (showPlot     && meta?.plot)     metaLines.push(`Plot: ${meta.plot}`);
     if (showProd     && meta?.makingOf) metaLines.push(`Production: ${meta.makingOf}`);
     if (showCast     && meta?.tags?.length) metaLines.push(`Cast/Tags: ${meta.tags!.join(", ")}`);
+    if (showImdb     && meta?.imdbUrl)  metaLines.push(`IMDb: ${meta.imdbUrl}`);
+    if (showEpisode) {
+      if (episodeCode) {
+        metaLines.push(`Episode: ${episodeCode}`);
+      } else {
+        if (season) metaLines.push(`Season: ${season}`);
+        if (episode) metaLines.push(`Episode: ${episode}`);
+      }
+      if (releaseDate) metaLines.push(`Release Date: ${releaseDate}`);
+    }
     if (showPos) metaLines.push(`\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`);
     const metaContext = metaLines.join("\n");
 
@@ -395,6 +440,11 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     const interpolatedPrompt = promptTemplate
       .replace(/\{\{title\}\}/g, title)
       .replace(/\{\{year\}\}/g, year)
+      .replace(/\{\{imdbUrl\}\}/g, showImdb && meta?.imdbUrl ? meta.imdbUrl : "")
+      .replace(/\{\{season\}\}/g, season)
+      .replace(/\{\{episode\}\}/g, episode)
+      .replace(/\{\{episodeCode\}\}/g, episodeCode)
+      .replace(/\{\{releaseDate\}\}/g, releaseDate)
       .replace(/\{\{timestamp\}\}/g, timestamp)
       .replace(/\{\{duration\}\}/g, duration)
       .replace(/\{\{percent\}\}/g, pct ? String(pct) : "")
@@ -415,6 +465,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
           }),
         })
           .then(async (res) => {
+            if (requestId !== quickFactRequestIdRef.current) return;
             if (!res.ok) throw new Error("AI request failed");
             const reader = res.body?.getReader();
             if (!reader) throw new Error("No body");
@@ -435,6 +486,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
                 } catch { /* skip */ }
               }
             }
+            if (requestId !== quickFactRequestIdRef.current) return;
             const cleaned = full
               .replace(/\(\s*\[[^\]]*\]\([^)]*\)\s*\)/g, "")
               .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
@@ -448,10 +500,15 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
             setQuickFactText(cleaned || fallback);
           })
           .catch(() => {
+            if (requestId !== quickFactRequestIdRef.current) return;
             const fallback = title ? `You're watching ${title}${year}` : "Quick fact unavailable";
             setQuickFactText(fallback);
           })
-      .finally(() => setQuickFactLoading(false));
+      .finally(() => {
+        if (requestId === quickFactRequestIdRef.current) {
+          setQuickFactLoading(false);
+        }
+      });
   }, [quickFactLoading, nowPlaying, infoMetadata, currentPlaybackTime]);
 
   // Keep a ref to triggerQuickFact so timeouts always call the latest version
@@ -1090,6 +1147,8 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const switchToChannel = (channelId: string) => {
     const channelInfo = channels.find(c => c.id === channelId);
     if (channelInfo) {
+      clearQuickFactOverlay();
+
       // Refresh quick-fact settings so auto-play toggle changes apply quickly
       fetch(`/api/quick-fact-config?source=${mediaSource}&t=${Date.now()}`)
         .then((r) => r.json())
