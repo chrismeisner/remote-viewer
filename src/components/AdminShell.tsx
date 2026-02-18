@@ -19,6 +19,7 @@ const navLinks = [
   { href: "/admin/styling", label: "Styling" },
   { href: "/admin/agent", label: "Agent" },
   { href: "/admin/services", label: "Services" },
+  { href: "/admin/remote-tester", label: "Remote Tester" },
 ];
 
 export default function AdminShell({ children }: { children: ReactNode }) {
