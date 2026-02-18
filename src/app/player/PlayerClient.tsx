@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MEDIA_SOURCE_EVENT,
   MEDIA_SOURCE_KEY,
@@ -143,7 +143,21 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     holdSeconds: number;
     typingSpeedMs: number;
     widthVw: number;
+    autoPlayOnChannelSwitch?: boolean;
+    autoPlayDelaySeconds?: number;
+    enabledVars?: {
+      title?: boolean;
+      year?: boolean;
+      director?: boolean;
+      type?: boolean;
+      genre?: boolean;
+      plot?: boolean;
+      production?: boolean;
+      castTags?: boolean;
+      playbackPosition?: boolean;
+    };
   } | null>(null);
+  const autoPlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Track if we've already checked for changelog updates this session
   const changelogCheckedRef = useRef(false);
@@ -248,12 +262,25 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const onVideoReady = () => {
     setIsVideoLoading(false);
     
+    // Cancel any pending auto-play from a prior channel switch
+    if (autoPlayTimeoutRef.current) {
+      clearTimeout(autoPlayTimeoutRef.current);
+      autoPlayTimeoutRef.current = null;
+    }
+
     // Now start the overlay hide timeout
     if (overlayTimeoutRef.current) {
       clearTimeout(overlayTimeoutRef.current);
     }
     overlayTimeoutRef.current = setTimeout(() => {
       setShowChannelOverlay(false);
+      // After overlay fades, schedule auto quick-fact if enabled
+      if (quickFactConfigRef.current?.autoPlayOnChannelSwitch) {
+        const delayMs = (quickFactConfigRef.current?.autoPlayDelaySeconds ?? 5) * 1000;
+        autoPlayTimeoutRef.current = setTimeout(() => {
+          triggerQuickFactRef.current();
+        }, delayMs);
+      }
     }, 2000);
   };
 
@@ -308,8 +335,119 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       if (quickFactTypewriterRef.current) {
         clearTimeout(quickFactTypewriterRef.current);
       }
+      if (autoPlayTimeoutRef.current) {
+        clearTimeout(autoPlayTimeoutRef.current);
+      }
     };
   }, []);
+
+  // Extracted quick fact trigger — called by the Q key and by auto-play
+  const triggerQuickFact = useCallback(() => {
+    if (quickFactLoading || !nowPlaying) return;
+
+    if (quickFactTimeoutRef.current) clearTimeout(quickFactTimeoutRef.current);
+    if (quickFactTypewriterRef.current) clearTimeout(quickFactTypewriterRef.current);
+    setQuickFactDisplay("");
+    setQuickFactText("");
+    setShowQuickFact(true);
+    setQuickFactLoading(true);
+
+    const cfg = quickFactConfigRef.current;
+    const ev = cfg?.enabledVars ?? {};
+    const showTitle    = ev.title           !== false;
+    const showYear     = ev.year            !== false;
+    const showDirector = ev.director        !== false;
+    const showType     = ev.type            !== false;
+    const showGenre    = ev.genre           !== false;
+    const showPlot     = ev.plot            !== false;
+    const showProd     = ev.production      !== false;
+    const showCast     = ev.castTags        !== false;
+    const showPos      = ev.playbackPosition !== false;
+
+    const meta = infoMetadata;
+    const title = showTitle ? (infoMetadata?.title || nowPlaying.title) : "";
+    const year  = showYear && infoMetadata?.year ? ` (${infoMetadata.year})` : "";
+    const timestamp = showPos ? formatOffsetForDisplay(currentPlaybackTime) : "";
+    const duration  = showPos ? formatOffsetForDisplay(nowPlaying.durationSeconds) : "";
+    const pct = showPos ? Math.round((currentPlaybackTime / nowPlaying.durationSeconds) * 100) : 0;
+
+    const metaLines: string[] = [];
+    if (showTitle) metaLines.push(`Title: ${title}${year}`);
+    if (showDirector && meta?.director) metaLines.push(`Director: ${meta.director}`);
+    if (showType     && meta?.type)     metaLines.push(`Type: ${meta.type}`);
+    if (showGenre    && meta?.category) metaLines.push(`Genre: ${meta.category}`);
+    if (showPlot     && meta?.plot)     metaLines.push(`Plot: ${meta.plot}`);
+    if (showProd     && meta?.makingOf) metaLines.push(`Production: ${meta.makingOf}`);
+    if (showCast     && meta?.tags?.length) metaLines.push(`Cast/Tags: ${meta.tags!.join(", ")}`);
+    if (showPos) metaLines.push(`\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`);
+    const metaContext = metaLines.join("\n");
+
+    const promptTemplate = cfg?.prompt || `You are a text overlay inside a TV player. The viewer just pressed a button to get a quick fact about what they're watching RIGHT NOW. You know the current playback position — use it to identify approximately what scene or moment is happening and give a fact relevant to THAT part of the film/show. Use web search to look up scene-by-scene breakdowns if needed. Respond with ONLY a single short sentence (max 20 words). Do NOT use markdown, bullet points, or multiple sentences. Format: start with a brief scene/moment reference, then "—" and a relevant fact. Example: "The rooftop chase scene — Rutger Hauer improvised the famous 'tears in rain' monologue"`;
+    const interpolatedPrompt = promptTemplate
+      .replace(/\{\{title\}\}/g, title)
+      .replace(/\{\{year\}\}/g, year)
+      .replace(/\{\{timestamp\}\}/g, timestamp)
+      .replace(/\{\{duration\}\}/g, duration)
+      .replace(/\{\{percent\}\}/g, pct ? String(pct) : "")
+      .replace(/\{\{metaContext\}\}/g, metaContext);
+
+    const userMsg = showPos && timestamp
+      ? `I'm at ${timestamp} of ${duration} (${pct}% through). Give me a fact about what's happening around this point in the film/show.`
+      : "Give me an interesting fact about this media.";
+
+    fetch("/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: userMsg }],
+        model: cfg?.model || "gpt-4o",
+        maxTokens: cfg?.maxTokens || 200,
+            systemNote: metaContext ? `${interpolatedPrompt}\n\nMedia info:\n${metaContext}` : interpolatedPrompt,
+          }),
+        })
+          .then(async (res) => {
+            if (!res.ok) throw new Error("AI request failed");
+            const reader = res.body?.getReader();
+            if (!reader) throw new Error("No body");
+            const decoder = new TextDecoder();
+            let full = "";
+            let buf = "";
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buf += decoder.decode(value, { stream: true });
+              const lines = buf.split("\n");
+              buf = lines.pop() || "";
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                  const evt = JSON.parse(line);
+                  if (evt.type === "text") full += evt.delta;
+                } catch { /* skip */ }
+              }
+            }
+            const cleaned = full
+              .replace(/\(\s*\[[^\]]*\]\([^)]*\)\s*\)/g, "")
+              .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+              .replace(/\(\s*https?:\/\/[^\s)]+\s*\)/g, "")
+              .replace(/https?:\/\/\S+/g, "")
+              .replace(/\*\*/g, "")
+              .replace(/[*_#`]/g, "")
+              .replace(/\s{2,}/g, " ")
+              .trim();
+            const fallback = title ? `You're watching ${title}${year}` : "Quick fact unavailable";
+            setQuickFactText(cleaned || fallback);
+          })
+          .catch(() => {
+            const fallback = title ? `You're watching ${title}${year}` : "Quick fact unavailable";
+            setQuickFactText(fallback);
+          })
+      .finally(() => setQuickFactLoading(false));
+  }, [quickFactLoading, nowPlaying, infoMetadata, currentPlaybackTime]);
+
+  // Keep a ref to triggerQuickFact so timeouts always call the latest version
+  const triggerQuickFactRef = useRef(triggerQuickFact);
+  useEffect(() => { triggerQuickFactRef.current = triggerQuickFact; }, [triggerQuickFact]);
 
   // Track watch duration when user leaves the page
   useEffect(() => {
@@ -943,6 +1081,12 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const switchToChannel = (channelId: string) => {
     const channelInfo = channels.find(c => c.id === channelId);
     if (channelInfo) {
+      // Cancel any pending auto-play quick fact from the previous channel
+      if (autoPlayTimeoutRef.current) {
+        clearTimeout(autoPlayTimeoutRef.current);
+        autoPlayTimeoutRef.current = null;
+      }
+
       // Track watch duration for the video we're leaving (before switching)
       const video = videoRef.current;
       if (nowPlaying && channel && video && video.currentTime > 0) {
@@ -1062,88 +1206,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
 
       if (key === "q") {
         event.preventDefault();
-        if (quickFactLoading || !nowPlaying) return;
-
-        // Clear previous
-        if (quickFactTimeoutRef.current) clearTimeout(quickFactTimeoutRef.current);
-        if (quickFactTypewriterRef.current) clearTimeout(quickFactTypewriterRef.current);
-        setQuickFactDisplay("");
-        setQuickFactText("");
-        setShowQuickFact(true);
-        setQuickFactLoading(true);
-
-        const cfg = quickFactConfigRef.current;
-        const title = infoMetadata?.title || nowPlaying.title;
-        const year = infoMetadata?.year ? ` (${infoMetadata.year})` : "";
-        const meta = infoMetadata;
-        const timestamp = formatOffsetForDisplay(currentPlaybackTime);
-        const duration = formatOffsetForDisplay(nowPlaying.durationSeconds);
-        const pct = Math.round((currentPlaybackTime / nowPlaying.durationSeconds) * 100);
-
-        let metaContext = `Title: ${title}${year}`;
-        if (meta?.director) metaContext += `\nDirector: ${meta.director}`;
-        if (meta?.type) metaContext += `\nType: ${meta.type}`;
-        if (meta?.category) metaContext += `\nGenre: ${meta.category}`;
-        if (meta?.plot) metaContext += `\nPlot: ${meta.plot}`;
-        if (meta?.makingOf) metaContext += `\nProduction: ${meta.makingOf}`;
-        if (meta?.tags?.length) metaContext += `\nCast/Tags: ${meta.tags.join(", ")}`;
-        metaContext += `\n\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`;
-
-        const promptTemplate = cfg?.prompt || `You are a text overlay inside a TV player. The viewer just pressed a button to get a quick fact about what they're watching RIGHT NOW. You know the current playback position — use it to identify approximately what scene or moment is happening and give a fact relevant to THAT part of the film/show. Use web search to look up scene-by-scene breakdowns if needed. Respond with ONLY a single short sentence (max 20 words). Do NOT use markdown, bullet points, or multiple sentences. Format: start with a brief scene/moment reference, then "—" and a relevant fact. Example: "The rooftop chase scene — Rutger Hauer improvised the famous 'tears in rain' monologue"`;
-        const interpolatedPrompt = promptTemplate
-          .replace(/\{\{title\}\}/g, title)
-          .replace(/\{\{year\}\}/g, year)
-          .replace(/\{\{timestamp\}\}/g, timestamp)
-          .replace(/\{\{duration\}\}/g, duration)
-          .replace(/\{\{percent\}\}/g, String(pct))
-          .replace(/\{\{metaContext\}\}/g, metaContext);
-
-        fetch("/api/agent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: [{ role: "user", content: `I'm at ${timestamp} of ${duration} (${pct}% through). Give me a fact about what's happening around this point in the film/show.` }],
-            model: cfg?.model || "gpt-4o",
-            maxTokens: cfg?.maxTokens || 200,
-            systemNote: `${interpolatedPrompt}\n\nMedia info:\n${metaContext}`,
-          }),
-        })
-          .then(async (res) => {
-            if (!res.ok) throw new Error("AI request failed");
-            const reader = res.body?.getReader();
-            if (!reader) throw new Error("No body");
-            const decoder = new TextDecoder();
-            let full = "";
-            let buf = "";
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buf += decoder.decode(value, { stream: true });
-              const lines = buf.split("\n");
-              buf = lines.pop() || "";
-              for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                  const evt = JSON.parse(line);
-                  if (evt.type === "text") full += evt.delta;
-                } catch { /* skip */ }
-              }
-            }
-            const cleaned = full
-              .replace(/\(\s*\[[^\]]*\]\([^)]*\)\s*\)/g, "")
-              .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-              .replace(/\(\s*https?:\/\/[^\s)]+\s*\)/g, "")
-              .replace(/https?:\/\/\S+/g, "")
-              .replace(/\*\*/g, "")
-              .replace(/[*_#`]/g, "")
-              .replace(/\s{2,}/g, " ")
-              .trim();
-            setQuickFactText(cleaned || `You're watching ${title}${year}`);
-          })
-          .catch(() => {
-            setQuickFactText(`You're watching ${title}${year}`);
-          })
-          .finally(() => setQuickFactLoading(false));
+        triggerQuickFact();
         return;
       }
 
@@ -1259,7 +1322,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [channels, channel, muted, volume, channelInputBuffer, showInfoModal, showChatOverlay, quickFactLoading, nowPlaying, mediaSource, infoMetadata, infoMetadata?.subtitleFile]);
+  }, [channels, channel, muted, volume, channelInputBuffer, showInfoModal, showChatOverlay, quickFactLoading, nowPlaying, mediaSource, infoMetadata, infoMetadata?.subtitleFile, triggerQuickFact]);
 
   const resolvedSrc = (np: NowPlaying | null) => np?.src || "";
 

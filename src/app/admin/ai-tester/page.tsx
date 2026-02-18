@@ -6,6 +6,47 @@ import {
   type MediaSource,
 } from "@/constants/media";
 
+type EnabledVars = {
+  title: boolean;
+  year: boolean;
+  director: boolean;
+  type: boolean;
+  genre: boolean;
+  plot: boolean;
+  production: boolean;
+  castTags: boolean;
+  playbackPosition: boolean;
+};
+
+const DEFAULT_ENABLED_VARS: EnabledVars = {
+  title: true,
+  year: true,
+  director: true,
+  type: true,
+  genre: true,
+  plot: true,
+  production: true,
+  castTags: true,
+  playbackPosition: true,
+};
+
+const VAR_DEFINITIONS: {
+  key: keyof EnabledVars;
+  label: string;
+  templateVars: string[];
+  description: string;
+}[] = [
+  { key: "title",           label: "Title",            templateVars: ["{{title}}"],                                  description: "Media title" },
+  { key: "year",            label: "Year",             templateVars: ["{{year}}"],                                   description: "Release year" },
+  { key: "director",        label: "Director",         templateVars: [],                                             description: "Director name" },
+  { key: "type",            label: "Type",             templateVars: [],                                             description: "Media type (film, tv, documentary…)" },
+  { key: "genre",           label: "Genre",            templateVars: [],                                             description: "Genre / category" },
+  { key: "plot",            label: "Plot",             templateVars: [],                                             description: "Plot summary" },
+  { key: "production",      label: "Production",       templateVars: [],                                             description: "Behind-the-scenes / production notes" },
+  { key: "castTags",        label: "Cast / Tags",      templateVars: [],                                             description: "Cast members and tags" },
+  { key: "playbackPosition", label: "Playback Position", templateVars: ["{{timestamp}}", "{{duration}}", "{{percent}}"], description: "Current position, duration, and percentage" },
+];
+
 type QuickFactConfig = {
   prompt: string;
   maxTokens: number;
@@ -13,6 +54,9 @@ type QuickFactConfig = {
   holdSeconds: number;
   typingSpeedMs: number;
   widthVw: number;
+  autoPlayOnChannelSwitch: boolean;
+  autoPlayDelaySeconds: number;
+  enabledVars: EnabledVars;
 };
 
 type MediaItem = {
@@ -73,6 +117,15 @@ const WIDTH_OPTIONS = [
   { value: 100, label: "100vw" },
 ];
 
+const AUTO_PLAY_DELAY_OPTIONS = [
+  { value: 2, label: "2s after channel loads" },
+  { value: 3, label: "3s after channel loads" },
+  { value: 5, label: "5s after channel loads" },
+  { value: 8, label: "8s after channel loads" },
+  { value: 10, label: "10s after channel loads" },
+  { value: 15, label: "15s after channel loads" },
+];
+
 function cleanAiText(text: string): string {
   return text
     .replace(/\(\s*\[[^\]]*\]\([^)]*\)\s*\)/g, "")  // ([label](url)) → remove whole citation
@@ -94,34 +147,46 @@ function formatSeconds(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function buildMetaContext(
+  media: MediaItem,
+  playbackPercent: number,
+  ev: EnabledVars = DEFAULT_ENABLED_VARS
+): { metaContext: string; timestamp: string; duration: string; pct: number; title: string; year: string } {
+  const title = ev.title ? (media.title || media.relPath) : "";
+  const year = ev.year && media.year ? ` (${media.year})` : "";
+  const dur = media.durationSeconds || 7200;
+  const currentSec = Math.round((playbackPercent / 100) * dur);
+  const timestamp = ev.playbackPosition ? formatSeconds(currentSec) : "";
+  const duration = ev.playbackPosition ? formatSeconds(dur) : "";
+  const pct = ev.playbackPosition ? Math.round(playbackPercent) : 0;
+
+  const lines: string[] = [];
+  if (ev.title)           lines.push(`Title: ${title}${year}`);
+  if (ev.director && media.director)  lines.push(`Director: ${media.director}`);
+  if (ev.type && media.type)          lines.push(`Type: ${media.type}`);
+  if (ev.genre && media.category)     lines.push(`Genre: ${media.category}`);
+  if (ev.plot && media.plot)          lines.push(`Plot: ${media.plot}`);
+  if (ev.production && media.makingOf) lines.push(`Production: ${media.makingOf}`);
+  if (ev.castTags && media.tags?.length) lines.push(`Cast/Tags: ${media.tags!.join(", ")}`);
+  if (ev.playbackPosition) lines.push(`\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`);
+
+  return { metaContext: lines.join("\n"), timestamp, duration, pct, title, year };
+}
+
 function interpolatePrompt(
   template: string,
   media: MediaItem,
-  playbackPercent: number
+  playbackPercent: number,
+  ev: EnabledVars = DEFAULT_ENABLED_VARS
 ): string {
-  const title = media.title || media.relPath;
-  const year = media.year ? ` (${media.year})` : "";
-  const dur = media.durationSeconds || 7200;
-  const currentSec = Math.round((playbackPercent / 100) * dur);
-  const timestamp = formatSeconds(currentSec);
-  const duration = formatSeconds(dur);
-  const pct = Math.round(playbackPercent);
-
-  let metaContext = `Title: ${title}${year}`;
-  if (media.director) metaContext += `\nDirector: ${media.director}`;
-  if (media.type) metaContext += `\nType: ${media.type}`;
-  if (media.category) metaContext += `\nGenre: ${media.category}`;
-  if (media.plot) metaContext += `\nPlot: ${media.plot}`;
-  if (media.makingOf) metaContext += `\nProduction: ${media.makingOf}`;
-  if (media.tags?.length) metaContext += `\nCast/Tags: ${media.tags.join(", ")}`;
-  metaContext += `\n\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`;
+  const { metaContext, timestamp, duration, pct, title, year } = buildMetaContext(media, playbackPercent, ev);
 
   return template
     .replace(/\{\{title\}\}/g, title)
     .replace(/\{\{year\}\}/g, year)
     .replace(/\{\{timestamp\}\}/g, timestamp)
     .replace(/\{\{duration\}\}/g, duration)
-    .replace(/\{\{percent\}\}/g, String(pct))
+    .replace(/\{\{percent\}\}/g, pct ? String(pct) : "")
     .replace(/\{\{metaContext\}\}/g, metaContext);
 }
 
@@ -153,6 +218,9 @@ export default function AiTesterPage() {
   const [draftHoldSeconds, setDraftHoldSeconds] = useState(8);
   const [draftTypingSpeedMs, setDraftTypingSpeedMs] = useState(30);
   const [draftWidthVw, setDraftWidthVw] = useState(80);
+  const [draftAutoPlayOnChannelSwitch, setDraftAutoPlayOnChannelSwitch] = useState(false);
+  const [draftAutoPlayDelaySeconds, setDraftAutoPlayDelaySeconds] = useState(5);
+  const [draftEnabledVars, setDraftEnabledVars] = useState<EnabledVars>(DEFAULT_ENABLED_VARS);
 
   // Typewriter preview state
   const [previewDisplay, setPreviewDisplay] = useState<string | null>(null);
@@ -200,6 +268,9 @@ export default function AiTesterPage() {
         setDraftHoldSeconds(data.config.holdSeconds);
         setDraftTypingSpeedMs(data.config.typingSpeedMs ?? 30);
         setDraftWidthVw(data.config.widthVw ?? 80);
+        setDraftAutoPlayOnChannelSwitch(data.config.autoPlayOnChannelSwitch ?? false);
+        setDraftAutoPlayDelaySeconds(data.config.autoPlayDelaySeconds ?? 5);
+        setDraftEnabledVars({ ...DEFAULT_ENABLED_VARS, ...(data.config.enabledVars ?? {}) });
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -255,6 +326,9 @@ export default function AiTesterPage() {
           holdSeconds: draftHoldSeconds,
           typingSpeedMs: draftTypingSpeedMs,
           widthVw: draftWidthVw,
+          autoPlayOnChannelSwitch: draftAutoPlayOnChannelSwitch,
+          autoPlayDelaySeconds: draftAutoPlayDelaySeconds,
+          enabledVars: draftEnabledVars,
         }),
       });
       if (!res.ok) throw new Error("Failed to save");
@@ -267,7 +341,7 @@ export default function AiTesterPage() {
       setSaving(false);
       setTimeout(() => setSaveMessage(null), 4000);
     }
-  }, [draftPrompt, draftMaxTokens, draftModel, draftHoldSeconds, draftTypingSpeedMs, draftWidthVw]);
+  }, [draftPrompt, draftMaxTokens, draftModel, draftHoldSeconds, draftTypingSpeedMs, draftWidthVw, draftAutoPlayOnChannelSwitch, draftAutoPlayDelaySeconds, draftEnabledVars]);
 
   const handleReset = () => {
     if (!defaults) return;
@@ -277,6 +351,9 @@ export default function AiTesterPage() {
     setDraftHoldSeconds(defaults.holdSeconds);
     setDraftTypingSpeedMs(defaults.typingSpeedMs ?? 30);
     setDraftWidthVw(defaults.widthVw ?? 80);
+    setDraftAutoPlayOnChannelSwitch(defaults.autoPlayOnChannelSwitch ?? false);
+    setDraftAutoPlayDelaySeconds(defaults.autoPlayDelaySeconds ?? 5);
+    setDraftEnabledVars({ ...DEFAULT_ENABLED_VARS, ...(defaults.enabledVars ?? {}) });
   };
 
   const handleTest = useCallback(async () => {
@@ -286,34 +363,22 @@ export default function AiTesterPage() {
     setTestResult(null);
     setTestStreaming(true);
 
-    const interpolated = interpolatePrompt(draftPrompt, selectedMediaItem, playbackPercent);
+    const { metaContext, timestamp, duration, pct } = buildMetaContext(selectedMediaItem, playbackPercent, draftEnabledVars);
+    const interpolated = interpolatePrompt(draftPrompt, selectedMediaItem, playbackPercent, draftEnabledVars);
 
-    const title = selectedMediaItem.title || selectedMediaItem.relPath;
-    const year = selectedMediaItem.year ? ` (${selectedMediaItem.year})` : "";
-    const dur = selectedMediaItem.durationSeconds || 7200;
-    const currentSec = Math.round((playbackPercent / 100) * dur);
-    const timestamp = formatSeconds(currentSec);
-    const duration = formatSeconds(dur);
-    const pct = Math.round(playbackPercent);
-
-    let metaContext = `Title: ${title}${year}`;
-    if (selectedMediaItem.director) metaContext += `\nDirector: ${selectedMediaItem.director}`;
-    if (selectedMediaItem.type) metaContext += `\nType: ${selectedMediaItem.type}`;
-    if (selectedMediaItem.category) metaContext += `\nGenre: ${selectedMediaItem.category}`;
-    if (selectedMediaItem.plot) metaContext += `\nPlot: ${selectedMediaItem.plot}`;
-    if (selectedMediaItem.makingOf) metaContext += `\nProduction: ${selectedMediaItem.makingOf}`;
-    if (selectedMediaItem.tags?.length) metaContext += `\nCast/Tags: ${selectedMediaItem.tags.join(", ")}`;
-    metaContext += `\n\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`;
+    const userMsg = draftEnabledVars.playbackPosition && timestamp
+      ? `I'm at ${timestamp} of ${duration} (${pct}% through). Give me a fact about what's happening around this point in the film/show.`
+      : "Give me an interesting fact about this media.";
 
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [{ role: "user", content: `I'm at ${timestamp} of ${duration} (${pct}% through). Give me a fact about what's happening around this point in the film/show.` }],
+          messages: [{ role: "user", content: userMsg }],
           model: draftModel,
           maxTokens: draftMaxTokens,
-          systemNote: `${interpolated}\n\nMedia info:\n${metaContext}`,
+          systemNote: metaContext ? `${interpolated}\n\nMedia info:\n${metaContext}` : interpolated,
         }),
       });
 
@@ -352,7 +417,14 @@ export default function AiTesterPage() {
       setTestRunning(false);
       setTestStreaming(false);
     }
-  }, [selectedMediaItem, testRunning, draftPrompt, draftModel, draftMaxTokens, playbackPercent]);
+  }, [selectedMediaItem, testRunning, draftPrompt, draftModel, draftMaxTokens, playbackPercent, draftEnabledVars]);
+
+  const savedEnabledVars: EnabledVars = { ...DEFAULT_ENABLED_VARS, ...(config?.enabledVars ?? {}) };
+  const enabledVarsDirty = config
+    ? (Object.keys(DEFAULT_ENABLED_VARS) as (keyof EnabledVars)[]).some(
+        (k) => draftEnabledVars[k] !== savedEnabledVars[k]
+      )
+    : false;
 
   const isDirty =
     config &&
@@ -361,7 +433,10 @@ export default function AiTesterPage() {
       draftModel !== config.model ||
       draftHoldSeconds !== config.holdSeconds ||
       draftTypingSpeedMs !== (config.typingSpeedMs ?? 30) ||
-      draftWidthVw !== (config.widthVw ?? 80));
+      draftWidthVw !== (config.widthVw ?? 80) ||
+      draftAutoPlayOnChannelSwitch !== (config.autoPlayOnChannelSwitch ?? false) ||
+      draftAutoPlayDelaySeconds !== (config.autoPlayDelaySeconds ?? 5) ||
+      enabledVarsDirty);
 
   if (loading) {
     return (
@@ -417,6 +492,125 @@ export default function AiTesterPage() {
           {saveMessage}
         </div>
       )}
+
+      {/* Auto-play on Channel Switch */}
+      <div className={`rounded-md border p-4 transition-colors ${
+        draftAutoPlayOnChannelSwitch
+          ? "border-emerald-500/40 bg-emerald-500/10"
+          : "border-white/10 bg-neutral-900/60"
+      }`}>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-sm font-semibold text-neutral-100">Auto-play Quick Fact on Channel Switch</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                draftAutoPlayOnChannelSwitch
+                  ? "bg-emerald-500/20 text-emerald-300"
+                  : "bg-neutral-500/20 text-neutral-400"
+              }`}>
+                {draftAutoPlayOnChannelSwitch ? "ON" : "OFF"}
+              </span>
+            </div>
+            <p className="text-xs text-neutral-400">
+              When enabled, all users will automatically receive a Quick Fact a few seconds after tuning to a new channel — as if Q was pressed automatically.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {draftAutoPlayOnChannelSwitch && (
+              <select
+                value={draftAutoPlayDelaySeconds}
+                onChange={(e) => setDraftAutoPlayDelaySeconds(Number(e.target.value))}
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-neutral-100 outline-none focus:border-emerald-400"
+              >
+                {AUTO_PLAY_DELAY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value} className="bg-neutral-900">
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              role="switch"
+              aria-checked={draftAutoPlayOnChannelSwitch}
+              onClick={() => setDraftAutoPlayOnChannelSwitch((v) => !v)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                draftAutoPlayOnChannelSwitch ? "bg-emerald-500" : "bg-neutral-600"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+                  draftAutoPlayOnChannelSwitch ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Context Variables */}
+      <div className="rounded-md border border-white/10 bg-neutral-900/60 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs font-semibold text-neutral-300">Context Variables</p>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              Choose which metadata fields are sent to the AI. Affects <code className="text-emerald-400/80">{"{{metaContext}}"}</code> and all individual variable substitutions.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setDraftEnabledVars(DEFAULT_ENABLED_VARS)}
+              className="text-xs text-neutral-500 hover:text-neutral-300 transition"
+            >
+              All on
+            </button>
+            <span className="text-neutral-700">·</span>
+            <button
+              onClick={() => setDraftEnabledVars(
+                Object.fromEntries(Object.keys(DEFAULT_ENABLED_VARS).map((k) => [k, false])) as EnabledVars
+              )}
+              className="text-xs text-neutral-500 hover:text-neutral-300 transition"
+            >
+              All off
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {VAR_DEFINITIONS.map(({ key, label, templateVars, description }) => {
+            const enabled = draftEnabledVars[key];
+            return (
+              <label
+                key={key}
+                className={`flex items-start gap-2.5 rounded-md border px-3 py-2.5 cursor-pointer transition-colors ${
+                  enabled
+                    ? "border-emerald-500/30 bg-emerald-500/5"
+                    : "border-white/8 bg-white/3 opacity-60"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) =>
+                    setDraftEnabledVars((prev) => ({ ...prev, [key]: e.target.checked }))
+                  }
+                  className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 rounded border-neutral-600 bg-neutral-800 accent-emerald-500"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-semibold text-neutral-200">{label}</span>
+                    {templateVars.map((v) => (
+                      <code key={v} className="rounded bg-white/8 px-1 py-0.5 text-[10px] text-emerald-400/80 font-mono">{v}</code>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-neutral-500 mt-0.5 leading-snug">{description}</p>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-[11px] text-neutral-600">
+          Disabled fields are excluded from <code className="text-neutral-500">{"{{metaContext}}"}</code> and their template variables are substituted with an empty string.
+        </p>
+      </div>
 
       {/* Settings Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -674,7 +868,7 @@ export default function AiTesterPage() {
           </summary>
           <div className="px-4 pb-4">
             <pre className="whitespace-pre-wrap text-xs text-neutral-500 font-mono leading-relaxed">
-              {interpolatePrompt(draftPrompt, selectedMediaItem, playbackPercent)}
+              {interpolatePrompt(draftPrompt, selectedMediaItem, playbackPercent, draftEnabledVars)}
             </pre>
           </div>
         </details>

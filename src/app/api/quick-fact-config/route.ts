@@ -4,6 +4,30 @@ import path from "node:path";
 
 const CONFIG_PATH = path.join(process.cwd(), "data", "local", "quick-fact-config.json");
 
+export type EnabledVars = {
+  title: boolean;
+  year: boolean;
+  director: boolean;
+  type: boolean;
+  genre: boolean;
+  plot: boolean;
+  production: boolean;
+  castTags: boolean;
+  playbackPosition: boolean;
+};
+
+export const DEFAULT_ENABLED_VARS: EnabledVars = {
+  title: true,
+  year: true,
+  director: true,
+  type: true,
+  genre: true,
+  plot: true,
+  production: true,
+  castTags: true,
+  playbackPosition: true,
+};
+
 export type QuickFactConfig = {
   prompt: string;
   maxTokens: number;
@@ -11,6 +35,9 @@ export type QuickFactConfig = {
   holdSeconds: number;
   typingSpeedMs: number;
   widthVw: number;
+  autoPlayOnChannelSwitch: boolean;
+  autoPlayDelaySeconds: number;
+  enabledVars: EnabledVars;
 };
 
 const DEFAULTS: QuickFactConfig = {
@@ -20,6 +47,9 @@ const DEFAULTS: QuickFactConfig = {
   holdSeconds: 8,
   typingSpeedMs: 30,
   widthVw: 80,
+  autoPlayOnChannelSwitch: false,
+  autoPlayDelaySeconds: 5,
+  enabledVars: DEFAULT_ENABLED_VARS,
 };
 
 async function loadConfig(): Promise<QuickFactConfig> {
@@ -53,6 +83,11 @@ export async function PUT(request: Request) {
       holdSeconds: typeof body.holdSeconds === "number" ? body.holdSeconds : current.holdSeconds,
       typingSpeedMs: typeof body.typingSpeedMs === "number" ? body.typingSpeedMs : current.typingSpeedMs,
       widthVw: typeof body.widthVw === "number" ? body.widthVw : current.widthVw,
+      autoPlayOnChannelSwitch: typeof body.autoPlayOnChannelSwitch === "boolean" ? body.autoPlayOnChannelSwitch : current.autoPlayOnChannelSwitch,
+      autoPlayDelaySeconds: typeof body.autoPlayDelaySeconds === "number" ? body.autoPlayDelaySeconds : current.autoPlayDelaySeconds,
+      enabledVars: body.enabledVars && typeof body.enabledVars === "object"
+        ? { ...DEFAULT_ENABLED_VARS, ...body.enabledVars }
+        : current.enabledVars,
     };
     await saveConfig(updated);
     return NextResponse.json({ config: updated });
