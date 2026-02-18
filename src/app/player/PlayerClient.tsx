@@ -278,7 +278,16 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       if (quickFactConfigRef.current?.autoPlayOnChannelSwitch) {
         const delayMs = (quickFactConfigRef.current?.autoPlayDelaySeconds ?? 5) * 1000;
         autoPlayTimeoutRef.current = setTimeout(() => {
-          triggerQuickFactRef.current();
+          // Re-read config at fire time so admin toggle changes are respected
+          fetch(`/api/quick-fact-config?t=${Date.now()}`)
+            .then((r) => r.json())
+            .then((data) => {
+              quickFactConfigRef.current = data.config;
+              if (data.config?.autoPlayOnChannelSwitch) {
+                triggerQuickFactRef.current();
+              }
+            })
+            .catch(() => {});
         }, delayMs);
       }
     }, 2000);
@@ -1081,6 +1090,12 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const switchToChannel = (channelId: string) => {
     const channelInfo = channels.find(c => c.id === channelId);
     if (channelInfo) {
+      // Refresh quick-fact settings so auto-play toggle changes apply quickly
+      fetch(`/api/quick-fact-config?t=${Date.now()}`)
+        .then((r) => r.json())
+        .then((data) => { quickFactConfigRef.current = data.config; })
+        .catch(() => {});
+
       // Cancel any pending auto-play quick fact from the previous channel
       if (autoPlayTimeoutRef.current) {
         clearTimeout(autoPlayTimeoutRef.current);
