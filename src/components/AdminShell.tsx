@@ -18,6 +18,7 @@ const navLinks = [
   { href: "/admin/ftp-test", label: "FTP Test" },
   { href: "/admin/styling", label: "Styling" },
   { href: "/admin/agent", label: "Agent" },
+  { href: "/admin/ai-tester", label: "AI Tester" },
   { href: "/admin/services", label: "Services" },
   { href: "/admin/remote-tester", label: "Remote Tester" },
 ];

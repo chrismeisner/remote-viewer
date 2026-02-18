@@ -9,6 +9,7 @@ import {
 } from "@/constants/media";
 import { Modal, ModalTitle, ModalFooter, ModalButton } from "@/components/Modal";
 import { ChangelogModal } from "@/components/ChangelogModal";
+import PlayerChatOverlay from "@/components/PlayerChatOverlay";
 import {
   trackChannelSelect,
   trackVideoStart,
@@ -109,6 +110,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const [showChangelog, setShowChangelog] = useState(false);
   const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showChatOverlay, setShowChatOverlay] = useState(false);
   const [infoMetadata, setInfoMetadata] = useState<MediaMetadata | null>(null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
@@ -127,6 +129,20 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const [overlayChannel, setOverlayChannel] = useState<ChannelInfo | null>(null);
   const overlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Quick fact overlay state (AI-generated, typewriter style)
+  const [quickFactText, setQuickFactText] = useState("");
+  const [quickFactDisplay, setQuickFactDisplay] = useState("");
+  const [showQuickFact, setShowQuickFact] = useState(false);
+  const [quickFactLoading, setQuickFactLoading] = useState(false);
+  const quickFactTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const quickFactTypewriterRef = useRef<NodeJS.Timeout | null>(null);
+  const quickFactConfigRef = useRef<{
+    prompt: string;
+    maxTokens: number;
+    model: string;
+    holdSeconds: number;
+  } | null>(null);
+
   // Track if we've already checked for changelog updates this session
   const changelogCheckedRef = useRef(false);
   
@@ -239,6 +255,38 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     }, 2000);
   };
 
+  // Load quick fact config on mount
+  useEffect(() => {
+    fetch(`/api/quick-fact-config?t=${Date.now()}`)
+      .then((r) => r.json())
+      .then((data) => { quickFactConfigRef.current = data.config; })
+      .catch(() => {});
+  }, []);
+
+  // Typewriter effect for quick fact
+  useEffect(() => {
+    if (!quickFactText) return;
+    if (quickFactTypewriterRef.current) clearTimeout(quickFactTypewriterRef.current);
+    setQuickFactDisplay("");
+    const holdMs = (quickFactConfigRef.current?.holdSeconds ?? 8) * 1000;
+    let i = 0;
+    const tick = () => {
+      i++;
+      setQuickFactDisplay(quickFactText.slice(0, i));
+      if (i < quickFactText.length) {
+        quickFactTypewriterRef.current = setTimeout(tick, 30);
+      } else {
+        quickFactTimeoutRef.current = setTimeout(() => {
+          setShowQuickFact(false);
+        }, holdMs);
+      }
+    };
+    tick();
+    return () => {
+      if (quickFactTypewriterRef.current) clearTimeout(quickFactTypewriterRef.current);
+    };
+  }, [quickFactText]);
+
   // Cleanup overlay timeout on unmount
   useEffect(() => {
     return () => {
@@ -250,6 +298,12 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       }
       if (channelInputTimeoutRef.current) {
         clearTimeout(channelInputTimeoutRef.current);
+      }
+      if (quickFactTimeoutRef.current) {
+        clearTimeout(quickFactTimeoutRef.current);
+      }
+      if (quickFactTypewriterRef.current) {
+        clearTimeout(quickFactTypewriterRef.current);
       }
     };
   }, []);
@@ -939,6 +993,17 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         tag === "input" ||
         tag === "textarea" ||
         (target as HTMLElement | null)?.isContentEditable;
+
+      // Escape always closes the top-most open overlay, even while typing
+      if (event.key === "Escape" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        if (showChatOverlay) { setShowChatOverlay(false); return; }
+        if (showInfoModal) { setShowInfoModal(false); return; }
+        if (showWelcome) { setShowWelcome(false); return; }
+        if (showChannelInfo) { setShowChannelInfo(false); return; }
+        return;
+      }
+
       if (isTyping) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
 
@@ -986,6 +1051,91 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         return;
       }
 
+      if (key === "a") {
+        event.preventDefault();
+        setShowChatOverlay((prev) => !prev);
+        return;
+      }
+
+      if (key === "q") {
+        event.preventDefault();
+        if (quickFactLoading || !nowPlaying) return;
+
+        // Clear previous
+        if (quickFactTimeoutRef.current) clearTimeout(quickFactTimeoutRef.current);
+        if (quickFactTypewriterRef.current) clearTimeout(quickFactTypewriterRef.current);
+        setQuickFactDisplay("");
+        setQuickFactText("");
+        setShowQuickFact(true);
+        setQuickFactLoading(true);
+
+        const cfg = quickFactConfigRef.current;
+        const title = infoMetadata?.title || nowPlaying.title;
+        const year = infoMetadata?.year ? ` (${infoMetadata.year})` : "";
+        const meta = infoMetadata;
+        const timestamp = formatOffsetForDisplay(currentPlaybackTime);
+        const duration = formatOffsetForDisplay(nowPlaying.durationSeconds);
+        const pct = Math.round((currentPlaybackTime / nowPlaying.durationSeconds) * 100);
+
+        let metaContext = `Title: ${title}${year}`;
+        if (meta?.director) metaContext += `\nDirector: ${meta.director}`;
+        if (meta?.type) metaContext += `\nType: ${meta.type}`;
+        if (meta?.category) metaContext += `\nGenre: ${meta.category}`;
+        if (meta?.plot) metaContext += `\nPlot: ${meta.plot}`;
+        if (meta?.makingOf) metaContext += `\nProduction: ${meta.makingOf}`;
+        if (meta?.tags?.length) metaContext += `\nCast/Tags: ${meta.tags.join(", ")}`;
+        metaContext += `\n\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`;
+
+        const promptTemplate = cfg?.prompt || `You are a text overlay inside a TV player. The viewer just pressed a button to get a quick fact about what they're watching RIGHT NOW. You know the current playback position — use it to identify approximately what scene or moment is happening and give a fact relevant to THAT part of the film/show. Use web search to look up scene-by-scene breakdowns if needed. Respond with ONLY a single short sentence (max 20 words). Do NOT use markdown, bullet points, or multiple sentences. Format: start with a brief scene/moment reference, then "—" and a relevant fact. Example: "The rooftop chase scene — Rutger Hauer improvised the famous 'tears in rain' monologue"`;
+        const interpolatedPrompt = promptTemplate
+          .replace(/\{\{title\}\}/g, title)
+          .replace(/\{\{year\}\}/g, year)
+          .replace(/\{\{timestamp\}\}/g, timestamp)
+          .replace(/\{\{duration\}\}/g, duration)
+          .replace(/\{\{percent\}\}/g, String(pct))
+          .replace(/\{\{metaContext\}\}/g, metaContext);
+
+        fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: `I'm at ${timestamp} of ${duration} (${pct}% through). Give me a fact about what's happening around this point in the film/show.` }],
+            model: cfg?.model || "gpt-4o",
+            maxTokens: cfg?.maxTokens || 200,
+            systemNote: `${interpolatedPrompt}\n\nMedia info:\n${metaContext}`,
+          }),
+        })
+          .then(async (res) => {
+            if (!res.ok) throw new Error("AI request failed");
+            const reader = res.body?.getReader();
+            if (!reader) throw new Error("No body");
+            const decoder = new TextDecoder();
+            let full = "";
+            let buf = "";
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buf += decoder.decode(value, { stream: true });
+              const lines = buf.split("\n");
+              buf = lines.pop() || "";
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                  const evt = JSON.parse(line);
+                  if (evt.type === "text") full += evt.delta;
+                } catch { /* skip */ }
+              }
+            }
+            const cleaned = full.replace(/\*\*/g, "").replace(/[*_#`]/g, "").trim();
+            setQuickFactText(cleaned || `You're watching ${title}${year}`);
+          })
+          .catch(() => {
+            setQuickFactText(`You're watching ${title}${year}`);
+          })
+          .finally(() => setQuickFactLoading(false));
+        return;
+      }
+
       if (key === "/") {
         event.preventDefault();
         setShowWelcome(true);
@@ -1004,13 +1154,6 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         return;
       }
 
-      if (key === "escape") {
-        event.preventDefault();
-        if (showWelcome) setShowWelcome(false);
-        if (showChannelInfo) setShowChannelInfo(false);
-        if (showInfoModal) setShowInfoModal(false);
-        return;
-      }
 
       if (key === "arrowup") {
         event.preventDefault();
@@ -1105,7 +1248,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [channels, channel, muted, volume, channelInputBuffer, showInfoModal, nowPlaying, mediaSource, infoMetadata?.subtitleFile]);
+  }, [channels, channel, muted, volume, channelInputBuffer, showInfoModal, showChatOverlay, quickFactLoading, nowPlaying, mediaSource, infoMetadata, infoMetadata?.subtitleFile]);
 
   const resolvedSrc = (np: NowPlaying | null) => np?.src || "";
 
@@ -1403,6 +1546,16 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         >
           Info
         </button>
+        <button
+          onClick={() => setShowChatOverlay((prev) => !prev)}
+          className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
+            showChatOverlay
+              ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+              : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
+          }`}
+        >
+          AI
+        </button>
       </div>
       <button
         onClick={channelUp}
@@ -1508,6 +1661,28 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
                   {/* Blinking cursor while loading or no programming */}
                   {(isVideoLoading || (channel && !nowPlaying)) && (
                     <span className="channel-cursor">▌</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick fact AI overlay */}
+              <div
+                className={`absolute top-4 left-4 right-4 z-10 transition-opacity duration-500 ${
+                  showQuickFact && !showChannelOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
+                }`}
+              >
+                <div className="channel-overlay font-mono" style={{ flexDirection: "column", alignItems: "flex-start", gap: 0, maxWidth: "80%" }}>
+                  {quickFactLoading && !quickFactDisplay ? (
+                    <span className="channel-name" style={{ fontSize: 20 }}>
+                      <span className="channel-cursor">▌</span>
+                    </span>
+                  ) : (
+                    <span className="channel-name" style={{ fontSize: 20, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
+                      {quickFactDisplay}
+                      {quickFactDisplay.length < quickFactText.length && (
+                        <span className="channel-cursor">▌</span>
+                      )}
+                    </span>
                   )}
                 </div>
               </div>
@@ -1668,6 +1843,13 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         open={showChangelog} 
         onClose={closeChangelog}
         entries={changelogEntries}
+      />
+
+      <PlayerChatOverlay
+        open={showChatOverlay}
+        onClose={() => setShowChatOverlay(false)}
+        nowPlaying={nowPlaying}
+        metadata={infoMetadata}
       />
 
       <Modal open={showInfoModal} onClose={closeInfoModal} maxWidth="max-w-2xl">
