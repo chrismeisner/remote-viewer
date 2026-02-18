@@ -92,6 +92,16 @@ type ScanReport = {
   message: string;
 };
 
+type ScanProgress = {
+  phase: "loading-cache" | "connecting" | "listing" | "probing" | "uploading" | "complete" | "error";
+  message: string;
+  current?: number;
+  total?: number;
+  probing?: number;
+  probeTotal?: number;
+  currentFile?: string;
+};
+
 /* ─────────────────────────────────────────────────────────────────────────────
    Media Detail Modal Component
    ───────────────────────────────────────────────────────────────────────────── */
@@ -3728,6 +3738,139 @@ const CoverImageSection = forwardRef<CoverSectionHandle, {
 });
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Scan Progress Modal Component (blocks UI during scan)
+   ───────────────────────────────────────────────────────────────────────────── */
+function ScanProgressModal({ progress }: { progress: ScanProgress }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const t0 = Date.now();
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const phaseLabels: Record<ScanProgress["phase"], string> = {
+    "loading-cache": "Loading Cache",
+    connecting: "Connecting",
+    listing: "Listing Files",
+    probing: "Analyzing Files",
+    uploading: "Uploading Index",
+    complete: "Complete",
+    error: "Error",
+  };
+
+  const phaseOrder: ScanProgress["phase"][] = [
+    "loading-cache",
+    "connecting",
+    "listing",
+    "probing",
+    "uploading",
+  ];
+
+  const currentIdx = phaseOrder.indexOf(progress.phase);
+
+  const pct =
+    progress.phase === "probing" && progress.total && progress.total > 0
+      ? Math.round((progress.current! / progress.total) * 100)
+      : undefined;
+
+  const fmtElapsed = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm">
+      <div className="w-full max-w-md mx-4 rounded-2xl border border-white/10 bg-neutral-900 p-6 shadow-2xl shadow-black/60">
+        <div className="mb-5 flex items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+          <div>
+            <h3 className="text-sm font-semibold text-white">Scanning Remote Media</h3>
+            <p className="text-xs text-neutral-400">
+              Elapsed: {fmtElapsed(elapsed)}
+            </p>
+          </div>
+        </div>
+
+        {/* Phase steps */}
+        <div className="mb-5 space-y-1.5">
+          {phaseOrder.map((p, i) => {
+            const done = i < currentIdx;
+            const active = i === currentIdx;
+            return (
+              <div key={p} className="flex items-center gap-2 text-xs">
+                {done ? (
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-green-500/20 text-green-400">
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </span>
+                ) : active ? (
+                  <span className="flex h-4 w-4 items-center justify-center">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+                  </span>
+                ) : (
+                  <span className="flex h-4 w-4 items-center justify-center">
+                    <span className="h-1.5 w-1.5 rounded-full bg-neutral-600" />
+                  </span>
+                )}
+                <span
+                  className={
+                    done
+                      ? "text-green-400/70"
+                      : active
+                        ? "font-medium text-white"
+                        : "text-neutral-500"
+                  }
+                >
+                  {phaseLabels[p]}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Progress bar (during probing phase) */}
+        {progress.phase === "probing" && pct !== undefined && (
+          <div className="mb-3">
+            <div className="mb-1.5 flex items-center justify-between text-xs text-neutral-400">
+              <span>{progress.current} / {progress.total} files</span>
+              <span>{pct}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-700">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all duration-300 ease-out"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            {progress.probeTotal !== undefined && progress.probeTotal > 0 && (
+              <p className="mt-1 text-[10px] text-neutral-500">
+                {progress.probing} of {progress.probeTotal} files probed (rest cached)
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Current status message */}
+        <p className="text-xs text-neutral-300">{progress.message}</p>
+
+        {/* Current file being processed */}
+        {progress.currentFile && (
+          <p className="mt-1 truncate text-[10px] text-neutral-500" title={progress.currentFile}>
+            {progress.currentFile}
+          </p>
+        )}
+
+        <p className="mt-4 text-center text-[10px] text-neutral-600">
+          Please wait — do not navigate away
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    Scan Report Modal Component
    ───────────────────────────────────────────────────────────────────────────── */
 function ScanReportModal({
@@ -4085,6 +4228,7 @@ export default function MediaAdminPage() {
   const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
   const [mediaRefreshToken, setMediaRefreshToken] = useState(0);
   const [scanningRemote, setScanningRemote] = useState(false);
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const [scanReport, setScanReport] = useState<ScanReport | null>(null);
   const [hideUnsupported, setHideUnsupported] = useState(false);
@@ -4771,28 +4915,75 @@ export default function MediaAdminPage() {
 
   const scanRemoteMedia = async () => {
     setScanningRemote(true);
+    setScanProgress({ phase: "loading-cache", message: "Starting scan…" });
     setMessage(null);
     setError(null);
+
     try {
       const res = await fetch("/api/media-index/scan-remote", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.message || "Scan failed");
+
+      if (!res.ok || !res.body) {
+        const text = await res.text();
+        let parsed: { message?: string } | undefined;
+        try { parsed = JSON.parse(text); } catch { /* not JSON */ }
+        throw new Error(parsed?.message || `Scan failed (HTTP ${res.status})`);
       }
-      
-      // Show scan report modal if we have detailed results
-      if (data.fileResults && data.stats) {
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      type ScanResultData = {
+        success?: boolean;
+        message?: string;
+        count?: number;
+        fileResults?: FileResult[];
+        stats?: ScanStats;
+      };
+      let finalData: ScanResultData | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const json = line.slice(6);
+          try {
+            const evt = JSON.parse(json) as Record<string, unknown>;
+            if (evt.phase === "complete") {
+              finalData = evt.data as ScanResultData;
+            } else if (evt.phase === "error") {
+              throw new Error((evt.message as string) || "Scan failed");
+            } else {
+              setScanProgress(evt as unknown as ScanProgress);
+            }
+          } catch (parseErr) {
+            if (parseErr instanceof Error && parseErr.message.startsWith("Scan failed")) throw parseErr;
+          }
+        }
+      }
+
+      setScanProgress(null);
+
+      if (finalData?.fileResults && finalData.stats) {
         setScanReport({
-          fileResults: data.fileResults,
-          stats: data.stats,
-          message: data.message || `Scanned ${data.count} files`,
+          fileResults: finalData.fileResults,
+          stats: finalData.stats,
+          message: finalData.message || `Scanned ${finalData.count} files`,
         });
+      } else if (finalData) {
+        setMessage(finalData.message || `Scanned remote and found ${finalData.count} files`);
       } else {
-        setMessage(data.message || `Scanned remote and found ${data.count} files`);
+        throw new Error("Scan completed without returning data");
       }
-      
+
       refreshMediaList();
     } catch (err) {
+      setScanProgress(null);
       setError(err instanceof Error ? err.message : "Scan failed");
     } finally {
       setScanningRemote(false);
@@ -5524,6 +5715,10 @@ export default function MediaAdminPage() {
             {fnameTooltip.text}
           </div>
         </div>
+      )}
+
+      {scanProgress && (
+        <ScanProgressModal progress={scanProgress} />
       )}
 
       {scanReport && (

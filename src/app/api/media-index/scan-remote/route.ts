@@ -433,299 +433,305 @@ export async function POST() {
     );
   }
 
-  try {
-    // Fetch existing remote media-index.json to get cached data
-    // This allows incremental scanning: we only probe files that are new or changed
-    type CachedItem = {
-      durationSeconds: number;
-      size?: number;
-      modifiedAt?: string;
-      probeFailedAt?: string;
-      dateAdded?: string;
-      videoCodec?: string;
-      audioCodec?: string;
-    };
-    const existingItems = new Map<string, CachedItem>();
-    try {
-      const manifestUrl = REMOTE_MEDIA_BASE.endsWith("/")
-        ? `${REMOTE_MEDIA_BASE}media-index.json`
-        : `${REMOTE_MEDIA_BASE}/media-index.json`;
-      const res = await fetch(manifestUrl, { cache: "no-store" });
-      if (res.ok) {
-        const existingIndex = await res.json() as { items?: MediaItem[] };
-        for (const item of existingIndex.items || []) {
-          existingItems.set(item.relPath, {
-            durationSeconds: item.durationSeconds,
-            size: item.size,
-            modifiedAt: item.modifiedAt,
-            probeFailedAt: item.probeFailedAt,
-            dateAdded: item.dateAdded,
-            videoCodec: item.videoCodec,
-            audioCodec: item.audioCodec,
-          });
-        }
-        console.log(`Loaded ${existingItems.size} existing items from remote index`);
-      }
-    } catch (err) {
-      console.warn("Could not fetch existing remote index, will probe all files:", err);
-    }
+  const encoder = new TextEncoder();
 
-    // Connect to FTP and list files recursively
-    // Use shorter timeout to stay within Heroku's 30s request limit
-    const client = new Client(10000);
-    let mediaFiles: FtpFileInfo[] = [];
-    
-    try {
-      await client.access({ host, port, user, password, secure });
-      
-      // Navigate to the media directory (parent of remotePath which is media-index.json)
-      const remoteDir = path.posix.dirname(remotePath);
-      if (remoteDir && remoteDir !== ".") {
-        await client.cd(remoteDir);
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(event: Record<string, unknown>) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       }
-      
-      // Recursively list all media files
-      mediaFiles = await listMediaFilesRecursive(client, "");
-    } finally {
-      client.close();
-    }
-    
-    // How long to wait before retrying a failed probe (24 hours)
-    const PROBE_RETRY_HOURS = 24;
-    
-    /**
-     * Check if the file's size/mtime has changed from cached version
-     */
-    function hasFileChanged(f: FtpFileInfo, cached: CachedItem): boolean {
-      // If we have size info, compare it
-      if (cached.size !== undefined && cached.size !== f.size) {
-        return true; // Size changed
-      }
-      
-      // If we have modifiedAt info, compare it
-      if (cached.modifiedAt && f.modifiedAt && cached.modifiedAt !== f.modifiedAt) {
-        return true; // Modified time changed
-      }
-      
-      return false;
-    }
-    
-    /**
-     * Determine if we should skip probing this file.
-     * Skip if:
-     * - File exists in cache with valid duration > 0 AND hasn't changed
-     * - OR file exists in cache with recent probe failure AND hasn't changed
-     */
-    function shouldSkipProbe(f: FtpFileInfo, cached: CachedItem | undefined): { skip: boolean; reason: string } {
-      if (!cached) {
-        return { skip: false, reason: "new" };
-      }
-      
-      const fileChanged = hasFileChanged(f, cached);
-      
-      // If file has valid duration and hasn't changed, skip
-      if (cached.durationSeconds > 0 && !fileChanged) {
-        return { skip: true, reason: "unchanged" };
-      }
-      
-      // If probe recently failed and file hasn't changed, skip retry
-      if (cached.probeFailedAt && !fileChanged) {
-        const failedAt = new Date(cached.probeFailedAt);
-        const hoursSinceFailure = (Date.now() - failedAt.getTime()) / (1000 * 60 * 60);
-        if (hoursSinceFailure < PROBE_RETRY_HOURS) {
-          return { skip: true, reason: "recent-failure" };
-        }
-        // Enough time has passed, retry
-        return { skip: false, reason: "retry-after-wait" };
-      }
-      
-      // File changed or no recent failure, probe it
-      return { skip: false, reason: fileChanged ? "changed" : "no-duration" };
-    }
 
-    // Build base URL for probing remote files
-    const baseUrl = REMOTE_MEDIA_BASE.endsWith("/")
-      ? REMOTE_MEDIA_BASE
-      : REMOTE_MEDIA_BASE + "/";
+      try {
+        // Phase 1: Load existing remote index
+        send({ phase: "loading-cache", message: "Loading existing media index…" });
 
-    // Probe each file for duration (in parallel with concurrency limit)
-    // IMPORTANT: Heroku has a 30-second request timeout, so we must be fast
-    // Using incremental scanning: only probe new or changed files
-    const items: MediaItem[] = [];
-    const fileResults: FileResult[] = [];
-    const CONCURRENCY = 2; // Lower concurrency since moov fallback makes multiple requests
-    
-    // Track stats
-    let unchangedCount = 0;
-    let newOrChangedCount = 0;
-    let skippedFailureCount = 0;
-    
-    for (let i = 0; i < mediaFiles.length; i += CONCURRENCY) {
-      const batch = mediaFiles.slice(i, i + CONCURRENCY);
-      const batchResults = await Promise.all(
-        batch.map(async (f) => {
-          const format = getFormat(f.name);
-          const supported = isSupported(format);
-          const cached = existingItems.get(f.relPath);
-          
-          let durationSeconds: number;
-          let videoCodec: string | undefined;
-          let audioCodec: string | undefined;
-          let probeSuccess: boolean;
-          let probeError: string | undefined;
-          let wasReprobed = false;
-          let wasCached = false;
-          let probeFailedAt: string | undefined;
-          
-          const { skip, reason } = shouldSkipProbe(f, cached);
-          
-          if (skip) {
-            // Skip probing - use cached data
-            durationSeconds = cached?.durationSeconds ?? 0;
-            videoCodec = cached?.videoCodec;
-            audioCodec = cached?.audioCodec;
-            probeSuccess = cached?.durationSeconds ? cached.durationSeconds > 0 : false;
-            wasCached = true;
-            // Preserve the probeFailedAt timestamp if it exists
-            probeFailedAt = cached?.probeFailedAt;
-            
-            if (reason === "recent-failure") {
-              skippedFailureCount++;
-              probeError = "Skipped - probe failed recently, will retry in 24h";
-            } else {
-              unchangedCount++;
+        type CachedItem = {
+          durationSeconds: number;
+          size?: number;
+          modifiedAt?: string;
+          probeFailedAt?: string;
+          dateAdded?: string;
+          videoCodec?: string;
+          audioCodec?: string;
+        };
+        const existingItems = new Map<string, CachedItem>();
+        try {
+          const manifestUrl = REMOTE_MEDIA_BASE.endsWith("/")
+            ? `${REMOTE_MEDIA_BASE}media-index.json`
+            : `${REMOTE_MEDIA_BASE}/media-index.json`;
+          const res = await fetch(manifestUrl, { cache: "no-store" });
+          if (res.ok) {
+            const existingIndex = await res.json() as { items?: MediaItem[] };
+            for (const item of existingIndex.items || []) {
+              existingItems.set(item.relPath, {
+                durationSeconds: item.durationSeconds,
+                size: item.size,
+                modifiedAt: item.modifiedAt,
+                probeFailedAt: item.probeFailedAt,
+                dateAdded: item.dateAdded,
+                videoCodec: item.videoCodec,
+                audioCodec: item.audioCodec,
+              });
             }
-          } else {
-            // Need to probe this file
-            newOrChangedCount++;
-            
-            // Encode each path segment separately to handle subdirectories correctly
-            const pathParts = f.relPath.split('/');
-            const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
-            const fileUrl = baseUrl + encodedPath;
-            console.log(`Probing (${reason}) file: ${fileUrl}`);
-            const probeResult = await probeRemoteDuration(fileUrl);
-            durationSeconds = probeResult.durationSeconds;
-            videoCodec = probeResult.videoCodec;
-            audioCodec = probeResult.audioCodec;
-            probeSuccess = probeResult.success;
-            probeError = probeResult.error;
-            wasReprobed = true;
-            
-            // If probe failed, record the timestamp so we don't retry too soon
-            if (!probeSuccess) {
-              probeFailedAt = new Date().toISOString();
-            }
+            console.log(`Loaded ${existingItems.size} existing items from remote index`);
           }
-          
-          // Record detailed file result
-          fileResults.push({
-            file: f.relPath,
-            durationSeconds,
-            format,
-            supported,
-            probeSuccess,
-            probeError,
-            wasReprobed,
-            wasCached,
+        } catch (err) {
+          console.warn("Could not fetch existing remote index, will probe all files:", err);
+        }
+
+        send({ phase: "loading-cache", message: `Loaded ${existingItems.size} cached entries` });
+
+        // Phase 2: Connect to FTP and list files
+        send({ phase: "connecting", message: "Connecting to FTP server…" });
+
+        const client = new Client(10000);
+        let mediaFiles: FtpFileInfo[] = [];
+
+        try {
+          await client.access({ host, port, user, password, secure });
+
+          const remoteDir = path.posix.dirname(remotePath);
+          if (remoteDir && remoteDir !== ".") {
+            await client.cd(remoteDir);
+          }
+
+          send({ phase: "listing", message: "Listing remote files…" });
+
+          mediaFiles = await listMediaFilesRecursive(client, "");
+        } finally {
+          client.close();
+        }
+
+        send({ phase: "listing", message: `Found ${mediaFiles.length} media files` });
+
+        // Phase 3: Probe files
+        const PROBE_RETRY_HOURS = 24;
+
+        function hasFileChanged(f: FtpFileInfo, cached: CachedItem): boolean {
+          if (cached.size !== undefined && cached.size !== f.size) return true;
+          if (cached.modifiedAt && f.modifiedAt && cached.modifiedAt !== f.modifiedAt) return true;
+          return false;
+        }
+
+        function shouldSkipProbe(f: FtpFileInfo, cached: CachedItem | undefined): { skip: boolean; reason: string } {
+          if (!cached) return { skip: false, reason: "new" };
+          const fileChanged = hasFileChanged(f, cached);
+          if (cached.durationSeconds > 0 && !fileChanged) return { skip: true, reason: "unchanged" };
+          if (cached.probeFailedAt && !fileChanged) {
+            const failedAt = new Date(cached.probeFailedAt);
+            const hoursSinceFailure = (Date.now() - failedAt.getTime()) / (1000 * 60 * 60);
+            if (hoursSinceFailure < PROBE_RETRY_HOURS) return { skip: true, reason: "recent-failure" };
+            return { skip: false, reason: "retry-after-wait" };
+          }
+          return { skip: false, reason: fileChanged ? "changed" : "no-duration" };
+        }
+
+        const baseUrl = REMOTE_MEDIA_BASE.endsWith("/")
+          ? REMOTE_MEDIA_BASE
+          : REMOTE_MEDIA_BASE + "/";
+
+        const items: MediaItem[] = [];
+        const fileResults: FileResult[] = [];
+        const CONCURRENCY = 2;
+
+        let unchangedCount = 0;
+        let newOrChangedCount = 0;
+        let skippedFailureCount = 0;
+
+        // Count how many need probing vs cached ahead of time for accurate progress
+        const probeDecisions = mediaFiles.map((f) => {
+          const cached = existingItems.get(f.relPath);
+          return { file: f, cached, ...shouldSkipProbe(f, cached) };
+        });
+        const totalToProbe = probeDecisions.filter((d) => !d.skip).length;
+
+        send({
+          phase: "probing",
+          message: `Analyzing ${mediaFiles.length} files (${totalToProbe} to probe, ${mediaFiles.length - totalToProbe} cached)…`,
+          current: 0,
+          total: mediaFiles.length,
+          probing: 0,
+          probeTotal: totalToProbe,
+        });
+
+        let processedCount = 0;
+        let probedSoFar = 0;
+
+        for (let i = 0; i < mediaFiles.length; i += CONCURRENCY) {
+          const batch = mediaFiles.slice(i, i + CONCURRENCY);
+          const batchResults = await Promise.all(
+            batch.map(async (f) => {
+              const format = getFormat(f.name);
+              const supported = isSupported(format);
+              const cached = existingItems.get(f.relPath);
+
+              let durationSeconds: number;
+              let videoCodec: string | undefined;
+              let audioCodec: string | undefined;
+              let probeSuccess: boolean;
+              let probeError: string | undefined;
+              let wasReprobed = false;
+              let wasCached = false;
+              let probeFailedAt: string | undefined;
+
+              const { skip, reason } = shouldSkipProbe(f, cached);
+
+              if (skip) {
+                durationSeconds = cached?.durationSeconds ?? 0;
+                videoCodec = cached?.videoCodec;
+                audioCodec = cached?.audioCodec;
+                probeSuccess = cached?.durationSeconds ? cached.durationSeconds > 0 : false;
+                wasCached = true;
+                probeFailedAt = cached?.probeFailedAt;
+
+                if (reason === "recent-failure") {
+                  skippedFailureCount++;
+                  probeError = "Skipped - probe failed recently, will retry in 24h";
+                } else {
+                  unchangedCount++;
+                }
+              } else {
+                newOrChangedCount++;
+                probedSoFar++;
+
+                const pathParts = f.relPath.split("/");
+                const encodedPath = pathParts.map((part) => encodeURIComponent(part)).join("/");
+                const fileUrl = baseUrl + encodedPath;
+                console.log(`Probing (${reason}) file: ${fileUrl}`);
+                const probeResult = await probeRemoteDuration(fileUrl);
+                durationSeconds = probeResult.durationSeconds;
+                videoCodec = probeResult.videoCodec;
+                audioCodec = probeResult.audioCodec;
+                probeSuccess = probeResult.success;
+                probeError = probeResult.error;
+                wasReprobed = true;
+
+                if (!probeSuccess) {
+                  probeFailedAt = new Date().toISOString();
+                }
+              }
+
+              fileResults.push({
+                file: f.relPath,
+                durationSeconds,
+                format,
+                supported,
+                probeSuccess,
+                probeError,
+                wasReprobed,
+                wasCached,
+              });
+
+              const dateAdded = cached?.dateAdded ?? new Date().toISOString();
+
+              return {
+                relPath: f.relPath,
+                durationSeconds,
+                format,
+                supported,
+                supportedViaCompanion: false,
+                title: getTitle(f.name),
+                videoCodec,
+                audioCodec,
+                size: f.size,
+                modifiedAt: f.modifiedAt ?? undefined,
+                probeFailedAt,
+                dateAdded,
+              };
+            }),
+          );
+          items.push(...batchResults);
+          processedCount += batch.length;
+
+          send({
+            phase: "probing",
+            message: `Processed ${processedCount} of ${mediaFiles.length} files`,
+            current: processedCount,
+            total: mediaFiles.length,
+            probing: probedSoFar,
+            probeTotal: totalToProbe,
+            currentFile: batch[batch.length - 1].relPath,
           });
-          
-          // Preserve existing dateAdded or set to now for new files
-          const dateAdded = cached?.dateAdded ?? new Date().toISOString();
-          
-          return {
-            relPath: f.relPath,
-            durationSeconds,
-            format,
-            supported,
-            supportedViaCompanion: false,
-            title: getTitle(f.name),
-            videoCodec,
-            audioCodec,
-            // Store FTP metadata for future incremental scans
-            size: f.size,
-            modifiedAt: f.modifiedAt ?? undefined,
-            probeFailedAt,
-            dateAdded,
-          };
-        })
-      );
-      items.push(...batchResults);
-    }
-    
-    console.log(`Incremental scan: ${unchangedCount} unchanged, ${newOrChangedCount} probed, ${skippedFailureCount} skipped (recent failure)`);
-    
-    // Calculate stats
-    const reprobedFiles = fileResults.filter(r => r.wasReprobed);
-    const fixedFiles = reprobedFiles.filter(r => r.probeSuccess && r.durationSeconds > 0);
-    const cachedFiles = fileResults.filter(r => r.wasCached);
-    
-    const stats = {
-      total: items.length,
-      withDuration: items.filter(i => i.durationSeconds > 0).length,
-      zeroDuration: items.filter(i => i.durationSeconds === 0).length,
-      probeSuccessCount: fileResults.filter(r => r.probeSuccess).length,
-      probeFailCount: fileResults.filter(r => !r.probeSuccess).length,
-      reprobedCount: reprobedFiles.length,
-      fixedCount: fixedFiles.length,
-      cachedCount: cachedFiles.length,
-      // Incremental scan stats
-      unchangedCount,
-      newOrChangedCount,
-      skippedFailureCount,
-    };
+        }
 
-    // Sort by filename
-    items.sort((a, b) => a.relPath.localeCompare(b.relPath));
+        console.log(`Incremental scan: ${unchangedCount} unchanged, ${newOrChangedCount} probed, ${skippedFailureCount} skipped (recent failure)`);
 
-    // Build the payload
-    const payload = {
-      generatedAt: new Date().toISOString(),
-      items,
-    };
-    const body = JSON.stringify(payload, null, 2);
+        // Phase 4: Upload index
+        send({ phase: "uploading", message: "Uploading updated media-index.json…" });
 
-    // Upload new media-index.json to remote
-    const uploadClient = new Client(8000);
-    try {
-      await uploadClient.access({ host, port, user, password, secure });
-      const targetDir = path.posix.dirname(remotePath);
-      if (targetDir && targetDir !== ".") {
-        await uploadClient.ensureDir(targetDir);
+        const reprobedFiles = fileResults.filter((r) => r.wasReprobed);
+        const fixedFiles = reprobedFiles.filter((r) => r.probeSuccess && r.durationSeconds > 0);
+        const cachedFiles = fileResults.filter((r) => r.wasCached);
+
+        const stats = {
+          total: items.length,
+          withDuration: items.filter((i) => i.durationSeconds > 0).length,
+          zeroDuration: items.filter((i) => i.durationSeconds === 0).length,
+          probeSuccessCount: fileResults.filter((r) => r.probeSuccess).length,
+          probeFailCount: fileResults.filter((r) => !r.probeSuccess).length,
+          reprobedCount: reprobedFiles.length,
+          fixedCount: fixedFiles.length,
+          cachedCount: cachedFiles.length,
+          unchangedCount,
+          newOrChangedCount,
+          skippedFailureCount,
+        };
+
+        items.sort((a, b) => a.relPath.localeCompare(b.relPath));
+
+        const payload = {
+          generatedAt: new Date().toISOString(),
+          items,
+        };
+        const jsonBody = JSON.stringify(payload, null, 2);
+
+        const uploadClient = new Client(8000);
+        try {
+          await uploadClient.access({ host, port, user, password, secure });
+          const targetDir = path.posix.dirname(remotePath);
+          if (targetDir && targetDir !== ".") {
+            await uploadClient.ensureDir(targetDir);
+          }
+          const uploadStream = Readable.from([jsonBody]);
+          await uploadClient.uploadFrom(uploadStream, remotePath);
+        } finally {
+          uploadClient.close();
+        }
+
+        // Phase 5: Complete
+        const messageParts = [`Scanned ${items.length} files`];
+        if (unchangedCount > 0) messageParts.push(`${unchangedCount} unchanged`);
+        if (skippedFailureCount > 0) messageParts.push(`${skippedFailureCount} skipped (known issues)`);
+        if (newOrChangedCount > 0) messageParts.push(`${newOrChangedCount} probed`);
+
+        send({
+          phase: "complete",
+          data: {
+            success: true,
+            message: messageParts.join(", "),
+            remotePath,
+            count: items.length,
+            files: items.map((i) => i.relPath),
+            fileResults,
+            stats,
+          },
+        });
+
+        controller.close();
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        send({ phase: "error", message: `Scan failed: ${msg}` });
+        controller.close();
       }
-      const stream = Readable.from([body]);
-      await uploadClient.uploadFrom(stream, remotePath);
-    } finally {
-      uploadClient.close();
-    }
+    },
+  });
 
-    // Build a descriptive message
-    const messageParts = [`Scanned ${items.length} files`];
-    if (unchangedCount > 0) {
-      messageParts.push(`${unchangedCount} unchanged`);
-    }
-    if (skippedFailureCount > 0) {
-      messageParts.push(`${skippedFailureCount} skipped (known issues)`);
-    }
-    if (newOrChangedCount > 0) {
-      messageParts.push(`${newOrChangedCount} probed`);
-    }
-    
-    return NextResponse.json({
-      success: true,
-      message: messageParts.join(", "),
-      remotePath,
-      count: items.length,
-      files: items.map((i) => i.relPath),
-      fileResults,
-      stats,
-    } satisfies ScanResult);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { success: false, message: `Scan failed: ${msg}` } satisfies ScanResult,
-      { status: 500 },
-    );
-  }
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }
 
