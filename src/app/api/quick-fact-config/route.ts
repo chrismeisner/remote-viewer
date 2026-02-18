@@ -56,7 +56,14 @@ async function loadConfig(): Promise<QuickFactConfig> {
   try {
     const raw = await fs.readFile(CONFIG_PATH, "utf-8");
     const saved = JSON.parse(raw) as Partial<QuickFactConfig>;
-    return { ...DEFAULTS, ...saved };
+    return {
+      ...DEFAULTS,
+      ...saved,
+      enabledVars: {
+        ...DEFAULT_ENABLED_VARS,
+        ...(saved.enabledVars ?? {}),
+      },
+    };
   } catch {
     return DEFAULTS;
   }

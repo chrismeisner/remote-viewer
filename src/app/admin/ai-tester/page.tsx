@@ -76,6 +76,15 @@ type StreamEvent =
   | { type: "status"; status: string }
   | { type: "text"; delta: string };
 
+type AiTestRequestPayload = {
+  userMsg: string;
+  systemNote: string;
+  interpolated: string;
+  metaContext: string;
+  enabledKeys: (keyof EnabledVars)[];
+  disabledKeys: (keyof EnabledVars)[];
+};
+
 const AVAILABLE_MODELS = [
   { id: "gpt-4o", name: "GPT-4o" },
   { id: "gpt-4o-mini", name: "GPT-4o Mini" },
@@ -188,6 +197,45 @@ function interpolatePrompt(
     .replace(/\{\{duration\}\}/g, duration)
     .replace(/\{\{percent\}\}/g, pct ? String(pct) : "")
     .replace(/\{\{metaContext\}\}/g, metaContext);
+}
+
+function buildAiTestRequestPayload(
+  media: MediaItem,
+  playbackPercent: number,
+  promptTemplate: string,
+  ev: EnabledVars
+): AiTestRequestPayload {
+  const normalizedVars: EnabledVars = { ...DEFAULT_ENABLED_VARS, ...ev };
+  const { metaContext, timestamp, duration, pct } = buildMetaContext(
+    media,
+    playbackPercent,
+    normalizedVars
+  );
+  const interpolated = interpolatePrompt(
+    promptTemplate,
+    media,
+    playbackPercent,
+    normalizedVars
+  );
+  const userMsg = normalizedVars.playbackPosition && timestamp
+    ? `I'm at ${timestamp} of ${duration} (${pct}% through). Give me a fact about what's happening around this point in the film/show.`
+    : "Give me an interesting fact about this media.";
+  const systemNote = metaContext
+    ? `${interpolated}\n\nMedia info:\n${metaContext}`
+    : interpolated;
+  const enabledKeys = (Object.keys(normalizedVars) as (keyof EnabledVars)[])
+    .filter((k) => normalizedVars[k]);
+  const disabledKeys = (Object.keys(normalizedVars) as (keyof EnabledVars)[])
+    .filter((k) => !normalizedVars[k]);
+
+  return {
+    userMsg,
+    systemNote,
+    interpolated,
+    metaContext,
+    enabledKeys,
+    disabledKeys,
+  };
 }
 
 export default function AiTesterPage() {
@@ -363,22 +411,22 @@ export default function AiTesterPage() {
     setTestResult(null);
     setTestStreaming(true);
 
-    const { metaContext, timestamp, duration, pct } = buildMetaContext(selectedMediaItem, playbackPercent, draftEnabledVars);
-    const interpolated = interpolatePrompt(draftPrompt, selectedMediaItem, playbackPercent, draftEnabledVars);
-
-    const userMsg = draftEnabledVars.playbackPosition && timestamp
-      ? `I'm at ${timestamp} of ${duration} (${pct}% through). Give me a fact about what's happening around this point in the film/show.`
-      : "Give me an interesting fact about this media.";
+    const payload = buildAiTestRequestPayload(
+      selectedMediaItem,
+      playbackPercent,
+      draftPrompt,
+      draftEnabledVars
+    );
 
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [{ role: "user", content: userMsg }],
+          messages: [{ role: "user", content: payload.userMsg }],
           model: draftModel,
           maxTokens: draftMaxTokens,
-          systemNote: metaContext ? `${interpolated}\n\nMedia info:\n${metaContext}` : interpolated,
+          systemNote: payload.systemNote,
         }),
       });
 
@@ -437,6 +485,14 @@ export default function AiTesterPage() {
       draftAutoPlayOnChannelSwitch !== (config.autoPlayOnChannelSwitch ?? false) ||
       draftAutoPlayDelaySeconds !== (config.autoPlayDelaySeconds ?? 5) ||
       enabledVarsDirty);
+  const requestPreview = selectedMediaItem
+    ? buildAiTestRequestPayload(
+        selectedMediaItem,
+        playbackPercent,
+        draftPrompt,
+        draftEnabledVars
+      )
+    : null;
 
   if (loading) {
     return (
@@ -870,6 +926,40 @@ export default function AiTesterPage() {
             <pre className="whitespace-pre-wrap text-xs text-neutral-500 font-mono leading-relaxed">
               {interpolatePrompt(draftPrompt, selectedMediaItem, playbackPercent, draftEnabledVars)}
             </pre>
+          </div>
+        </details>
+      )}
+
+      {requestPreview && (
+        <details className="rounded-md border border-white/10 bg-neutral-900/60">
+          <summary className="cursor-pointer px-4 py-3 text-xs text-neutral-400 hover:text-neutral-200 select-none">
+            Preview outgoing request (exact payload)
+          </summary>
+          <div className="px-4 pb-4 space-y-3">
+            <div>
+              <p className="text-xs text-neutral-500 mb-1">Enabled context variables</p>
+              <p className="text-xs text-emerald-300 font-mono">
+                {requestPreview.enabledKeys.length > 0 ? requestPreview.enabledKeys.join(", ") : "(none)"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-500 mb-1">Disabled context variables</p>
+              <p className="text-xs text-neutral-400 font-mono">
+                {requestPreview.disabledKeys.length > 0 ? requestPreview.disabledKeys.join(", ") : "(none)"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-500 mb-1">User message sent</p>
+              <pre className="whitespace-pre-wrap text-xs text-neutral-300 font-mono leading-relaxed">
+                {requestPreview.userMsg}
+              </pre>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-500 mb-1">System note sent</p>
+              <pre className="whitespace-pre-wrap text-xs text-neutral-500 font-mono leading-relaxed">
+                {requestPreview.systemNote}
+              </pre>
+            </div>
           </div>
         </details>
       )}
