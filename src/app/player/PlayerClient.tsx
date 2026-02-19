@@ -1695,16 +1695,6 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
         >
           Info
         </button>
-        <button
-          onClick={() => setShowChatOverlay((prev) => !prev)}
-          className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
-            showChatOverlay
-              ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
-              : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
-          }`}
-        >
-          AI
-        </button>
       </div>
       <button
         onClick={channelUp}
