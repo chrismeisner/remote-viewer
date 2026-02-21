@@ -10,17 +10,13 @@ import {
   type MediaSource,
 } from "@/constants/media";
 import { ChannelSchedule, PlaylistItem, validateChannelSchedule } from "@/lib/schedule";
-
-type MediaFile = {
-  relPath: string;
-  title: string;
-  durationSeconds: number;
-  format: string;
-  supported: boolean;
-  supportedViaCompanion: boolean;
-  videoCodec?: string;
-  audioCodec?: string;
-};
+import MediaDetailModal from "@/components/MediaDetailModal";
+import {
+  type MediaFile,
+  formatDuration,
+  hasUnsupportedAudio,
+  isBrowserSupported,
+} from "@/lib/media-utils";
 
 type MediaMetadataItem = {
   title?: string | null;
@@ -100,6 +96,14 @@ export default function ChannelPlaylistPage() {
   // Sort state for playlist ordering
   const [sortField, setSortField] = useState<"name" | "year" | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  // Media detail overlay state
+  const [selectedDetailFilePath, setSelectedDetailFilePath] = useState<string | null>(null);
+
+  // Cover image generation state
+  const [coverGenerating, setCoverGenerating] = useState(false);
+  const [coverResult, setCoverResult] = useState<{ url: string; coverCount: number } | null>(null);
+  const [coverError, setCoverError] = useState<string | null>(null);
 
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedPlaylistRef = useRef<string>("[]");
@@ -327,6 +331,16 @@ export default function ChannelPlaylistPage() {
     setShowSeries(true);
     void loadMediaFiles();
   }, [loadMediaFiles]);
+
+  const handleFileNameClick = useCallback((filePath: string) => {
+    setSelectedDetailFilePath(filePath);
+    void loadMediaFiles();
+  }, [loadMediaFiles]);
+
+  const selectedDetailFile = useMemo(() => {
+    if (!selectedDetailFilePath) return null;
+    return mediaFiles.find(f => f.relPath === selectedDetailFilePath) || null;
+  }, [selectedDetailFilePath, mediaFiles]);
 
   const sortedFiles = useMemo(
     () => [...mediaFiles].sort((a, b) => a.relPath.localeCompare(b.relPath, undefined, { sensitivity: "base" })),
@@ -585,6 +599,28 @@ export default function ChannelPlaylistPage() {
     }
   };
 
+  const generateCoverImage = useCallback(async () => {
+    setCoverGenerating(true);
+    setCoverError(null);
+    setCoverResult(null);
+    try {
+      const res = await fetch(
+        `/api/channels/${encodeURIComponent(channelId)}/cover`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setCoverError(data.error || "Failed to generate cover image");
+        return;
+      }
+      setCoverResult({ url: data.url, coverCount: data.coverCount });
+    } catch {
+      setCoverError("Failed to generate cover image");
+    } finally {
+      setCoverGenerating(false);
+    }
+  }, [channelId]);
+
   // Error state
   if (error && !channelInfo) {
     return (
@@ -682,6 +718,16 @@ export default function ChannelPlaylistPage() {
         >
           Clear playlist
         </button>
+
+        {mediaSource === "remote" && (
+          <button
+            onClick={() => void generateCoverImage()}
+            className="rounded-md border border-amber-400/60 bg-amber-500/20 px-3 py-1 text-sm font-semibold text-amber-50 transition hover:border-amber-300 hover:bg-amber-500/30 disabled:opacity-50"
+            disabled={loading || coverGenerating || playlist.length === 0}
+          >
+            {coverGenerating ? "Generating…" : "Create Cover Image"}
+          </button>
+        )}
         
         {/* Status indicator */}
         <div className="flex items-center gap-2">
@@ -720,6 +766,38 @@ export default function ChannelPlaylistPage() {
           </span>
         </div>
       </div>
+
+      {coverError && (
+        <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3">
+          <p className="text-sm text-red-200">{coverError}</p>
+        </div>
+      )}
+
+      {coverResult && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-4">
+          <div className="flex items-start gap-4">
+            <img
+              src={`${coverResult.url}?t=${Date.now()}`}
+              alt="Channel cover grid"
+              className="max-w-xs rounded-md border border-white/10"
+            />
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-amber-200">Cover image generated</p>
+              <p className="text-xs text-amber-300/80">
+                {coverResult.coverCount} unique cover{coverResult.coverCount !== 1 ? "s" : ""} in grid
+              </p>
+              <a
+                href={coverResult.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-amber-300 underline hover:text-amber-100 mt-1"
+              >
+                Open full image
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="rounded-md border border-white/10 bg-neutral-900/60 p-8 text-center">
@@ -785,6 +863,7 @@ export default function ChannelPlaylistPage() {
                   <thead className="bg-white/5 text-neutral-200">
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold w-16">#</th>
+                      <th className="px-3 py-2 font-semibold w-16 text-center">Cover</th>
                       <th className="px-3 py-2 text-left font-semibold">File</th>
                       <th className="px-3 py-2 text-left font-semibold w-16">Year</th>
                       <th className="px-3 py-2 text-right font-semibold w-28">Duration</th>
@@ -794,6 +873,9 @@ export default function ChannelPlaylistPage() {
                   <tbody className="divide-y divide-white/5">
                     {playlist.map((item, idx) => {
                       const meta = mediaMetadata.items[item.file];
+                      const resolvedCoverUrl = meta?.coverUrl
+                        || (meta?.coverPath && mediaSource === "local" ? `/api/local-image?path=${encodeURIComponent(meta.coverPath)}` : null)
+                        || (meta?.coverLocal ? (mediaSource === "remote" ? `${REMOTE_MEDIA_BASE}covers/${encodeURIComponent(meta.coverLocal)}` : `/api/covers/${encodeURIComponent(meta.coverLocal)}`) : null);
                       return (
                       <tr key={idx} className="text-neutral-100 bg-neutral-950/60">
                         <td className="px-3 py-2">
@@ -802,10 +884,29 @@ export default function ChannelPlaylistPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2">
+                          {meta?.coverEmoji ? (
+                            <div className="w-9 h-9 bg-gradient-to-br from-neutral-800 to-neutral-900 rounded border border-white/10 flex items-center justify-center text-lg mx-auto">
+                              {meta.coverEmoji}
+                            </div>
+                          ) : resolvedCoverUrl ? (
+                            <img
+                              src={resolvedCoverUrl}
+                              alt={meta?.title || item.file}
+                              className="w-9 h-9 object-cover rounded border border-white/10 mx-auto"
+                              onError={(e) => { e.currentTarget.style.display = "none"; }}
+                            />
+                          ) : (
+                            <div className="w-9 h-9 bg-white/5 rounded border border-white/10 mx-auto" />
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
                           <div className="flex flex-col gap-1">
-                            <span className="font-mono text-sm break-all text-neutral-100">
+                            <button
+                              onClick={() => handleFileNameClick(item.file)}
+                              className="font-mono text-sm break-all text-neutral-100 text-left hover:text-emerald-300 transition-colors cursor-pointer"
+                            >
                               {item.file}
-                            </span>
+                            </button>
                             {item.title && item.title !== item.file && (
                               <span className="text-xs text-neutral-400">{item.title}</span>
                             )}
@@ -1051,32 +1152,22 @@ export default function ChannelPlaylistPage() {
           </div>
         </div>
       )}
+
+      {selectedDetailFile && mediaSource && (
+        <MediaDetailModal
+          item={selectedDetailFile}
+          mediaSource={mediaSource}
+          mediaRoot="media"
+          allFiles={mediaFiles}
+          onClose={() => setSelectedDetailFilePath(null)}
+          onMetadataUpdate={(relPath, metadata) => {
+            setMediaMetadata(prev => ({
+              ...prev,
+              items: { ...prev.items, [relPath]: metadata as MediaMetadataItem },
+            }));
+          }}
+        />
+      )}
     </div>
   );
-}
-
-function formatDuration(seconds: number): string {
-  const minutes = Math.round(seconds / 60);
-  if (minutes >= 60) {
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return `${h}h ${m}m`;
-  }
-  return `${minutes}m`;
-}
-
-const UNSUPPORTED_AUDIO_CODECS = [
-  "ac3", "eac3", "dts", "truehd", "dts-hd", "dtshd",
-  "pcm_s16le", "pcm_s24le", "pcm_s32le", "flac",
-];
-
-function hasUnsupportedAudio(file: MediaFile): boolean {
-  if (!file.audioCodec) return false;
-  const codec = file.audioCodec.toLowerCase();
-  return UNSUPPORTED_AUDIO_CODECS.some((unsupported) => codec.includes(unsupported));
-}
-
-function isBrowserSupported(file: MediaFile): boolean {
-  if (hasUnsupportedAudio(file)) return false;
-  return file.supported || file.supportedViaCompanion;
 }

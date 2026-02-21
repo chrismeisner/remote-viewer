@@ -6,6 +6,7 @@ import {
   DATA_CHANGED_EVENT,
   MEDIA_SOURCE_EVENT,
   MEDIA_SOURCE_KEY,
+  REMOTE_MEDIA_BASE,
   type MediaSource,
 } from "@/constants/media";
 
@@ -84,6 +85,11 @@ export default function ChannelAdminPage() {
   const [resetting, setResetting] = useState(false);
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthResult, setHealthResult] = useState<HealthCheckResult | null>(null);
+
+  // Cover generation state
+  const [coverGenerating, setCoverGenerating] = useState(false);
+  const [coverProgress, setCoverProgress] = useState<{ done: number; total: number } | null>(null);
+  const [coverTimestamp, setCoverTimestamp] = useState(Date.now());
 
   // Sync media source from localStorage - must complete before loading channels
   useEffect(() => {
@@ -393,6 +399,40 @@ export default function ChannelAdminPage() {
     }
   };
 
+  const handleMakeCovers = async () => {
+    if (!mediaSource || mediaSource !== "remote" || channels.length === 0) return;
+    setCoverGenerating(true);
+    setCoverProgress({ done: 0, total: channels.length });
+    setError(null);
+    setMessage(null);
+    let succeeded = 0;
+    let failed = 0;
+    for (let i = 0; i < channels.length; i++) {
+      const ch = channels[i];
+      try {
+        const res = await fetch(`/api/channels/${encodeURIComponent(ch.id)}/cover`, {
+          method: "POST",
+        });
+        if (res.ok) {
+          succeeded++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+      setCoverProgress({ done: i + 1, total: channels.length });
+    }
+    setCoverGenerating(false);
+    setCoverProgress(null);
+    setCoverTimestamp(Date.now());
+    if (failed === 0) {
+      setMessage(`Generated cover images for all ${succeeded} channels`);
+    } else {
+      setMessage(`Generated ${succeeded} cover image${succeeded !== 1 ? "s" : ""}, ${failed} failed`);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 text-neutral-100">
       {/* Header */}
@@ -463,6 +503,17 @@ export default function ChannelAdminPage() {
         >
           {healthChecking ? "Checking…" : "Health Check"}
         </button>
+        {mediaSource === "remote" && (
+          <button
+            onClick={() => void handleMakeCovers()}
+            disabled={coverGenerating || loading || channels.length === 0}
+            className="rounded-md border border-amber-400/50 bg-amber-500/20 px-3 py-2 font-semibold text-amber-100 transition hover:border-amber-300 hover:bg-amber-500/30 disabled:opacity-50"
+          >
+            {coverGenerating && coverProgress
+              ? `Making Covers (${coverProgress.done}/${coverProgress.total})…`
+              : "Make Covers"}
+          </button>
+        )}
         <button
           onClick={() => setResetModal(true)}
           disabled={loading || channels.length === 0}
@@ -496,6 +547,9 @@ export default function ChannelAdminPage() {
               <thead className="bg-white/5 text-neutral-200">
                 <tr>
                   <th className="w-24 px-3 py-2 text-left font-semibold">Number</th>
+                  {mediaSource === "remote" && (
+                    <th className="w-16 px-3 py-2 text-center font-semibold">Cover</th>
+                  )}
                   <th className="px-3 py-2 text-left font-semibold">Name</th>
                   <th className="w-28 px-3 py-2 text-center font-semibold">Type</th>
                   <th className="w-24 px-3 py-2 text-center font-semibold">Items</th>
@@ -512,6 +566,16 @@ export default function ChannelAdminPage() {
                         {channel.id.toString().padStart(2, "0")}
                       </span>
                     </td>
+                    {mediaSource === "remote" && (
+                      <td className="px-3 py-2 text-center">
+                        <img
+                          src={`${REMOTE_MEDIA_BASE}covers/channel-${encodeURIComponent(channel.id)}-grid.jpg?t=${coverTimestamp}`}
+                          alt=""
+                          className="inline-block h-10 w-auto rounded border border-white/10 object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      </td>
+                    )}
                     <td className="px-3 py-2">
                       {channel.shortName ? (
                         <span className="text-sm text-neutral-100">{channel.shortName}</span>

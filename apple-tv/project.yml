@@ -1,0 +1,27 @@
+name: RemoteViewer
+
+options:
+  bundleIdPrefix: com.remoteviewer
+  deploymentTarget:
+    tvOS: "17.0"
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+
+targets:
+  RemoteViewer:
+    type: application
+    platform: tvOS
+    sources:
+      - RemoteViewer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.remoteviewer.tvos
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: RemoteViewer/Info.plist
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: "NO"
+    info:
+      path: RemoteViewer/Info.plist

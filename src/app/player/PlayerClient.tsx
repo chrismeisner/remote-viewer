@@ -971,23 +971,57 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       }
     };
 
-    video.src = nowPlaying.src;
-    video.preload = "auto";
-    video.controls = false;
-    video.disablePictureInPicture = true;
-    video.setAttribute(
-      "controlsList",
-      "nodownload noremoteplayback noplaybackrate nofullscreen"
-    );
-    video.load();
+    // Called when the video reaches its natural end - immediately fetch next item
+    const handleEnded = () => {
+      console.log("[player] video ended naturally, fetching next item");
+      setRefreshToken((t) => t + 1);
+    };
+
+    // Check if the same video source is already loaded - skip full reload, just re-seek
+    const prev = previousNowPlayingRef.current;
+    const sameSource = prev && prev.src === nowPlaying.src;
+    
+    if (sameSource) {
+      console.log("[player] same source already loaded, re-seeking without reload", {
+        relPath: nowPlaying.relPath,
+        prevOffset: prev.startOffsetSeconds,
+        newOffset: nowPlaying.startOffsetSeconds,
+      });
+      video.muted = mutedRef.current;
+      video.volume = volumeRef.current;
+      const desiredTime = computeDesiredTime();
+      desiredOffsetRef.current = desiredTime;
+      try {
+        video.currentTime = desiredTime;
+      } catch (err) {
+        console.warn("Failed to re-seek video", err);
+      }
+      if (video.paused && !video.ended) {
+        attemptPlay(true);
+      }
+      previousNowPlayingRef.current = nowPlaying;
+    } else {
+      video.src = nowPlaying.src;
+      video.preload = "auto";
+      video.controls = false;
+      video.disablePictureInPicture = true;
+      video.setAttribute(
+        "controlsList",
+        "nodownload noremoteplayback noplaybackrate nofullscreen"
+      );
+      video.load();
+      previousNowPlayingRef.current = nowPlaying;
+    }
+    
     video.addEventListener("loadedmetadata", handleLoaded);
     video.addEventListener("canplay", handleCanPlay);
     video.addEventListener("waiting", handleWaiting);
     video.addEventListener("playing", handlePlaying);
     video.addEventListener("error", handleError);
     video.addEventListener("stalled", handleStalled);
+    video.addEventListener("ended", handleEnded);
     const preventPause = () => {
-      if (video.paused) {
+      if (video.paused && !video.ended) {
         video
           .play()
           .catch((err) => console.warn("Autoplay resume failed", err));
@@ -995,7 +1029,6 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     };
     video.addEventListener("pause", preventPause);
     const lateSeek = setTimeout(() => ensureSeeked(0), 300);
-    previousNowPlayingRef.current = nowPlaying;
 
     return () => {
       video.removeEventListener("loadedmetadata", handleLoaded);
@@ -1004,6 +1037,7 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       video.removeEventListener("playing", handlePlaying);
       video.removeEventListener("error", handleError);
       video.removeEventListener("stalled", handleStalled);
+      video.removeEventListener("ended", handleEnded);
       video.removeEventListener("pause", preventPause);
       clearTimeout(lateSeek);
     };

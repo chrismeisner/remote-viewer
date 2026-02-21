@@ -1,0 +1,334 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 63;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		07D0F2D726173879C18E9FD4 /* ConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75976CE02DAD88FAB64898D1 /* ConnectView.swift */; };
+		334F29E9DC2BE2EFAD235F2F /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F294F176D00D468AC46170 /* Models.swift */; };
+		3943B164646C4DA09398BA23 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0A5DA1D091CCD6A251526C /* PlayerView.swift */; };
+		514A767C77ABA3ABF9449748 /* ChannelBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A84D0CCCE916DD661A9908D8 /* ChannelBrowserView.swift */; };
+		56FC1064CA44DF795E5754D2 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F271BC6FD6D899621DE6E1 /* APIClient.swift */; };
+		8330A3FF65550836702FAC61 /* RemoteViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC0146A487533ADD8F8E5D1 /* RemoteViewerApp.swift */; };
+		9F1C33A409A823DA2876C4D6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 62699B0CDED95C828F60CE78 /* Assets.xcassets */; };
+		EA35F4AA3427E1C62C6D16D4 /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 038EFEB75BBCCCCB6A1D8DA0 /* SessionManager.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		038EFEB75BBCCCCB6A1D8DA0 /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
+		5DC0146A487533ADD8F8E5D1 /* RemoteViewerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteViewerApp.swift; sourceTree = "<group>"; };
+		62699B0CDED95C828F60CE78 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		75976CE02DAD88FAB64898D1 /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
+		96F294F176D00D468AC46170 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		A84D0CCCE916DD661A9908D8 /* ChannelBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelBrowserView.swift; sourceTree = "<group>"; };
+		B9F271BC6FD6D899621DE6E1 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		C1C776C2B55493970189C8A7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		CA0A5DA1D091CCD6A251526C /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+		DEAB6EF1A8BA7EBB950D7689 /* RemoteViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RemoteViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		71DCE4B0EB556A6C3C49CBDC = {
+			isa = PBXGroup;
+			children = (
+				E1CCADFF3B9E0341CE27C81F /* RemoteViewer */,
+				FD288E7DF641893E59A78B81 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E1CCADFF3B9E0341CE27C81F /* RemoteViewer */ = {
+			isa = PBXGroup;
+			children = (
+				B9F271BC6FD6D899621DE6E1 /* APIClient.swift */,
+				A84D0CCCE916DD661A9908D8 /* ChannelBrowserView.swift */,
+				62699B0CDED95C828F60CE78 /* Assets.xcassets */,
+				75976CE02DAD88FAB64898D1 /* ConnectView.swift */,
+				C1C776C2B55493970189C8A7 /* Info.plist */,
+				96F294F176D00D468AC46170 /* Models.swift */,
+				CA0A5DA1D091CCD6A251526C /* PlayerView.swift */,
+				5DC0146A487533ADD8F8E5D1 /* RemoteViewerApp.swift */,
+				038EFEB75BBCCCCB6A1D8DA0 /* SessionManager.swift */,
+			);
+			path = RemoteViewer;
+			sourceTree = "<group>";
+		};
+		FD288E7DF641893E59A78B81 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DEAB6EF1A8BA7EBB950D7689 /* RemoteViewer.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E7EA929000DC83CB1649E5A8 /* RemoteViewer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 97BBDC70D7900B2DB979DF82 /* Build configuration list for PBXNativeTarget "RemoteViewer" */;
+			buildPhases = (
+				E948109896908A47872B2BC4 /* Sources */,
+				62DF801BC4459D05D9995022 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RemoteViewer;
+			packageProductDependencies = (
+			);
+			productName = RemoteViewer;
+			productReference = DEAB6EF1A8BA7EBB950D7689 /* RemoteViewer.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D5E9896C49FA17821D0609DB /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2620;
+			};
+			buildConfigurationList = B50EE48AFE3C85E836D445A7 /* Build configuration list for PBXProject "RemoteViewer" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 71DCE4B0EB556A6C3C49CBDC;
+			minimizedProjectReferenceProxies = 1;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E7EA929000DC83CB1649E5A8 /* RemoteViewer */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		62DF801BC4459D05D9995022 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9F1C33A409A823DA2876C4D6 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E948109896908A47872B2BC4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				56FC1064CA44DF795E5754D2 /* APIClient.swift in Sources */,
+				514A767C77ABA3ABF9449748 /* ChannelBrowserView.swift in Sources */,
+				07D0F2D726173879C18E9FD4 /* ConnectView.swift in Sources */,
+				334F29E9DC2BE2EFAD235F2F /* Models.swift in Sources */,
+				3943B164646C4DA09398BA23 /* PlayerView.swift in Sources */,
+				8330A3FF65550836702FAC61 /* RemoteViewerApp.swift in Sources */,
+				EA35F4AA3427E1C62C6D16D4 /* SessionManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		05BBC9B9EFDFD524D249F3D3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
+				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 96C3GFLWFA;
+				INFOPLIST_FILE = RemoteViewer/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Remote Viewer";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.remoteviewer.tvos;
+				SDKROOT = appletvos;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = Debug;
+		};
+		6F4FDDE8C1C831B3E3EFB00B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Release;
+		};
+		78A7CC9E135196F6AFD08170 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
+				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 96C3GFLWFA;
+				INFOPLIST_FILE = RemoteViewer/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Remote Viewer";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.remoteviewer.tvos;
+				SDKROOT = appletvos;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = Release;
+		};
+		ABBE1CF88B2E29187822F722 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		97BBDC70D7900B2DB979DF82 /* Build configuration list for PBXNativeTarget "RemoteViewer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				05BBC9B9EFDFD524D249F3D3 /* Debug */,
+				78A7CC9E135196F6AFD08170 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B50EE48AFE3C85E836D445A7 /* Build configuration list for PBXProject "RemoteViewer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ABBE1CF88B2E29187822F722 /* Debug */,
+				6F4FDDE8C1C831B3E3EFB00B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = D5E9896C49FA17821D0609DB /* Project object */;
+}

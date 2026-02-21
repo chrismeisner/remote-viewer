@@ -108,16 +108,22 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     return defaultMetadata;
   }
   
-  // Get media metadata if we have now playing content (for title and cover image)
-  let coverImageUrl: string | null = null;
+  // Check for a pre-generated channel grid cover image
+  const channelGridUrl = `${REMOTE_MEDIA_BASE}covers/channel-${encodeURIComponent(channelId)}-grid.jpg`;
+  let channelGridExists = false;
+  try {
+    const probe = await fetch(channelGridUrl, { method: "HEAD", cache: "no-store" });
+    channelGridExists = probe.ok;
+  } catch {
+    // Grid image not available
+  }
+
+  // Get media metadata if we have now playing content (for title)
   let description = "Local channel-style playback for your video library";
   let mediaTitle: string | null = null;
   
   if (nowPlaying) {
     const mediaMetadata = await getMediaMetadata(nowPlaying.relPath);
-    coverImageUrl = buildCoverImageUrl(mediaMetadata);
-    
-    // Use metadata title if available, otherwise fall back to nowPlaying title or filename
     mediaTitle = mediaMetadata?.title || nowPlaying.title || nowPlaying.relPath.split("/").pop() || "Unknown";
     description = `Now playing: ${mediaTitle}`;
   }
@@ -128,8 +134,24 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     ? `Remote Viewer | ${channelNumber} • ${mediaTitle}`
     : `Remote Viewer | ${channelNumber}`;
   
-  // Use cover image if available, otherwise fallback to default OG image
-  const ogImage = coverImageUrl || `${BASE_URL}/og-image.png`;
+  // Prefer channel grid cover, fall back to now-playing cover, then default OG image
+  let ogImage = `${BASE_URL}/og-image.png`;
+  let ogWidth = 1200;
+  let ogHeight = 630;
+
+  if (channelGridExists) {
+    ogImage = channelGridUrl;
+    ogWidth = 800;
+    ogHeight = 1200;
+  } else if (nowPlaying) {
+    const mediaMetadata = await getMediaMetadata(nowPlaying.relPath);
+    const coverUrl = buildCoverImageUrl(mediaMetadata);
+    if (coverUrl) {
+      ogImage = coverUrl;
+      ogWidth = 600;
+      ogHeight = 900;
+    }
+  }
   
   return {
     title,
@@ -142,9 +164,9 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
       images: [
         {
           url: ogImage,
-          width: coverImageUrl ? 600 : 1200, // Cover images are typically portrait
-          height: coverImageUrl ? 900 : 630,
-          alt: coverImageUrl ? `Now playing on Channel ${channelNumber}` : "Remote Viewer",
+          width: ogWidth,
+          height: ogHeight,
+          alt: `Channel ${channelNumber}`,
         },
       ],
       type: "website",
