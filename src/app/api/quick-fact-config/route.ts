@@ -44,6 +44,7 @@ export type QuickFactConfig = {
   widthVw: number;
   autoPlayOnChannelSwitch: boolean;
   autoPlayDelaySeconds: number;
+  textBackground: boolean;
   enabledVars: EnabledVars;
 };
 
@@ -56,6 +57,7 @@ const DEFAULTS: QuickFactConfig = {
   widthVw: 80,
   autoPlayOnChannelSwitch: false,
   autoPlayDelaySeconds: 5,
+  textBackground: false,
   enabledVars: DEFAULT_ENABLED_VARS,
 };
 
@@ -136,6 +138,7 @@ export async function PUT(request: NextRequest) {
       widthVw: typeof body.widthVw === "number" ? body.widthVw : current.widthVw,
       autoPlayOnChannelSwitch: typeof body.autoPlayOnChannelSwitch === "boolean" ? body.autoPlayOnChannelSwitch : current.autoPlayOnChannelSwitch,
       autoPlayDelaySeconds: typeof body.autoPlayDelaySeconds === "number" ? body.autoPlayDelaySeconds : current.autoPlayDelaySeconds,
+      textBackground: typeof body.textBackground === "boolean" ? body.textBackground : current.textBackground,
       enabledVars: body.enabledVars && typeof body.enabledVars === "object"
         ? { ...DEFAULT_ENABLED_VARS, ...body.enabledVars }
         : current.enabledVars,

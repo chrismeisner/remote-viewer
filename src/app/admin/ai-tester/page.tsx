@@ -62,6 +62,7 @@ type QuickFactConfig = {
   widthVw: number;
   autoPlayOnChannelSwitch: boolean;
   autoPlayDelaySeconds: number;
+  textBackground: boolean;
   enabledVars: EnabledVars;
 };
 
@@ -313,6 +314,7 @@ export default function AiTesterPage() {
   const [draftWidthVw, setDraftWidthVw] = useState(80);
   const [draftAutoPlayOnChannelSwitch, setDraftAutoPlayOnChannelSwitch] = useState(false);
   const [draftAutoPlayDelaySeconds, setDraftAutoPlayDelaySeconds] = useState(5);
+  const [draftTextBackground, setDraftTextBackground] = useState(false);
   const [draftEnabledVars, setDraftEnabledVars] = useState<EnabledVars>(DEFAULT_ENABLED_VARS);
 
   // Typewriter preview state
@@ -364,6 +366,7 @@ export default function AiTesterPage() {
         setDraftWidthVw(data.config.widthVw ?? 80);
         setDraftAutoPlayOnChannelSwitch(data.config.autoPlayOnChannelSwitch ?? false);
         setDraftAutoPlayDelaySeconds(data.config.autoPlayDelaySeconds ?? 5);
+        setDraftTextBackground(data.config.textBackground ?? false);
         setDraftEnabledVars({ ...DEFAULT_ENABLED_VARS, ...(data.config.enabledVars ?? {}) });
       })
       .catch(() => {})
@@ -426,6 +429,7 @@ export default function AiTesterPage() {
           widthVw: draftWidthVw,
           autoPlayOnChannelSwitch: draftAutoPlayOnChannelSwitch,
           autoPlayDelaySeconds: draftAutoPlayDelaySeconds,
+          textBackground: draftTextBackground,
           enabledVars: draftEnabledVars,
         }),
       });
@@ -439,7 +443,7 @@ export default function AiTesterPage() {
       setSaving(false);
       setTimeout(() => setSaveMessage(null), 4000);
     }
-  }, [draftPrompt, draftMaxTokens, draftModel, draftHoldSeconds, draftTypingSpeedMs, draftWidthVw, draftAutoPlayOnChannelSwitch, draftAutoPlayDelaySeconds, draftEnabledVars, mediaSource]);
+  }, [draftPrompt, draftMaxTokens, draftModel, draftHoldSeconds, draftTypingSpeedMs, draftWidthVw, draftAutoPlayOnChannelSwitch, draftAutoPlayDelaySeconds, draftTextBackground, draftEnabledVars, mediaSource]);
 
   const handleReset = () => {
     if (!defaults) return;
@@ -451,6 +455,7 @@ export default function AiTesterPage() {
     setDraftWidthVw(defaults.widthVw ?? 80);
     setDraftAutoPlayOnChannelSwitch(defaults.autoPlayOnChannelSwitch ?? false);
     setDraftAutoPlayDelaySeconds(defaults.autoPlayDelaySeconds ?? 5);
+    setDraftTextBackground(defaults.textBackground ?? false);
     setDraftEnabledVars({ ...DEFAULT_ENABLED_VARS, ...(defaults.enabledVars ?? {}) });
   };
 
@@ -534,6 +539,7 @@ export default function AiTesterPage() {
       draftWidthVw !== (config.widthVw ?? 80) ||
       draftAutoPlayOnChannelSwitch !== (config.autoPlayOnChannelSwitch ?? false) ||
       draftAutoPlayDelaySeconds !== (config.autoPlayDelaySeconds ?? 5) ||
+      draftTextBackground !== (config.textBackground ?? false) ||
       enabledVarsDirty);
   const enabledTemplateVars = VAR_DEFINITIONS.flatMap(({ key, templateVars }) =>
     draftEnabledVars[key] ? templateVars : []
@@ -658,6 +664,45 @@ export default function AiTesterPage() {
               />
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Text Background */}
+      <div className={`rounded-md border p-4 transition-colors ${
+        draftTextBackground
+          ? "border-emerald-500/40 bg-emerald-500/10"
+          : "border-white/10 bg-neutral-900/60"
+      }`}>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-sm font-semibold text-neutral-100">Solid Black Text Background</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                draftTextBackground
+                  ? "bg-emerald-500/20 text-emerald-300"
+                  : "bg-neutral-500/20 text-neutral-400"
+              }`}>
+                {draftTextBackground ? "ON" : "OFF"}
+              </span>
+            </div>
+            <p className="text-xs text-neutral-400">
+              When enabled, each line of the factoid text is wrapped in a solid black background. When off, text renders directly over the video.
+            </p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={draftTextBackground}
+            onClick={() => setDraftTextBackground((v) => !v)}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+              draftTextBackground ? "bg-emerald-500" : "bg-neutral-600"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+                draftTextBackground ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
         </div>
       </div>
 
@@ -983,7 +1028,19 @@ export default function AiTesterPage() {
               <div style={{ maxWidth: `${draftWidthVw}vw` }}>
                 <p
                   className="text-xl leading-relaxed font-homevideo"
-                  style={{ color: "#d4d4d4" }}
+                  style={{
+                    color: "#d4d4d4",
+                    ...(draftTextBackground
+                      ? {
+                          background: "#000",
+                          padding: "2px 6px",
+                          borderRadius: 2,
+                          boxDecorationBreak: "clone",
+                          WebkitBoxDecorationBreak: "clone",
+                          display: "inline",
+                        }
+                      : {}),
+                  }}
                 >
                   {testStreaming ? testResult : (previewDisplay ?? "")}
                   {(testStreaming || (previewDisplay !== null && previewDisplay.length < testResult.length)) && (

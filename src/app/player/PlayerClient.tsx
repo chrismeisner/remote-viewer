@@ -10,6 +10,8 @@ import {
 import { Modal, ModalTitle, ModalFooter, ModalButton } from "@/components/Modal";
 import { ChangelogModal } from "@/components/ChangelogModal";
 import PlayerChatOverlay from "@/components/PlayerChatOverlay";
+import { QuickFactOverlay } from "@/components/QuickFactOverlay";
+import { useQuickFact } from "@/hooks/useQuickFact";
 import {
   trackChannelSelect,
   trackVideoStart,
@@ -89,6 +91,8 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const [refreshToken, setRefreshToken] = useState(0);
   const [muted, setMuted] = useState(true);
   const mutedRef = useRef(muted);
+  // Cleanup fn for the deferred unmute listener (browser autoplay policy workaround)
+  const unmuteOnInteractionCleanupRef = useRef<(() => void) | null>(null);
   const [volume, setVolume] = useState(1.0); // 0.0 to 1.0
   const volumeRef = useRef(volume);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -130,57 +134,24 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
   const [overlayChannel, setOverlayChannel] = useState<ChannelInfo | null>(null);
   const overlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Quick fact overlay state (AI-generated, typewriter style)
-  const [quickFactText, setQuickFactText] = useState("");
-  const [quickFactDisplay, setQuickFactDisplay] = useState("");
-  const [showQuickFact, setShowQuickFact] = useState(false);
-  const [quickFactLoading, setQuickFactLoading] = useState(false);
-  const quickFactTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const quickFactTypewriterRef = useRef<NodeJS.Timeout | null>(null);
-  const quickFactRequestIdRef = useRef(0);
-  const quickFactConfigRef = useRef<{
-    prompt: string;
-    maxTokens: number;
-    model: string;
-    holdSeconds: number;
-    typingSpeedMs: number;
-    widthVw: number;
-    autoPlayOnChannelSwitch?: boolean;
-    autoPlayDelaySeconds?: number;
-    enabledVars?: {
-      title?: boolean;
-      year?: boolean;
-      director?: boolean;
-      type?: boolean;
-      genre?: boolean;
-      plot?: boolean;
-      production?: boolean;
-      castTags?: boolean;
-      imdbUrl?: boolean;
-      episodeDetails?: boolean;
-      playbackPosition?: boolean;
-    };
-  } | null>(null);
   const autoPlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const clearQuickFactOverlay = useCallback((cancelInFlight = true) => {
-    if (cancelInFlight) {
-      // Invalidate any pending async quick-fact response updates.
-      quickFactRequestIdRef.current += 1;
-    }
-    if (quickFactTimeoutRef.current) {
-      clearTimeout(quickFactTimeoutRef.current);
-      quickFactTimeoutRef.current = null;
-    }
-    if (quickFactTypewriterRef.current) {
-      clearTimeout(quickFactTypewriterRef.current);
-      quickFactTypewriterRef.current = null;
-    }
-    setQuickFactLoading(false);
-    setShowQuickFact(false);
-    setQuickFactDisplay("");
-    setQuickFactText("");
-  }, []);
+  const {
+    showQuickFact,
+    quickFactDisplay,
+    quickFactText,
+    quickFactLoading,
+    quickFactConfigRef,
+    triggerQuickFact,
+    clearQuickFact: clearQuickFactOverlay,
+  } = useQuickFact({
+    infoMetadata,
+    title: infoMetadata?.title || nowPlaying?.title || "",
+    currentPlaybackTime,
+    durationSeconds: nowPlaying?.durationSeconds ?? 0,
+    mediaSource,
+    enabled: !!nowPlaying,
+  });
 
   // Track if we've already checked for changelog updates this session
   const changelogCheckedRef = useRef(false);
@@ -318,39 +289,6 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
     }, 2000);
   };
 
-  // Load quick fact config on mount
-  useEffect(() => {
-    fetch(`/api/quick-fact-config?source=${mediaSource}&t=${Date.now()}`)
-      .then((r) => r.json())
-      .then((data) => { quickFactConfigRef.current = data.config; })
-      .catch(() => {});
-  }, [mediaSource]);
-
-  // Typewriter effect for quick fact
-  useEffect(() => {
-    if (!quickFactText) return;
-    if (quickFactTypewriterRef.current) clearTimeout(quickFactTypewriterRef.current);
-    setQuickFactDisplay("");
-    const holdMs = (quickFactConfigRef.current?.holdSeconds ?? 8) * 1000;
-    const speedMs = quickFactConfigRef.current?.typingSpeedMs ?? 30;
-    let i = 0;
-    const tick = () => {
-      i++;
-      setQuickFactDisplay(quickFactText.slice(0, i));
-      if (i < quickFactText.length) {
-        quickFactTypewriterRef.current = setTimeout(tick, speedMs);
-      } else {
-        quickFactTimeoutRef.current = setTimeout(() => {
-          setShowQuickFact(false);
-        }, holdMs);
-      }
-    };
-    tick();
-    return () => {
-      if (quickFactTypewriterRef.current) clearTimeout(quickFactTypewriterRef.current);
-    };
-  }, [quickFactText]);
-
   // Cleanup overlay timeout on unmount
   useEffect(() => {
     return () => {
@@ -363,154 +301,11 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       if (channelInputTimeoutRef.current) {
         clearTimeout(channelInputTimeoutRef.current);
       }
-      if (quickFactTimeoutRef.current) {
-        clearTimeout(quickFactTimeoutRef.current);
-      }
-      if (quickFactTypewriterRef.current) {
-        clearTimeout(quickFactTypewriterRef.current);
-      }
       if (autoPlayTimeoutRef.current) {
         clearTimeout(autoPlayTimeoutRef.current);
       }
     };
   }, []);
-
-  // Extracted quick fact trigger — called by the Q key and by auto-play
-  const triggerQuickFact = useCallback(() => {
-    if (quickFactLoading || !nowPlaying) return;
-
-    if (quickFactTimeoutRef.current) clearTimeout(quickFactTimeoutRef.current);
-    if (quickFactTypewriterRef.current) clearTimeout(quickFactTypewriterRef.current);
-    setQuickFactDisplay("");
-    setQuickFactText("");
-    setShowQuickFact(true);
-    setQuickFactLoading(true);
-    const requestId = ++quickFactRequestIdRef.current;
-
-    const cfg = quickFactConfigRef.current;
-    const ev = cfg?.enabledVars ?? {};
-    const showTitle    = ev.title           !== false;
-    const showYear     = ev.year            !== false;
-    const showDirector = ev.director        !== false;
-    const showType     = ev.type            !== false;
-    const showGenre    = ev.genre           !== false;
-    const showPlot     = ev.plot            !== false;
-    const showProd     = ev.production      !== false;
-    const showCast     = ev.castTags        !== false;
-    const showImdb     = ev.imdbUrl         !== false;
-    const showEpisode  = ev.episodeDetails  !== false;
-    const showPos      = ev.playbackPosition !== false;
-
-    const meta = infoMetadata;
-    const title = showTitle ? (infoMetadata?.title || nowPlaying.title) : "";
-    const year  = showYear && infoMetadata?.year ? ` (${infoMetadata.year})` : "";
-    const season = showEpisode && typeof meta?.season === "number" ? String(meta.season) : "";
-    const episode = showEpisode && typeof meta?.episode === "number" ? String(meta.episode) : "";
-    const episodeCode =
-      season && episode
-        ? `S${season.padStart(2, "0")}E${episode.padStart(2, "0")}`
-        : "";
-    const releaseDate = showEpisode && meta?.releaseDate ? meta.releaseDate : "";
-    const timestamp = showPos ? formatOffsetForDisplay(currentPlaybackTime) : "";
-    const duration  = showPos ? formatOffsetForDisplay(nowPlaying.durationSeconds) : "";
-    const pct = showPos ? Math.round((currentPlaybackTime / nowPlaying.durationSeconds) * 100) : 0;
-
-    // Build context lines: identity first, then descriptive, then position
-    const metaLines: string[] = [];
-    // Identity block
-    if (showTitle) metaLines.push(`Title: ${title}${year}`);
-    if (showType  && meta?.type) metaLines.push(`Type: ${meta.type}`);
-    if (showEpisode) {
-      if (season)      metaLines.push(`Season: ${season}`);
-      if (episode)     metaLines.push(`Episode: ${episode}`);
-      if (episodeCode) metaLines.push(`Episode Code: ${episodeCode}`);
-      if (releaseDate) metaLines.push(`Air Date: ${releaseDate}`);
-    }
-    if (showImdb && meta?.imdbUrl) metaLines.push(`IMDb: ${meta.imdbUrl}`);
-    // Descriptive block
-    if (showDirector && meta?.director) metaLines.push(`Director: ${meta.director}`);
-    if (showGenre    && meta?.category) metaLines.push(`Genre: ${meta.category}`);
-    if (showPlot     && meta?.plot)     metaLines.push(`Plot: ${meta.plot}`);
-    if (showProd     && meta?.makingOf) metaLines.push(`Production: ${meta.makingOf}`);
-    if (showCast     && meta?.tags?.length) metaLines.push(`Cast/Tags: ${meta.tags!.join(", ")}`);
-    // Position block
-    if (showPos) metaLines.push(`\nPLAYBACK POSITION: ${timestamp} of ${duration} (${pct}% through)`);
-    const metaContext = metaLines.join("\n");
-
-    const promptTemplate = cfg?.prompt || `You are a text overlay inside a TV player. The viewer just pressed a button to get a quick fact about what they're watching RIGHT NOW. You know the current playback position — use it to identify approximately what scene or moment is happening and give a fact relevant to THAT part of the film/show. Use web search to look up scene-by-scene breakdowns if needed. Respond with ONLY a single short sentence (max 20 words). Do NOT use markdown, bullet points, or multiple sentences. Format: start with a brief scene/moment reference, then "—" and a relevant fact. Example: "The rooftop chase scene — Rutger Hauer improvised the famous 'tears in rain' monologue"`;
-    const interpolatedPrompt = promptTemplate
-      .replace(/\{\{title\}\}/g, title)
-      .replace(/\{\{year\}\}/g, year)
-      .replace(/\{\{imdbUrl\}\}/g, showImdb && meta?.imdbUrl ? meta.imdbUrl : "")
-      .replace(/\{\{season\}\}/g, season)
-      .replace(/\{\{episode\}\}/g, episode)
-      .replace(/\{\{episodeCode\}\}/g, episodeCode)
-      .replace(/\{\{releaseDate\}\}/g, releaseDate)
-      .replace(/\{\{timestamp\}\}/g, timestamp)
-      .replace(/\{\{duration\}\}/g, duration)
-      .replace(/\{\{percent\}\}/g, pct ? String(pct) : "")
-      .replace(/\{\{metaContext\}\}/g, metaContext);
-
-    const userMsg = showPos && timestamp
-      ? `I'm at ${timestamp} of ${duration} (${pct}% through). Give me a fact about what's happening around this point in the film/show.`
-      : "Give me an interesting fact about this media.";
-
-    fetch("/api/agent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: [{ role: "user", content: userMsg }],
-        model: cfg?.model || "gpt-4o",
-        maxTokens: cfg?.maxTokens || 200,
-            systemNote: metaContext ? `${interpolatedPrompt}\n\nMedia info:\n${metaContext}` : interpolatedPrompt,
-          }),
-        })
-          .then(async (res) => {
-            if (requestId !== quickFactRequestIdRef.current) return;
-            if (!res.ok) throw new Error("AI request failed");
-            const reader = res.body?.getReader();
-            if (!reader) throw new Error("No body");
-            const decoder = new TextDecoder();
-            let full = "";
-            let buf = "";
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buf += decoder.decode(value, { stream: true });
-              const lines = buf.split("\n");
-              buf = lines.pop() || "";
-              for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                  const evt = JSON.parse(line);
-                  if (evt.type === "text") full += evt.delta;
-                } catch { /* skip */ }
-              }
-            }
-            if (requestId !== quickFactRequestIdRef.current) return;
-            const cleaned = full
-              .replace(/\(\s*\[[^\]]*\]\([^)]*\)\s*\)/g, "")
-              .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-              .replace(/\(\s*https?:\/\/[^\s)]+\s*\)/g, "")
-              .replace(/https?:\/\/\S+/g, "")
-              .replace(/\*\*/g, "")
-              .replace(/[*_#`]/g, "")
-              .replace(/\s{2,}/g, " ")
-              .trim();
-            const fallback = title ? `You're watching ${title}${year}` : "Quick fact unavailable";
-            setQuickFactText(cleaned || fallback);
-          })
-          .catch(() => {
-            if (requestId !== quickFactRequestIdRef.current) return;
-            const fallback = title ? `You're watching ${title}${year}` : "Quick fact unavailable";
-            setQuickFactText(fallback);
-          })
-      .finally(() => {
-        if (requestId === quickFactRequestIdRef.current) {
-          setQuickFactLoading(false);
-        }
-      });
-  }, [quickFactLoading, nowPlaying, infoMetadata, currentPlaybackTime]);
 
   // Keep a ref to triggerQuickFact so timeouts always call the latest version
   const triggerQuickFactRef = useRef(triggerQuickFact);
@@ -865,8 +660,25 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
           try {
             await video.play();
             console.log("[player] autoplay succeeded when muted");
-            // Restore user's actual mute preference after successful play
-            video.muted = mutedRef.current;
+            // Don't immediately unmute — Chrome pauses the video if we do that
+            // without a user gesture. Defer to the first user interaction instead.
+            if (!mutedRef.current) {
+              if (unmuteOnInteractionCleanupRef.current) {
+                unmuteOnInteractionCleanupRef.current();
+              }
+              const applyMutePreference = () => {
+                if (videoRef.current) {
+                  videoRef.current.muted = mutedRef.current;
+                }
+                unmuteOnInteractionCleanupRef.current = null;
+              };
+              document.addEventListener("click", applyMutePreference, { once: true });
+              document.addEventListener("keydown", applyMutePreference, { once: true });
+              unmuteOnInteractionCleanupRef.current = () => {
+                document.removeEventListener("click", applyMutePreference);
+                document.removeEventListener("keydown", applyMutePreference);
+              };
+            }
             return true;
           } catch (retryErr) {
             console.warn("[player] autoplay failed even when muted", retryErr);
@@ -1040,6 +852,11 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
       video.removeEventListener("ended", handleEnded);
       video.removeEventListener("pause", preventPause);
       clearTimeout(lateSeek);
+      // Cancel any pending deferred unmute listener
+      if (unmuteOnInteractionCleanupRef.current) {
+        unmuteOnInteractionCleanupRef.current();
+        unmuteOnInteractionCleanupRef.current = null;
+      }
     };
   }, [nowPlaying]);
 
@@ -1839,26 +1656,15 @@ export default function PlayerClient({ initialChannel }: PlayerClientProps) {
               </div>
 
               {/* Quick fact AI overlay */}
-              <div
-                className={`absolute top-4 left-4 right-4 z-10 transition-opacity duration-500 ${
-                  showQuickFact && !showChannelOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
-                }`}
-              >
-                <div className="channel-overlay font-mono" style={{ flexDirection: "column", alignItems: "flex-start", gap: 0, maxWidth: `${quickFactConfigRef.current?.widthVw ?? 80}vw` }}>
-                  {quickFactLoading && !quickFactDisplay ? (
-                    <span className="channel-name" style={{ fontSize: 20 }}>
-                      <span className="channel-cursor">▌</span>
-                    </span>
-                  ) : (
-                    <span className="channel-name" style={{ fontSize: 20, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
-                      {quickFactDisplay}
-                      {quickFactDisplay.length < quickFactText.length && (
-                        <span className="channel-cursor">▌</span>
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
+              <QuickFactOverlay
+                showQuickFact={showQuickFact}
+                quickFactDisplay={quickFactDisplay}
+                quickFactText={quickFactText}
+                quickFactLoading={quickFactLoading}
+                widthVw={quickFactConfigRef.current?.widthVw ?? 80}
+                textBackground={quickFactConfigRef.current?.textBackground ?? false}
+                hideWhen={showChannelOverlay}
+              />
 
               {/* Volume overlay - shows when volume changes */}
               <div

@@ -1,10 +1,59 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import {
-  saveFullSchedule,
   loadFullSchedule,
   clearMediaCaches,
 } from "@/lib/media";
-import { isFtpConfigured, writeJsonToFtpWithLock, downloadJsonFromFtp } from "@/lib/ftp";
+import { isFtpConfigured, writeJsonToFtpWithLock, downloadJsonFromFtp, uploadJsonToFtp } from "@/lib/ftp";
+import { getEffectiveMediaRoot, getDataFolderForMediaRoot } from "@/lib/config";
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the active local data folder (same logic as media.ts / json-audit).
+ * Falls back to data/local/ when the media root is not configured or not writable.
+ */
+async function resolveLocalDataFolder(): Promise<string> {
+  const mediaRoot = await getEffectiveMediaRoot();
+  if (mediaRoot) {
+    const dataRoot = getDataFolderForMediaRoot(mediaRoot);
+    try {
+      await fs.mkdir(dataRoot, { recursive: true });
+      const testFile = path.join(dataRoot, ".write-test");
+      await fs.writeFile(testFile, "test");
+      await fs.unlink(testFile);
+      return dataRoot;
+    } catch {
+      // fall through to fallback
+    }
+  }
+  const fallbackRoot = path.join(process.cwd(), "data", "local");
+  await fs.mkdir(fallbackRoot, { recursive: true });
+  return fallbackRoot;
+}
+
+/**
+ * Write clean empty data files to a folder and optionally delete deprecated ones.
+ */
+async function writeCleanFiles(folder: string): Promise<void> {
+  await fs.mkdir(folder, { recursive: true });
+  await fs.writeFile(path.join(folder, "schedule.json"), JSON.stringify({ channels: {} }, null, 2));
+  await fs.writeFile(path.join(folder, "media-index.json"), JSON.stringify({ items: [], generatedAt: new Date().toISOString() }, null, 2));
+  await fs.writeFile(path.join(folder, "media-metadata.json"), JSON.stringify({ items: {} }, null, 2));
+  // Remove deprecated channels.json if present
+  const deprecated = path.join(folder, "channels.json");
+  if (await fileExists(deprecated)) {
+    await fs.unlink(deprecated);
+  }
+}
 
 export const runtime = "nodejs";
 
@@ -41,50 +90,71 @@ export async function POST(request: NextRequest) {
       }
       console.log("[Reset API] Remote - current channel count:", currentChannelCount);
 
-      // Push empty schedule to remote with locking
-      console.log("[Reset API] Remote - uploading empty schedule.json via FTP");
+      // Push empty files to remote (same as fresh-start does)
+      console.log("[Reset API] Remote - uploading clean files via FTP");
       const emptySchedule: ScheduleData = { channels: {} };
       const uploadedPath = await writeJsonToFtpWithLock("schedule.json", emptySchedule);
-      console.log("[Reset API] Remote - uploaded to:", uploadedPath);
+      console.log("[Reset API] Remote - schedule uploaded to:", uploadedPath);
 
-      // Note: We can't verify immediately due to CDN caching, but the FTP upload succeeded
-      console.log("[Reset API] Remote - SUCCESS (FTP upload complete, CDN may take time to update)");
+      // Also clear media-index and media-metadata so stale entries don't reappear
+      await uploadJsonToFtp("media-index.json", { items: [], generatedAt: new Date().toISOString() });
+      await uploadJsonToFtp("media-metadata.json", { items: {} });
+
+      // Clear in-memory caches
+      clearMediaCaches();
+
+      console.log("[Reset API] Remote - SUCCESS");
 
       return NextResponse.json({
         ok: true,
-        message: "All remote channels and schedules have been deleted",
+        message: "All remote channels, schedules, and media index have been reset",
         previousChannelCount: currentChannelCount,
         channels: [],
         source,
       });
     } else {
-      console.log("[Reset API] Step 1: Clearing caches BEFORE save");
+      console.log("[Reset API] Step 1: Resolving active data folder");
+      const dataFolder = await resolveLocalDataFolder();
+      console.log("[Reset API] Active data folder:", dataFolder);
+
+      console.log("[Reset API] Step 2: Clearing caches");
       clearMediaCaches();
-      
-      console.log("[Reset API] Step 2: Saving empty schedule");
-      const emptySchedule = { channels: {} };
-      await saveFullSchedule(emptySchedule);
-      
-      console.log("[Reset API] Step 3: Clearing caches AFTER save");
+
+      console.log("[Reset API] Step 3: Writing clean files to active folder");
+      await writeCleanFiles(dataFolder);
+
+      // Also wipe the fallback data/local/ folder so stale data can't resurface
+      // after a server restart or transient error that causes a fallback.
+      const fallbackFolder = path.join(process.cwd(), "data", "local");
+      if (path.resolve(dataFolder) !== path.resolve(fallbackFolder)) {
+        console.log("[Reset API] Step 4: Wiping fallback data/local/ folder");
+        try {
+          await writeCleanFiles(fallbackFolder);
+        } catch (err) {
+          console.warn("[Reset API] Could not wipe fallback folder:", err);
+        }
+      }
+
+      console.log("[Reset API] Step 5: Clearing caches after write");
       clearMediaCaches();
-      
-      console.log("[Reset API] Step 4: Verifying save by reading back");
+
+      console.log("[Reset API] Step 6: Verifying via loadFullSchedule");
       const verifySchedule = await loadFullSchedule("local");
       const channelCount = Object.keys(verifySchedule.channels || {}).length;
-      
-      console.log("[Reset API] Verification result:", { channelCount, channels: Object.keys(verifySchedule.channels || {}) });
-      
+
+      console.log("[Reset API] Verification result:", { channelCount });
+
       if (channelCount > 0) {
         console.error("[Reset API] VERIFICATION FAILED - channels still exist:", channelCount);
-        return NextResponse.json({ 
-          error: `Reset may have failed - ${channelCount} channels still found` 
+        return NextResponse.json({
+          error: `Reset may have failed - ${channelCount} channels still found`,
         }, { status: 500 });
       }
 
-      console.log("[Reset API] SUCCESS - all channels deleted");
+      console.log("[Reset API] SUCCESS - all data reset");
       return NextResponse.json({
         ok: true,
-        message: "All local channels and schedules have been deleted",
+        message: "All local channels, schedules, and media index have been reset",
         channels: [],
         source,
       });

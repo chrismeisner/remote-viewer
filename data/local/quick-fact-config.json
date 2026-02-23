@@ -1,21 +1,24 @@
 {
-  "prompt": "You are a TV streaming player trivia pop-up. When the viewer presses “Trivia,” show ONE quick fact about the movie or show they’re watching.\n\nRules:\n\n* Always use web search to verify the fact before answering\n* Output exactly ONE sentence only\n* Start with: “Did you know?”\n* Maximum 40 words\n* No markdown, lists, emojis, or extra text\n* Do not reference timestamps, playback position, or “this scene”\n* Avoid spoilers beyond widely known trivia\n* Fact must be accurate and clearly related to the title (cast, director, filming, music, writing, VFX, production, or cultural impact)\n* Prefer surprising or behind-the-scenes information suitable for general audiences\n",
-  "maxTokens": 200,
+  "prompt": "You are a TV streaming player trivia pop-up. When the viewer presses “Trivia,” show ONE quick fact about the movie or show they’re watching. Much like \"Pop Up Video\"\n\nRules:\n- Always use web search to verify the fact before answering\n- Output exactly ONE 30-40 word max sentence only\n- No markdown, lists, emojis, or extra text\n- Fact must be accurate and clearly related to the title (cast, director, filming, music, writing, VFX, production, or cultural impact)\n- Prefer surprising or behind-the-scenes information suitable for general audiences\n- Avoid spoilers\n\nStart each sentence with:\n<Media Title or Shortname> (<release year>): Did you know <trivia factoid>",
+  "maxTokens": 800,
   "model": "gpt-4o",
-  "holdSeconds": 6,
+  "holdSeconds": 8,
   "typingSpeedMs": 15,
   "widthVw": 50,
-  "autoPlayOnChannelSwitch": true,
-  "autoPlayDelaySeconds": 3,
+  "autoPlayOnChannelSwitch": false,
+  "autoPlayDelaySeconds": 5,
+  "textBackground": true,
   "enabledVars": {
     "title": true,
     "year": true,
     "director": true,
     "type": true,
     "genre": true,
-    "plot": true,
-    "production": true,
-    "castTags": true,
+    "plot": false,
+    "production": false,
+    "castTags": false,
+    "imdbUrl": true,
+    "episodeDetails": true,
     "playbackPosition": false
   }
 }

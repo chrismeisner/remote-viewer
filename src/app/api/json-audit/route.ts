@@ -713,6 +713,33 @@ async function handleLocalFix(action: string) {
         }
       }
 
+      // Also wipe the fallback data/local/ folder if it differs from the active folder.
+      // This prevents stale data there from resurfacing after a server restart or
+      // any transient error that causes the app to fall back to that directory.
+      const fallbackFolder = path.join(process.cwd(), "data", "local");
+      if (path.resolve(dataFolder) !== path.resolve(fallbackFolder)) {
+        try {
+          await fs.mkdir(fallbackFolder, { recursive: true });
+          const filesToWipe = ["schedule.json", "media-index.json", "media-metadata.json", "channels.json"];
+          for (const file of filesToWipe) {
+            const filePath = path.join(fallbackFolder, file);
+            if (await fileExists(filePath)) {
+              if (file === "schedule.json") {
+                await fs.writeFile(filePath, JSON.stringify({ channels: {} }, null, 2));
+              } else if (file === "media-index.json") {
+                await fs.writeFile(filePath, JSON.stringify({ items: [], generatedAt: new Date().toISOString() }, null, 2));
+              } else if (file === "media-metadata.json") {
+                await fs.writeFile(filePath, JSON.stringify({ items: {} }, null, 2));
+              } else {
+                await fs.unlink(filePath);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("[Fresh Start] Could not clear fallback folder:", err);
+        }
+      }
+
       // Clear media caches so next request reads fresh data
       clearMediaCaches();
 

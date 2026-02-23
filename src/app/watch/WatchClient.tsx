@@ -8,6 +8,8 @@ import {
   REMOTE_MEDIA_BASE,
 } from "@/constants/media";
 import { Modal, ModalTitle, ModalFooter, ModalButton } from "@/components/Modal";
+import { QuickFactOverlay } from "@/components/QuickFactOverlay";
+import { useQuickFact } from "@/hooks/useQuickFact";
 import {
   trackVideoStart,
   trackFullscreenToggle,
@@ -95,6 +97,23 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
   // Seeking via scrub bar
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekTime, setSeekTime] = useState(0);
+
+  // AI overview (shared hook — triggered by "q")
+  const {
+    showQuickFact,
+    quickFactDisplay,
+    quickFactText,
+    quickFactLoading,
+    quickFactConfigRef,
+    triggerQuickFact,
+  } = useQuickFact({
+    infoMetadata,
+    title: infoMetadata?.title || filePath || "",
+    currentPlaybackTime: currentTime,
+    durationSeconds: duration,
+    mediaSource,
+    enabled: !!filePath,
+  });
 
   // ── Build the video source URL ──────────────────────────────────────
   const buildSrc = useCallback(
@@ -505,6 +524,12 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
         return;
       }
 
+      if (key === "q") {
+        event.preventDefault();
+        triggerQuickFact();
+        return;
+      }
+
       if (key === "i") {
         event.preventDefault();
         if (!showInfoModal && filePath) {
@@ -560,7 +585,7 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [muted, volume, showControls, showInfoModal, filePath, isPlaying, infoMetadata?.subtitleFile]);
+  }, [muted, volume, showControls, showInfoModal, filePath, isPlaying, infoMetadata?.subtitleFile, triggerQuickFact]);
 
   // ── Player actions ──────────────────────────────────────────────────
   const togglePlayPause = () => {
@@ -773,6 +798,16 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
           </video>
 
           {/* Play/pause overlay icon (briefly shown on click) */}
+
+          {/* AI overview overlay (q key) */}
+          <QuickFactOverlay
+            showQuickFact={showQuickFact}
+            quickFactDisplay={quickFactDisplay}
+            quickFactText={quickFactText}
+            quickFactLoading={quickFactLoading}
+            widthVw={quickFactConfigRef.current?.widthVw ?? 80}
+            textBackground={quickFactConfigRef.current?.textBackground ?? false}
+          />
 
           {/* Volume overlay */}
           <div
