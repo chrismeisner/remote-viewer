@@ -1223,6 +1223,13 @@ export default function MediaAdminPage() {
           meta.episode?.toString() || "",
           meta.imdbUrl || "",
           meta.eventUrl || "",
+          meta.subtitleFile || "",
+          meta.dateAdded || "",
+          meta.lastUpdated || "",
+          meta.coverUrl || "",
+          meta.coverLocal || "",
+          meta.coverPath || "",
+          meta.coverEmoji || "",
           tagsStr,
         ].join(" ").toLowerCase();
         if (!terms.every((term) => haystack.includes(term))) {
