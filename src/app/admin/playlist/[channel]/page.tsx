@@ -62,6 +62,43 @@ type FullScheduleData = {
   channels: Record<string, ChannelScheduleData>;
 };
 
+/**
+ * When items are appended to the end of a looping playlist the total duration
+ * grows, which shifts the modulo-based position calculation and causes a
+ * visible jump. This function compensates by returning a new epochOffsetHours
+ * that keeps the current playback position identical before and after the
+ * append, plus the milliseconds until the current loop iteration ends (at
+ * which point the offset can be reset to 0).
+ */
+function computePreservedOffset(
+  currentEpochOffsetHours: number,
+  oldTotalDuration: number,
+  addedDuration: number,
+): { offsetHours: number; msUntilLoopEnd: number } {
+  if (oldTotalDuration <= 0 || addedDuration <= 0) {
+    return { offsetHours: currentEpochOffsetHours, msUntilLoopEnd: 0 };
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const epochOffsetSeconds = currentEpochOffsetHours * 3600;
+  const adjustedSeconds = nowSeconds - epochOffsetSeconds;
+  const positionInLoop =
+    ((adjustedSeconds % oldTotalDuration) + oldTotalDuration) % oldTotalDuration;
+
+  const newTotalDuration = oldTotalDuration + addedDuration;
+  // k = which "era" of the loop we're in under the new duration
+  const k = Math.floor(adjustedSeconds / newTotalDuration);
+  const newEpochOffsetSeconds = nowSeconds - (k * newTotalDuration + positionInLoop);
+
+  // How long until this loop iteration ends and the offset is no longer needed
+  const remainingSeconds = newTotalDuration - positionInLoop;
+
+  return {
+    offsetHours: newEpochOffsetSeconds / 3600,
+    msUntilLoopEnd: remainingSeconds * 1000,
+  };
+}
+
 export default function ChannelPlaylistPage() {
   const params = useParams();
   const channelId = params.channel as string;
@@ -108,6 +145,8 @@ export default function ChannelPlaylistPage() {
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedPlaylistRef = useRef<string>("[]");
   const lastSavedOffsetRef = useRef<number>(0);
+  // Timer that resets epochOffsetHours to 0 once the current loop iteration ends
+  const offsetResetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load media source from localStorage - must complete before loading data
   useEffect(() => {
@@ -125,6 +164,13 @@ export default function ChannelPlaylistPage() {
     return () => {
       window.removeEventListener("storage", syncSource);
       window.removeEventListener(MEDIA_SOURCE_EVENT, syncSource);
+    };
+  }, []);
+
+  // Cancel the offset-reset timer on unmount
+  useEffect(() => {
+    return () => {
+      if (offsetResetTimeoutRef.current) clearTimeout(offsetResetTimeoutRef.current);
     };
   }, []);
 
@@ -483,8 +529,15 @@ export default function ChannelPlaylistPage() {
       title: file.title,
       durationSeconds: file.durationSeconds,
     };
+    const { offsetHours, msUntilLoopEnd } = computePreservedOffset(epochOffsetHours, totalDuration, file.durationSeconds);
+    setEpochOffsetHours(offsetHours);
     setPlaylist(prev => [...prev, newItem]);
-  }, []);
+    // Reset the offset to 0 once the current loop iteration plays out
+    if (offsetResetTimeoutRef.current) clearTimeout(offsetResetTimeoutRef.current);
+    offsetResetTimeoutRef.current = setTimeout(() => {
+      setEpochOffsetHours(0);
+    }, msUntilLoopEnd);
+  }, [epochOffsetHours, totalDuration]);
 
   const addAllToPlaylist = useCallback(() => {
     const filesToAdd = availableFiles.filter(
@@ -496,9 +549,17 @@ export default function ChannelPlaylistPage() {
         title: file.title,
         durationSeconds: file.durationSeconds,
       }));
+      const addedDuration = newItems.reduce((sum, item) => sum + item.durationSeconds, 0);
+      const { offsetHours, msUntilLoopEnd } = computePreservedOffset(epochOffsetHours, totalDuration, addedDuration);
+      setEpochOffsetHours(offsetHours);
       setPlaylist(prev => [...prev, ...newItems]);
+      // Reset the offset to 0 once the current loop iteration plays out
+      if (offsetResetTimeoutRef.current) clearTimeout(offsetResetTimeoutRef.current);
+      offsetResetTimeoutRef.current = setTimeout(() => {
+        setEpochOffsetHours(0);
+      }, msUntilLoopEnd);
     }
-  }, [availableFiles, playlist]);
+  }, [availableFiles, playlist, epochOffsetHours, totalDuration]);
 
   const removeFromPlaylist = useCallback((index: number) => {
     setPlaylist(prev => prev.filter((_, i) => i !== index));
