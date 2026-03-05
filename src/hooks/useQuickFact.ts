@@ -239,7 +239,7 @@ export function useQuickFact({
       : `${interpolatedPrompt}${seenFactsNote}`;
 
     console.group(`[quick-fact] request #${requestId}`);
-    console.log("[quick-fact] model:", cfg?.model || "gpt-4o");
+    console.log("[quick-fact] model:", cfg?.model || "gpt-4.1");
     console.log("[quick-fact] user message:", userMsg);
     console.log("[quick-fact] system note:\n", systemNote);
     console.log("[quick-fact] seen facts history:", seenFacts.length ? seenFacts : "(none)");
@@ -250,7 +250,7 @@ export function useQuickFact({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: [{ role: "user", content: userMsg }],
-        model: cfg?.model || "gpt-4o",
+        model: cfg?.model || "gpt-4.1",
         maxTokens: cfg?.maxTokens || 200,
         systemNote,
       }),

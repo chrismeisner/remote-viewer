@@ -43,7 +43,7 @@ type DeepSearchResponse = {
 /**
  * POST /api/media-metadata/deep-search
  *
- * Uses OpenAI (gpt-4o) to do a thorough, context-rich metadata lookup.
+ * Uses OpenAI (gpt-4.1) to do a thorough, context-rich metadata lookup.
  * Unlike the regular ai-lookup which primarily works from the filename,
  * deep-search leverages ALL existing metadata to do a highly targeted
  * search — e.g. looking up the specific plot of a TV episode, detailed
@@ -286,7 +286,7 @@ Return enriched metadata as JSON. Be thorough and specific.`;
     }
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o", // Use the full model for deep search — more thorough and accurate
+      model: "gpt-4.1", // Use the full model for deep search — more thorough and accurate
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },

@@ -940,7 +940,7 @@ ${existingFields.join("\n")}`;
     console.log(`[AI Lookup] Analyzing filename: ${filename} (mode: ${isSportsMode ? "sports" : "entertainment"}, maxTokens: ${tokenLimit}${userContext ? `, userContext: "${userContext}"` : ""})`);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Fast and cost-effective for this task
+      model: "gpt-4.1-mini", // Fast and cost-effective for this task
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -952,6 +952,7 @@ ${existingFields.join("\n")}`;
     const content = completion.choices[0]?.message?.content;
     
     if (!content) {
+      console.warn(`[AI Lookup] OpenAI returned empty content for filename: "${filename}" (finishReason: ${completion.choices[0]?.finish_reason ?? "unknown"})`);
       return NextResponse.json(
         { error: "No response from AI" },
         { status: 500 }
@@ -1123,6 +1124,19 @@ ${existingFields.join("\n")}`;
     };
 
     console.log(`[AI Lookup] Result:`, result);
+
+    // Warn about any key fields that came back empty
+    const emptyFields: string[] = [];
+    if (!result.title) emptyFields.push("title");
+    if (!result.year) emptyFields.push("year");
+    if (!result.releaseDate) emptyFields.push("releaseDate");
+    if (!result.plot) emptyFields.push("plot");
+    if (!result.type) emptyFields.push("type");
+    if (!isSportsMode && !result.imdbUrl) emptyFields.push("imdbUrl");
+    if (isSportsMode && !result.eventUrl) emptyFields.push("eventUrl");
+    if (emptyFields.length > 0) {
+      console.warn(`[AI Lookup] Missing fields for "${filename}": ${emptyFields.join(", ")}`);
+    }
 
     return NextResponse.json(result);
   } catch (error) {

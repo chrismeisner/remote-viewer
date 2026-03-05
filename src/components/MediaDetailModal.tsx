@@ -25,6 +25,60 @@ import {
   parseFrameRate,
 } from "@/lib/media-utils";
 
+function WatchButton({ relPath, source }: { relPath: string; source: string }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleClick = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/watch-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: relPath, source }),
+      });
+      const data = await res.json() as { token?: string };
+      if (data.token) {
+        window.open(`/watch?v=${data.token}`, "_blank", "noopener,noreferrer");
+      } else {
+        window.open(
+          `/watch?file=${encodeURIComponent(relPath)}&source=${source}`,
+          "_blank",
+          "noopener,noreferrer",
+        );
+      }
+    } catch {
+      window.open(
+        `/watch?file=${encodeURIComponent(relPath)}&source=${source}`,
+        "_blank",
+        "noopener,noreferrer",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-neutral-300 transition hover:border-emerald-400/40 hover:bg-emerald-500/10 hover:text-emerald-200 disabled:opacity-50"
+      title="Watch from beginning in new tab"
+    >
+      {loading ? (
+        <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
+      ) : (
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      )}
+      Watch
+    </button>
+  );
+}
+
 function MediaHealthBadge({ file }: { file: MediaFile }) {
   const health = computeMediaHealth(file);
   const status = getMediaHealthStatusLabel(health);
@@ -1306,19 +1360,7 @@ export default function MediaDetailModal({
             )}
           </div>
           <div className="ml-4 flex flex-shrink-0 items-center gap-2">
-            <a
-              href={`/watch?file=${encodeURIComponent(currentRelPath)}&source=${mediaSource}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-neutral-300 transition hover:border-emerald-400/40 hover:bg-emerald-500/10 hover:text-emerald-200"
-              title="Watch from beginning in new tab"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Watch
-            </a>
+            <WatchButton relPath={currentRelPath} source={mediaSource} />
             <button
               onClick={onClose}
               className="rounded-lg p-2 text-neutral-400 hover:bg-white/10 hover:text-neutral-100 transition"

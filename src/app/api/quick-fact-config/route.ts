@@ -51,7 +51,7 @@ export type QuickFactConfig = {
 const DEFAULTS: QuickFactConfig = {
   prompt: `You are a text overlay inside a TV player. The viewer just pressed a button to get a quick fact about what they're watching RIGHT NOW. You know the current playback position — use it to identify approximately what scene or moment is happening and give a fact relevant to THAT part of the film/show. Use web search to look up scene-by-scene breakdowns if needed. Respond with ONLY a single short sentence (max 20 words). Do NOT use markdown, bullet points, or multiple sentences. Format: start with a brief scene/moment reference, then "—" and a relevant fact. Example: "The rooftop chase scene — Rutger Hauer improvised the famous 'tears in rain' monologue"`,
   maxTokens: 200,
-  model: "gpt-4o",
+  model: "gpt-4.1",
   holdSeconds: 8,
   typingSpeedMs: 30,
   widthVw: 80,

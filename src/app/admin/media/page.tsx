@@ -802,6 +802,14 @@ export default function MediaAdminPage() {
         }
 
         const aiData = await aiRes.json();
+        console.log(`[Bulk Fill] AI result for "${file.relPath}":`, {
+          title: aiData.title || null,
+          type: aiData.type || null,
+          year: aiData.year || null,
+          releaseDate: aiData.releaseDate || null,
+          imdbUrl: aiData.imdbUrl || null,
+          eventUrl: aiData.eventUrl || null,
+        });
 
         if (bulkFillAbortRef.current) break;
 
@@ -835,10 +843,15 @@ export default function MediaAdminPage() {
               const imdbData = await imdbRes.json();
               if (imdbData.candidates?.length > 0) {
                 finalImdbUrl = imdbData.candidates[0].imdbUrl;
+                console.log(`[Bulk Fill] IMDB search found "${imdbData.candidates[0].title}" → ${finalImdbUrl}`);
+              } else {
+                console.warn(`[Bulk Fill] IMDB search returned no candidates for "${searchTitle}" (${file.relPath})`);
               }
+            } else {
+              console.warn(`[Bulk Fill] IMDB search request failed with status ${imdbRes.status} for "${searchTitle}"`);
             }
-          } catch {
-            // IMDB search is best-effort — don't block the fill
+          } catch (imdbErr) {
+            console.warn(`[Bulk Fill] IMDB search error for "${searchTitle}":`, imdbErr);
           }
         }
 
@@ -862,11 +875,23 @@ export default function MediaAdminPage() {
               const eventData = await eventRes.json();
               if (eventData.bestMatch?.boxScoreUrl) {
                 finalEventUrl = eventData.bestMatch.boxScoreUrl;
+                console.log(`[Bulk Fill] Event search found box score: ${finalEventUrl}`);
+              } else {
+                console.warn(`[Bulk Fill] Event search found no match for "${bulkTitle}" on ${aiData.releaseDate} (sport: ${aiData.category || "Basketball"})`);
+                if (eventData.games?.length > 0) {
+                  console.warn(`[Bulk Fill] Games found on that date:`, eventData.games.map((g: { team1: string; team2: string }) => `${g.team1} vs ${g.team2}`));
+                } else {
+                  console.warn(`[Bulk Fill] No games found at all on ${aiData.releaseDate}`);
+                }
               }
+            } else {
+              console.warn(`[Bulk Fill] Event search request failed with status ${eventRes.status}`);
             }
-          } catch {
-            // Event search is best-effort
+          } catch (eventErr) {
+            console.warn(`[Bulk Fill] Event search error for "${aiData.title}" on ${aiData.releaseDate}:`, eventErr);
           }
+        } else if (isBulkSports && !aiData.releaseDate) {
+          console.warn(`[Bulk Fill] Skipping event search for "${file.relPath}" — AI returned no releaseDate`);
         }
 
         if (bulkFillAbortRef.current) break;
@@ -890,10 +915,15 @@ export default function MediaAdminPage() {
                 const seriesImage = seriesData.image ?? null;
                 if (seriesImage) {
                   coverUrl = seriesImage;
+                  console.log(`[Bulk Fill] Got series poster from IMDB for "${aiData.title}"`);
+                } else {
+                  console.warn(`[Bulk Fill] IMDB series preview returned no image for ${bulkSeriesImdbUrl}`);
                 }
+              } else {
+                console.warn(`[Bulk Fill] IMDB series preview request failed with status ${seriesRes.status}`);
               }
-            } catch {
-              // Series cover fetch is best-effort
+            } catch (coverErr) {
+              console.warn(`[Bulk Fill] Series cover fetch error for ${bulkSeriesImdbUrl}:`, coverErr);
             }
           }
         }
@@ -911,10 +941,15 @@ export default function MediaAdminPage() {
                 const image = previewData.image ?? null;
                 if (image) {
                   coverUrl = image;
+                  console.log(`[Bulk Fill] Got cover image from IMDB for "${aiData.title}"`);
+                } else {
+                  console.warn(`[Bulk Fill] IMDB preview returned no image for ${finalImdbUrl}`);
                 }
+              } else {
+                console.warn(`[Bulk Fill] IMDB preview request failed with status ${previewRes.status} for ${finalImdbUrl}`);
               }
-            } catch {
-              // Cover fetch is best-effort
+            } catch (coverErr) {
+              console.warn(`[Bulk Fill] Cover fetch error for ${finalImdbUrl}:`, coverErr);
             }
           }
         }

@@ -349,6 +349,18 @@ export async function POST(request: NextRequest) {
     } else if (games.length === 1) {
       // If only one game on that date, it's probably the right one
       bestMatch = games[0];
+      console.log(`[Event Search] Only one game on ${date}, using it: ${bestMatch.team1} vs ${bestMatch.team2}`);
+    }
+
+    if (!bestMatch) {
+      if (games.length === 0) {
+        console.warn(`[Event Search] No games found on ${date} for sport "${sportLower}"`);
+      } else {
+        console.warn(
+          `[Event Search] No match found for team1="${team1 ?? ""}" / team2="${team2 ?? ""}" on ${date}. ` +
+          `Available games: ${games.map((g) => `${g.team1} vs ${g.team2}`).join(", ")}`
+        );
+      }
     }
 
     return NextResponse.json({ games, bestMatch });

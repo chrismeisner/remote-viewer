@@ -117,7 +117,9 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
 
   // Load full application context silently — returns the fetched context so
   // sendMessage can use it immediately without waiting for a state update.
-  // When called for the first time (chat empty), injects a welcome message.
+  // Load full application context silently — returns the fetched context so
+  // sendMessage can use it immediately without waiting for a state update.
+  // On the initial load, seeds the chat with a generic greeting.
   const loadContext = useCallback(async (isInitial = false): Promise<AgentContext | null> => {
     setContextLoading(true);
     try {
@@ -129,36 +131,15 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
         const data: AgentContext = await res.json();
         setAgentContext(data);
 
-        // On first load, seed the chat with a casual welcome + follow-up
-        if (isInitial && data.freshestNowPlaying) {
-          const { title, channelId, channelName, minutesAgo } = data.freshestNowPlaying;
-          const timeLabel =
-            minutesAgo === 0
-              ? "just started"
-              : minutesAgo === 1
-              ? "started 1 min ago"
-              : `started ${minutesAgo} mins ago`;
-          const welcome = `Ever seen **${title}**? It ${timeLabel} on [${channelName}](/player?channel=${channelId}).`;
+        if (isInitial) {
           setMessages([
             {
               id: crypto.randomUUID(),
               role: "assistant",
-              content: welcome,
+              content: "Hey! What can I help you find?",
               timestamp: new Date(),
             },
           ]);
-          // Follow-up nudge after a short delay
-          setTimeout(() => {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                role: "assistant",
-                content: "Looking for something else? Let me know what you're in the mood for.",
-                timestamp: new Date(),
-              },
-            ]);
-          }, 2000);
         }
 
         return data;

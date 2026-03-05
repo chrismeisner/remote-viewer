@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     });
 
     const body = await request.json();
-    const { messages, model = "gpt-4o", maxTokens = 4096, fullContext, systemNote } = body;
+    const { messages, model = "gpt-4.1", maxTokens = 4096, fullContext, systemNote } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(

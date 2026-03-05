@@ -63,8 +63,6 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
 
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [isVideoLoading, setIsVideoLoading] = useState(true);
   const [hasStarted, setHasStarted] = useState(false);
 
@@ -94,10 +92,6 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
   // Remote overlay visibility
   const [showControls, setShowControls] = useState(true);
 
-  // Seeking via scrub bar
-  const [isSeeking, setIsSeeking] = useState(false);
-  const [seekTime, setSeekTime] = useState(0);
-
   // AI overview (shared hook — triggered by "q")
   const {
     showQuickFact,
@@ -109,8 +103,8 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
   } = useQuickFact({
     infoMetadata,
     title: infoMetadata?.title || filePath || "",
-    currentPlaybackTime: currentTime,
-    durationSeconds: duration,
+    currentPlaybackTime: videoRef.current?.currentTime ?? 0,
+    durationSeconds: videoRef.current?.duration ?? 0,
     mediaSource,
     enabled: !!filePath,
   });
@@ -301,7 +295,6 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
     const handleLoadedMetadata = () => {
       video.muted = mutedRef.current;
       video.volume = volumeRef.current;
-      setDuration(video.duration || 0);
       // Start from the beginning
       video.currentTime = 0;
       console.log("[watch] media loaded", { filePath, duration: video.duration });
@@ -344,19 +337,12 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
       }
     };
 
-    const handleTimeUpdate = () => {
-      if (!isSeeking) {
-        setCurrentTime(video.currentTime);
-      }
-    };
-
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
     const handleWaiting = () => setIsVideoLoading(true);
     const handlePlaying = () => setIsVideoLoading(false);
     const handleEnded = () => {
       setIsPlaying(false);
-      setCurrentTime(video.duration || 0);
     };
 
     const handleError = () => {
@@ -378,7 +364,6 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
 
     video.addEventListener("loadedmetadata", handleLoadedMetadata);
     video.addEventListener("canplay", handleCanPlay);
-    video.addEventListener("timeupdate", handleTimeUpdate);
     video.addEventListener("play", handlePlay);
     video.addEventListener("pause", handlePause);
     video.addEventListener("waiting", handleWaiting);
@@ -389,7 +374,6 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
     return () => {
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
       video.removeEventListener("canplay", handleCanPlay);
-      video.removeEventListener("timeupdate", handleTimeUpdate);
       video.removeEventListener("play", handlePlay);
       video.removeEventListener("pause", handlePause);
       video.removeEventListener("waiting", handleWaiting);
@@ -546,18 +530,6 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
         return;
       }
 
-      // Left/right arrows: seek 10s backward/forward
-      if (key === "arrowleft") {
-        event.preventDefault();
-        seekRelative(-10);
-        return;
-      }
-      if (key === "arrowright") {
-        event.preventDefault();
-        seekRelative(10);
-        return;
-      }
-
       // Up/down arrows: volume
       if (key === "arrowup") {
         event.preventDefault();
@@ -596,32 +568,6 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
     } else {
       video.pause();
     }
-  };
-
-  const seekRelative = (seconds: number) => {
-    const video = videoRef.current;
-    if (!video || !duration) return;
-    const target = Math.max(0, Math.min(duration, video.currentTime + seconds));
-    video.currentTime = target;
-    setCurrentTime(target);
-  };
-
-  const handleSeekStart = (value: number) => {
-    setIsSeeking(true);
-    setSeekTime(value);
-  };
-
-  const handleSeekChange = (value: number) => {
-    setSeekTime(value);
-  };
-
-  const handleSeekEnd = (value: number) => {
-    const video = videoRef.current;
-    if (video) {
-      video.currentTime = value;
-    }
-    setCurrentTime(value);
-    setIsSeeking(false);
   };
 
   const toggleFullscreen = async () => {
@@ -722,9 +668,6 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
       ccEnabled,
     });
   }
-
-  // ── Displayed time ──────────────────────────────────────────────────
-  const displayTime = isSeeking ? seekTime : currentTime;
 
   // ── No file selected ────────────────────────────────────────────────
   if (!filePath) {
@@ -836,47 +779,11 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
           {/* Controls overlay at bottom */}
           {showControls && !isFullscreen && (
             <div className="pointer-events-none absolute inset-x-0 bottom-[4vh] z-20 flex justify-center px-4">
-              <div className="pointer-events-auto w-full max-w-3xl space-y-2 rounded-md border border-white/15 bg-black/60 p-2 shadow-2xl shadow-black/40 backdrop-blur">
-                {/* Seek bar */}
-                <div className="flex items-center gap-3 px-2">
-                  <span className="min-w-[48px] text-right font-mono text-xs tabular-nums text-neutral-400">
-                    {formatTime(displayTime)}
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={duration || 0}
-                    step={0.1}
-                    value={displayTime}
-                    onMouseDown={(e) =>
-                      handleSeekStart(parseFloat((e.target as HTMLInputElement).value))
-                    }
-                    onTouchStart={(e) =>
-                      handleSeekStart(parseFloat((e.target as HTMLInputElement).value))
-                    }
-                    onChange={(e) =>
-                      isSeeking
-                        ? handleSeekChange(parseFloat(e.target.value))
-                        : handleSeekStart(parseFloat(e.target.value))
-                    }
-                    onMouseUp={(e) =>
-                      handleSeekEnd(parseFloat((e.target as HTMLInputElement).value))
-                    }
-                    onTouchEnd={(e) =>
-                      handleSeekEnd(parseFloat((e.target as HTMLInputElement).value))
-                    }
-                    className="watch-seek-bar flex-1"
-                  />
-                  <span className="min-w-[48px] font-mono text-xs tabular-nums text-neutral-400">
-                    {formatTime(duration)}
-                  </span>
-                </div>
-
-                {/* Buttons */}
-                <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="pointer-events-auto w-full max-w-3xl rounded-md border border-white/15 bg-black/60 p-2 shadow-2xl shadow-black/40 backdrop-blur">
+                <div className="flex w-full flex-nowrap gap-2">
                   <button
                     onClick={togglePlayPause}
-                    className="inline-flex items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                    className="inline-flex min-w-0 flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-2 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:px-3"
                   >
                     {isPlaying ? "Pause" : "Play"}
                   </button>
@@ -887,7 +794,8 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
                         return !m;
                       })
                     }
-                    className={`inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                    aria-pressed={muted}
+                    className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
                       muted
                         ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
                         : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -902,7 +810,8 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
                         return !c;
                       })
                     }
-                    className={`inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                    aria-pressed={crtEnabled}
+                    className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
                       crtEnabled
                         ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
                         : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -913,7 +822,8 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
                   {subtitleUrl && (
                     <button
                       onClick={() => setCcEnabled((c) => !c)}
-                      className={`inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                      aria-pressed={ccEnabled}
+                      className={`inline-flex min-w-0 flex-1 items-center justify-center rounded-md border px-2 py-2 text-center text-sm font-semibold transition sm:w-auto sm:flex-none sm:px-3 ${
                         ccEnabled
                           ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
                           : "border-white/15 bg-white/5 text-neutral-100 hover:border-white/30 hover:bg-white/10"
@@ -924,13 +834,13 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
                   )}
                   <button
                     onClick={toggleFullscreen}
-                    className="inline-flex items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                    className="inline-flex min-w-0 flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-2 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:px-3"
                   >
                     {isFullscreen ? "Exit" : "Full"}
                   </button>
                   <button
                     onClick={() => setShowInfoModal(true)}
-                    className="inline-flex items-center justify-center rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10"
+                    className="inline-flex min-w-0 flex-1 items-center justify-center rounded-md border border-white/15 bg-white/5 px-2 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-white/30 hover:bg-white/10 sm:w-auto sm:flex-none sm:px-3"
                   >
                     Info
                   </button>
@@ -955,29 +865,6 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
           </div>
         ) : (
           <div className="mt-4 space-y-4">
-            {/* Progress bar */}
-            <div className="space-y-2 border-b border-white/10 pb-4">
-              <div className="flex items-baseline justify-between text-xs text-neutral-400">
-                <span className="font-mono tabular-nums">
-                  {formatTime(currentTime)}
-                </span>
-                <span className="font-mono tabular-nums">
-                  {formatTime(Math.max(0, duration - currentTime))} remaining
-                </span>
-                <span className="font-mono tabular-nums">
-                  {formatTime(duration)}
-                </span>
-              </div>
-              <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="absolute left-0 top-0 h-full rounded-full bg-emerald-500 transition-all duration-100 ease-linear"
-                  style={{
-                    width: `${duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0}%`,
-                  }}
-                />
-              </div>
-            </div>
-
             {/* Cover art + basic info */}
             <div className="flex gap-4">
               {infoMetadata && buildCoverImageUrl(infoMetadata) && (
@@ -1136,15 +1023,3 @@ export default function WatchClient({ initialFile, initialSource }: WatchClientP
   );
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-function formatTime(seconds: number): string {
-  const safe = Math.max(0, Math.floor(seconds));
-  const h = Math.floor(safe / 3600);
-  const m = Math.floor((safe % 3600) / 60);
-  const s = safe % 60;
-  if (h > 0) {
-    return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  }
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}

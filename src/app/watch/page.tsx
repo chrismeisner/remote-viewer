@@ -2,6 +2,7 @@ import { Metadata } from "next";
 import WatchClient from "./WatchClient";
 import { REMOTE_MEDIA_BASE } from "@/constants/media";
 import { getMediaItemMetadataBySource } from "@/lib/media";
+import { resolveWatchToken } from "@/lib/watchTokens";
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_BASE_URL || "https://www.remoteviewer.tv";
@@ -26,12 +27,33 @@ function buildCoverImageUrl(
 }
 
 type Props = {
-  searchParams: Promise<{ file?: string; source?: string }>;
+  searchParams: Promise<{ file?: string; source?: string; v?: string }>;
 };
+
+async function resolveParams(params: {
+  file?: string;
+  source?: string;
+  v?: string;
+}): Promise<{ filePath: string | null; source: "local" | "remote" }> {
+  // Token-based lookup takes precedence
+  if (params.v) {
+    const entry = resolveWatchToken(params.v);
+    if (entry) {
+      return {
+        filePath: entry.file,
+        source: entry.source === "local" ? "local" : "remote",
+      };
+    }
+  }
+  return {
+    filePath: params.file ?? null,
+    source: params.source === "local" ? "local" : "remote",
+  };
+}
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const params = await searchParams;
-  const filePath = params.file;
+  const { filePath, source } = await resolveParams(params);
 
   const defaultMetadata: Metadata = {
     title: "Watch | Remote Viewer",
@@ -55,7 +77,6 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   if (!filePath) return defaultMetadata;
 
   // Fetch media metadata for the file
-  const source = params.source === "local" ? "local" : "remote";
   let mediaTitle: string | null = null;
   let coverImageUrl: string | null = null;
 
@@ -81,7 +102,9 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     openGraph: {
       title,
       description,
-      url: `${BASE_URL}/watch?file=${encodeURIComponent(filePath)}`,
+      url: params.v
+        ? `${BASE_URL}/watch?v=${params.v}`
+        : `${BASE_URL}/watch?file=${encodeURIComponent(filePath)}`,
       siteName: "Remote Viewer",
       images: [
         {
@@ -104,7 +127,8 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
 export default async function WatchPage({ searchParams }: Props) {
   const params = await searchParams;
+  const { filePath, source } = await resolveParams(params);
   return (
-    <WatchClient initialFile={params.file} initialSource={params.source} />
+    <WatchClient initialFile={filePath ?? undefined} initialSource={source} />
   );
 }
