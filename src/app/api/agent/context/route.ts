@@ -41,6 +41,13 @@ type ChannelContext = {
   };
 };
 
+type FreshestNowPlaying = {
+  title: string;
+  channelId: string;
+  channelName: string;
+  minutesAgo: number;
+};
+
 type AgentContextResponse = {
   currentTime: string;
   currentTimeMs: number;
@@ -50,6 +57,7 @@ type AgentContextResponse = {
   totalMediaDurationSeconds: number;
   channels: Pick<ChannelContext, "id" | "shortName" | "active" | "type" | "scheduledCount">[];
   formattedContext: string;
+  freshestNowPlaying: FreshestNowPlaying | null;
 };
 
 /**
@@ -180,15 +188,38 @@ export async function GET(request: NextRequest) {
       0
     );
 
-    // Format human-readable context for the system prompt
-    const formattedContext = formatContext({
-      currentTime,
-      timezone,
-      source,
-      mediaFiles,
-      totalMediaDurationSeconds,
-      channels,
-    });
+  // Format human-readable context for the system prompt
+  const formattedContext = formatContext({
+    now,
+    currentTime,
+    timezone,
+    source,
+    mediaFiles,
+    totalMediaDurationSeconds,
+    channels,
+  });
+
+    // Find the channel whose now-playing item started most recently
+    let freshestNowPlaying: FreshestNowPlaying | null = null;
+    for (const ch of channels) {
+      if (!ch.active || !ch.nowPlaying) continue;
+      const np = ch.nowPlaying;
+      const startedAtMs = np.endsAt - np.durationSeconds * 1000;
+      const elapsedMs = now - startedAtMs;
+      if (elapsedMs < 0) continue; // clock drift guard
+      const minutesAgo = Math.floor(elapsedMs / 60000);
+      if (
+        !freshestNowPlaying ||
+        minutesAgo < freshestNowPlaying.minutesAgo
+      ) {
+        freshestNowPlaying = {
+          title: np.title || np.relPath,
+          channelId: ch.id,
+          channelName: ch.shortName || `Channel ${ch.id}`,
+          minutesAgo,
+        };
+      }
+    }
 
     // Return only what the client needs (formattedContext has the full library for the AI)
     const result: AgentContextResponse = {
@@ -206,6 +237,7 @@ export async function GET(request: NextRequest) {
         scheduledCount: ch.scheduledCount,
       })),
       formattedContext,
+      freshestNowPlaying,
     };
 
     return NextResponse.json(result);
@@ -244,6 +276,7 @@ function formatDuration(seconds: number): string {
 }
 
 function formatContext(data: {
+  now: number;
   currentTime: string;
   timezone: string;
   source: MediaSource;
@@ -271,6 +304,95 @@ function formatContext(data: {
     timeZone: tz,
   });
   parts.push(`## Current Time\n${dateStr} at ${timeStr} (${tz})\nIMPORTANT: All times below are already converted to the visitor's local timezone (${tz}). Report them as-is — do NOT add or subtract any offset.`);
+
+  // ── Scheduled Titles Index ──────────────────────────────────────────
+  // Build a reverse lookup: title → [{channelName, channelId, nextAirStr}]
+  // This lets the model instantly answer "when is X playing" without
+  // scanning every channel playlist by hand.
+  {
+    type IndexEntry = { channelName: string; channelId: string; nextAirStr: string };
+    const titleIndex = new Map<string, IndexEntry[]>();
+
+    const addEntry = (rawTitle: string, channelName: string, channelId: string, nextAirStr: string) => {
+      const existing = titleIndex.get(rawTitle) || [];
+      existing.push({ channelName, channelId, nextAirStr });
+      titleIndex.set(rawTitle, existing);
+    };
+
+    for (const ch of data.channels) {
+      if (!ch.active) continue;
+      const chName = ch.shortName || `Channel ${ch.id}`;
+
+      if (ch.type === "looping" && ch.schedule.playlist && ch.schedule.playlist.length > 0) {
+        const playlist = ch.schedule.playlist;
+        const totalDuration = playlist.reduce((sum, item) => sum + item.durationSeconds, 0);
+        if (totalDuration > 0) {
+          const epochOffsetSeconds = (ch.schedule.epochOffsetHours || 0) * 3600;
+          const nowSeconds = Math.floor(data.now / 1000);
+          const adjustedSeconds = nowSeconds - epochOffsetSeconds;
+          const positionInLoop = ((adjustedSeconds % totalDuration) + totalDuration) % totalDuration;
+
+          let accumulated = 0;
+          for (const item of playlist) {
+            const title = item.title || item.file;
+            const itemStart = accumulated;
+            accumulated += item.durationSeconds;
+
+            let secondsUntilNext: number;
+            if (itemStart > positionInLoop) {
+              secondsUntilNext = itemStart - positionInLoop;
+            } else if (itemStart + item.durationSeconds > positionInLoop) {
+              secondsUntilNext = 0;
+            } else {
+              secondsUntilNext = totalDuration - positionInLoop + itemStart;
+            }
+
+            let nextAirStr: string;
+            if (secondsUntilNext === 0) {
+              nextAirStr = "NOW";
+            } else {
+              const nextAirDate = new Date(data.now + secondsUntilNext * 1000);
+              const timeLabel = nextAirDate.toLocaleTimeString("en-US", {
+                hour: "2-digit", minute: "2-digit", hour12: true, timeZone: tz,
+              });
+              const nowDayStr = new Date(data.now).toLocaleDateString("en-US", { timeZone: tz });
+              const nextDayStr = nextAirDate.toLocaleDateString("en-US", { timeZone: tz });
+              const dayLabel = nowDayStr === nextDayStr ? "today" : "tomorrow";
+              nextAirStr = `${dayLabel} at ${timeLabel}`;
+            }
+
+            addEntry(title, chName, ch.id, nextAirStr);
+          }
+        }
+      } else if (ch.type === "24hour" && ch.schedule.slots && ch.schedule.slots.length > 0) {
+        const nowInVisitorTZ = new Date(data.now).toLocaleTimeString("en-US", {
+          hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: tz,
+        });
+        const [hh, mm, ss] = nowInVisitorTZ.split(":").map(Number);
+        const currentSecondsOfDay = hh * 3600 + mm * 60 + ss;
+
+        for (const slot of ch.schedule.slots) {
+          const title = slot.title || slot.file;
+          const startSec = parseTimeToSeconds(slot.start);
+          const dayLabel = startSec !== null && startSec > currentSecondsOfDay ? "today" : "tomorrow";
+          addEntry(title, chName, ch.id, `${dayLabel} at ${slot.start}`);
+        }
+      }
+    }
+
+    if (titleIndex.size > 0) {
+      const indexLines = Array.from(titleIndex.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([title, entries]) => {
+          const schedules = entries
+            .map((e) => `${e.channelName} (/player?channel=${e.channelId}) — ${e.nextAirStr}`)
+            .join("; ");
+          return `- "${title}" → ${schedules}`;
+        })
+        .join("\n");
+      parts.push(`## Scheduled Titles Index\nEvery title currently on a channel schedule with its next air time. Use this for instant lookups before scanning the full channel details below:\n${indexLines}`);
+    }
+  }
 
   // Source
   parts.push(`## Media Source\n${data.source === "remote" ? "Remote (FTP/CDN)" : "Local filesystem"}`);

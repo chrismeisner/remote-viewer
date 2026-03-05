@@ -21,10 +21,18 @@ type StreamEvent =
   | { type: "status"; status: string }
   | { type: "text"; delta: string };
 
+type FreshestNowPlaying = {
+  title: string;
+  channelId: string;
+  channelName: string;
+  minutesAgo: number;
+};
+
 type AgentContext = {
   formattedContext: string;
   mediaFilesTotal: number;
   channels: { id: string; active: boolean }[];
+  freshestNowPlaying: FreshestNowPlaying | null;
 };
 
 type AgentChatModalProps = {
@@ -107,8 +115,10 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
     return () => window.removeEventListener("keydown", handleEsc);
   }, [open, onClose]);
 
-  // Load full application context silently
-  const loadContext = useCallback(async () => {
+  // Load full application context silently — returns the fetched context so
+  // sendMessage can use it immediately without waiting for a state update.
+  // When called for the first time (chat empty), injects a welcome message.
+  const loadContext = useCallback(async (isInitial = false): Promise<AgentContext | null> => {
     setContextLoading(true);
     try {
       const visitorTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -118,18 +128,53 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
       if (res.ok) {
         const data: AgentContext = await res.json();
         setAgentContext(data);
+
+        // On first load, seed the chat with a casual welcome + follow-up
+        if (isInitial && data.freshestNowPlaying) {
+          const { title, channelId, channelName, minutesAgo } = data.freshestNowPlaying;
+          const timeLabel =
+            minutesAgo === 0
+              ? "just started"
+              : minutesAgo === 1
+              ? "started 1 min ago"
+              : `started ${minutesAgo} mins ago`;
+          const welcome = `Ever seen **${title}**? It ${timeLabel} on [${channelName}](/player?channel=${channelId}).`;
+          setMessages([
+            {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: welcome,
+              timestamp: new Date(),
+            },
+          ]);
+          // Follow-up nudge after a short delay
+          setTimeout(() => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: "Looking for something else? Let me know what you're in the mood for.",
+                timestamp: new Date(),
+              },
+            ]);
+          }, 2000);
+        }
+
+        return data;
       }
     } catch {
       // Silently fail — context is supplementary
     } finally {
       setContextLoading(false);
     }
+    return null;
   }, [mediaSource]);
 
   // Auto-load context when modal opens and is ready
   useEffect(() => {
     if (open && isConfigured && !agentContext && !contextLoading) {
-      loadContext();
+      loadContext(true);
     }
   }, [open, isConfigured, agentContext, contextLoading, loadContext]);
 
@@ -165,7 +210,9 @@ export default function AgentChatModal({ open, onClose }: AgentChatModalProps) {
         content: m.content,
       }));
 
-      const fullContext = agentContext?.formattedContext || null;
+      // Always refresh context before sending so schedule times are current
+      const freshContext = await loadContext();
+      const fullContext = freshContext?.formattedContext ?? agentContext?.formattedContext ?? null;
 
       const systemNote = `You are speaking to a visitor on the Remote Viewer landing page. You are friendly, enthusiastic, and concise.
 
@@ -270,7 +317,7 @@ Keep answers short and conversational — this is a chat widget, not a documenta
       setIsLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, isLoading, messages, agentContext]);
+  }, [input, isLoading, messages, agentContext, loadContext]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -282,6 +329,8 @@ Keep answers short and conversational — this is a chat widget, not a documenta
   const clearChat = () => {
     setMessages([]);
     setError(null);
+    // Reset context so the auto-load effect re-fires and shows a fresh welcome
+    setAgentContext(null);
     inputRef.current?.focus();
   };
 
