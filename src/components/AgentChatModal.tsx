@@ -477,7 +477,7 @@ Keep answers short and conversational — this is a chat widget, not a documenta
                   <div
                     className={`max-w-[85%] rounded-md px-3 py-2 ${
                       message.role === "user"
-                        ? "bg-emerald-600 text-neutral-100"
+                        ? "bg-emerald-600 text-white"
                         : "bg-neutral-800 text-neutral-100"
                     }`}
                   >
@@ -487,7 +487,11 @@ Keep answers short and conversational — this is a chat widget, not a documenta
                           a: ({ node, ...props }) => (
                             <a
                               {...props}
-                              className="text-blue-400 hover:text-blue-300 underline"
+                              className={
+                                message.role === "user"
+                                  ? "text-white underline hover:text-emerald-100"
+                                  : "text-blue-400 hover:text-blue-300 underline"
+                              }
                               target="_blank"
                               rel="noopener noreferrer"
                             />
@@ -507,7 +511,11 @@ Keep answers short and conversational — this is a chat widget, not a documenta
                           code: ({ node, ...props }) => (
                             <code
                               {...props}
-                              className="bg-neutral-700 px-1 py-0.5 rounded text-xs"
+                              className={
+                                message.role === "user"
+                                  ? "bg-emerald-700/60 px-1 py-0.5 rounded text-xs"
+                                  : "bg-neutral-700 px-1 py-0.5 rounded text-xs"
+                              }
                             />
                           ),
                           p: ({ node, ...props }) => (
@@ -541,7 +549,13 @@ Keep answers short and conversational — this is a chat widget, not a documenta
                           />
                         </div>
                       )}
-                    <p className="text-xs font-normal leading-normal text-neutral-500 mt-1 tabular-nums">
+                    <p
+                      className={`text-xs font-normal leading-normal mt-1 tabular-nums ${
+                        message.role === "user"
+                          ? "text-emerald-200"
+                          : "text-neutral-500"
+                      }`}
+                    >
                       {formatTime(message.timestamp)}
                     </p>
                   </div>
